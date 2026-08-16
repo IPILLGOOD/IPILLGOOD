@@ -1,4 +1,5 @@
-import { CalendarDays, CheckCircle2, CircleHelp, Pill } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, CircleHelp, Pill } from "lucide-react";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -87,6 +88,12 @@ export default async function MedicationsPage() {
                     <span>{medication.clinicianQuestion}</span>
                   </div>
                 ) : null}
+                <Link
+                  className="button button--secondary medication-detail-link"
+                  href={`/medications/${medication.id}`}
+                >
+                  상세 정보 보기 <ArrowRight size={17} aria-hidden="true" />
+                </Link>
               </div>
             </div>
           </Card>

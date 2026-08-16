@@ -4,14 +4,14 @@
 
 Care Atlas는 처방전의 어려운 표현을 보호자가 이해할 수 있는 말로 정리하고, 매일의 복용 여부와 몸 상태를 다음 진료에 가져갈 기록으로 연결하는 노인 복약·웰니스 컨설턴트입니다.
 
-![Care Atlas 대시보드](design/screenshots/dashboard-desktop.png)
+![Care Atlas 오늘 할 일 화면](design/screenshots/today-desktop.png)
 
 ## 1차 MVP에서 실제로 되는 것
 
 1. **돌봄 대시보드** — 현재 복용약, 복용량·횟수·기간, 7일 기록, 의료진 질문을 한 화면에서 확인
 2. **쉬운 약 설명** — 전문용어 대신 약의 일반적인 쓰임과 보호자가 살펴볼 변화를 구분해 표시
 3. **매일 안부 확인** — 복용 여부, 응답자, 어지러움·두통·졸림 등의 몸 상태를 Firestore에 저장
-4. **문서 등록** — 이미지·PDF를 선택하고 메타데이터를 저장. 원본 파일은 저장하지 않으며 AI 키가 없으면 분석 대기로 표시
+4. **문서 분석** — 처방전·진단서 이미지 또는 PDF를 분석 API로 보내고 쉬운 말 결과를 즉시 확인. 원본 파일은 저장하지 않음
 5. **어르신 프로필** — 연령대, 신체 정보, 알레르기, 확인받은 건강 상태와 보호자 메모 관리
 6. **Care Report** — 약 변경과 증상을 인과관계로 단정하지 않고 시간순 기록과 상담 질문으로 정리
 
@@ -70,7 +70,7 @@ npm run firebase:deploy
 
 ## AI 연결 지점
 
-AI 키는 아직 사용하지 않습니다. `front/.env.local`에 `OPENAI_API_KEY`를 추가한 뒤 [medication-analyzer.ts](backend/src/ai/medication-analyzer.ts)의 제공자 독립 인터페이스에 실제 문서 분석을 구현하면 됩니다.
+`front/.env.local`에 `AI_ANALYSIS_ENDPOINT`와 `AI_API_KEY`를 추가하면 [medication-analyzer.ts](backend/src/ai/medication-analyzer.ts)의 제공자 독립 인터페이스가 외부 분석 API를 호출합니다. 키가 없을 때는 비식별 데모 분석 결과로 전체 흐름을 확인할 수 있습니다.
 
 AI를 연결하더라도 다음 경계는 유지합니다.
 

@@ -1,156 +1,130 @@
 import {
   ArrowRight,
-  CalendarCheck2,
-  ChevronRight,
+  CheckCircle2,
   ClipboardCheck,
-  MessageCircleQuestion,
-  TriangleAlert,
+  FileText,
+  ListChecks,
+  MessageSquareText,
+  Pill,
 } from "lucide-react";
 import Link from "next/link";
 
-import { CareTimeline } from "@/components/dashboard/CareTimeline";
-import { MedicationSummaryList } from "@/components/dashboard/MedicationSummaryList";
-import { Badge } from "@/components/ui/Badge";
+import { TodayTaskList } from "@/components/today/TodayTaskList";
 import { Card } from "@/components/ui/Card";
 import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { createMedicationSchedule } from "@/lib/presentation";
 import { getCareSnapshot } from "@care-atlas/backend";
-import {
-  activeMedications,
-  adherenceSummary,
-  uniqueSymptomDays,
-} from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function TodayPage() {
   const snapshot = await getCareSnapshot();
-  const medications = activeMedications(snapshot.medications);
-  const adherence = adherenceSummary(snapshot.doseEvents);
-  const symptomDays = uniqueSymptomDays(snapshot.symptomEvents);
+  const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
+  const completed = tasks.filter((task) => task.response === "completed").length;
+  const progress = tasks.length === 0 ? 0 : Math.round((completed / tasks.length) * 100);
 
   return (
     <>
       <PageHeader
-        eyebrow="오늘의 돌봄"
-        title={`${snapshot.recipient.displayName}, 오늘도 편안하게`}
-        description="약을 챙기고 몸의 작은 변화를 기록하면 다음 상담을 더 정확하게 준비할 수 있어요."
+        eyebrow="오늘 할 일"
+        title={`${snapshot.recipient.displayName}의 오늘 돌봄`}
+        description="복용 시간과 완료 여부를 먼저 확인하고, 몸 상태까지 한 번에 기록하세요."
         action={<ConnectionStatus source={snapshot.dataSource} />}
       />
 
-      <div className="dashboard-grid">
-        <div className="dashboard-main">
-          <Card className="today-card">
-            <div className="today-card__content">
-              <div className="today-card__copy">
-                <span className="today-card__icon" aria-hidden="true">
-                  <ClipboardCheck size={24} />
-                </span>
-                <div>
-                  <Badge tone="success">약 1분</Badge>
-                  <h2>오늘의 안부를 확인할 시간이에요</h2>
-                  <p>복용 여부와 어지러움 같은 몸 상태를 짧게 물어볼게요.</p>
-                </div>
+      <div className="today-workspace">
+        <div className="today-workspace__main">
+          <Card className="today-progress-card">
+            <div className="today-progress-card__header">
+              <div>
+                <span className="today-progress-card__eyebrow">오늘 진행 상황</span>
+                <strong>
+                  {completed}/{tasks.length}개 완료
+                </strong>
+                <p>
+                  {completed === tasks.length && tasks.length > 0
+                    ? "오늘 예정된 복약 확인을 모두 마쳤어요."
+                    : `남은 복약 확인 ${Math.max(tasks.length - completed, 0)}개가 있어요.`}
+                </p>
               </div>
-              <Link className="button button--primary" href="/check-in">
-                확인 시작 <ArrowRight size={18} aria-hidden="true" />
-              </Link>
+              <span className="today-progress-card__value">{progress}%</span>
             </div>
+            <progress
+              className="today-progress"
+              aria-label="오늘 복약 확인 진행률"
+              max={100}
+              value={progress}
+            />
           </Card>
 
           <Card>
             <div className="section-heading">
               <div>
-                <h2>현재 먹고 있는 약</h2>
-                <p>복용량·횟수·기간을 나누어 보여드려요.</p>
+                <h2>오늘 해야 하는 일</h2>
+                <p>현재 복용약의 횟수와 주기를 반영한 일정이에요.</p>
               </div>
               <Link className="button button--quiet" href="/medications">
-                자세히 <ChevronRight size={17} aria-hidden="true" />
+                복용약 보기 <ArrowRight size={17} aria-hidden="true" />
               </Link>
             </div>
-            <MedicationSummaryList medications={medications} />
+            {tasks.length > 0 ? (
+              <TodayTaskList tasks={tasks} />
+            ) : (
+              <div className="empty-state" role="status">
+                <CheckCircle2 size={28} aria-hidden="true" />
+                <strong>오늘 예정된 복용 일정이 없어요</strong>
+                <p>2일 1회처럼 복용 간격이 있는 약은 해당하는 날에만 나타나요.</p>
+              </div>
+            )}
           </Card>
 
-          <Card>
-            <div className="section-heading">
-              <div>
-                <h2>최근 복약·몸 상태 기록</h2>
-                <p>약 변화와 증상을 한 시간축에 모았어요.</p>
-              </div>
-              <Badge tone="neutral">최근 7일</Badge>
-            </div>
-            <CareTimeline medications={medications} symptoms={snapshot.symptomEvents} />
-            <p className="causal-note">
-              두 기록의 시기가 겹치더라도 약이 증상의 원인이라는 뜻은 아니에요.
-            </p>
-          </Card>
+          <div className="today-quick-actions">
+            <Link className="today-action-card" href="/documents">
+              <FileText size={21} aria-hidden="true" />
+              <span>
+                <strong>새 문서 분석</strong>
+                <small>처방전·진단서 내용을 쉬운 말로 확인</small>
+              </span>
+              <ArrowRight size={18} aria-hidden="true" />
+            </Link>
+            <Link className="today-action-card" href="/dashboard">
+              <ListChecks size={21} aria-hidden="true" />
+              <span>
+                <strong>돌봄 대시보드</strong>
+                <small>최근 7일 기록과 상담 질문 확인</small>
+              </span>
+              <ArrowRight size={18} aria-hidden="true" />
+            </Link>
+          </div>
         </div>
 
-        <aside className="dashboard-side" aria-label="돌봄 요약">
-          <Card>
-            <div className="section-heading">
+        <aside className="today-checklist" aria-labelledby="today-checklist-title">
+          <Card tone="accent">
+            <div className="today-checklist__header">
+              <ClipboardCheck size={23} aria-hidden="true" />
               <div>
-                <h2>최근 7일 요약</h2>
-                <p>사용자가 답한 기록 기준</p>
-              </div>
-              <CalendarCheck2 size={21} color="var(--color-primary-700)" aria-hidden="true" />
-            </div>
-            <div className="metric-row">
-              <div className="metric">
-                <strong>{adherence.rate}%</strong>
-                <span>복용 완료 응답</span>
-              </div>
-              <div className="metric">
-                <strong>{symptomDays}일</strong>
-                <span>어지러움 기록</span>
-              </div>
-              <div className="metric">
-                <strong>{medications.length}개</strong>
-                <span>현재 복용약</span>
+                <h2 id="today-checklist-title">오늘의 안부 확인</h2>
+                <p>약 1분이면 기록할 수 있어요.</p>
               </div>
             </div>
-          </Card>
-
-          <Card tone="warning" className="signal-card">
-            <div className="signal-card__headline">
-              <TriangleAlert size={22} aria-hidden="true" />
-              <div>
-                <Badge tone="warning">함께 확인하기</Badge>
-                <h2>어지러움이 3일 기록됐어요</h2>
-              </div>
-            </div>
-            <p>
-              새 약을 시작한 다음 날부터 기록됐지만, 약 때문이라고 판단할 수는 없어요.
-              기록을 보여주며 약사에게 확인해보세요.
-            </p>
-            <Link className="button button--secondary" href="/report">
-              상담용 기록 보기 <ArrowRight size={17} aria-hidden="true" />
+            <ol>
+              <li>
+                <Pill size={17} aria-hidden="true" />
+                <span>각 복용 시간의 약을 챙겼는지 확인</span>
+              </li>
+              <li>
+                <CheckCircle2 size={17} aria-hidden="true" />
+                <span>어지러움·두통 등 몸 상태 확인</span>
+              </li>
+              <li>
+                <MessageSquareText size={17} aria-hidden="true" />
+                <span>보호자가 직접 본 내용을 메모</span>
+              </li>
+            </ol>
+            <Link className="button button--primary" href="/check-in">
+              안부 확인 시작 <ArrowRight size={18} aria-hidden="true" />
             </Link>
-          </Card>
-
-          <Card>
-            <div className="section-heading">
-              <div>
-                <h2>의료진에게 물어볼 내용</h2>
-                <p>관찰 기록을 질문으로 정리했어요.</p>
-              </div>
-              <MessageCircleQuestion
-                size={21}
-                color="var(--color-primary-700)"
-                aria-hidden="true"
-              />
-            </div>
-            <ul className="question-list">
-              {snapshot.clinicianQuestions.slice(0, 2).map((question) => (
-                <li className="question-item" key={question.id}>
-                  <Badge tone={question.priority === "today" ? "warning" : "neutral"}>
-                    {question.priority === "today" ? "오늘 확인" : "다음 진료"}
-                  </Badge>
-                  <strong>{question.question}</strong>
-                  <p>{question.reason}</p>
-                </li>
-              ))}
-            </ul>
           </Card>
         </aside>
       </div>
