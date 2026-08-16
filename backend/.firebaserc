@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "care-atlas-seoul-2026"
+    "default": "care-atlas-seoul-2026-v2",
+    "legacy": "care-atlas-seoul-2026"
   }
 }
