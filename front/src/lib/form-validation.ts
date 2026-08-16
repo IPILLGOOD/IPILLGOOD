@@ -5,9 +5,13 @@ import type { MedicationScheduleTask } from "@/lib/presentation";
 
 export const profileSchema = z.object({
   displayName: z.string().trim().min(2, "이름을 두 글자 이상 입력해주세요."),
-  ageBand: z.enum(["65–69세", "70–74세", "75–79세", "80–84세", "85세 이상"], {
-    error: "연령대를 선택해주세요.",
-  }),
+  ageBand: z
+    .string()
+    .trim()
+    .regex(/^\d+$/, "나이를 숫자로 입력해주세요.")
+    .refine((value) => Number(value) >= 1 && Number(value) <= 120, {
+      message: "나이는 1세부터 120세 사이로 입력해주세요.",
+    }),
   heightCm: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.coerce.number().min(100).max(220).optional(),

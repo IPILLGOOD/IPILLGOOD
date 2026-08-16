@@ -78,7 +78,7 @@ export function createInitialCareSnapshot(scope: CareDataScope): CareSnapshot {
     recipient: {
       id: scope.recipientId,
       displayName: scope.initialDisplayName?.trim() || "돌봄 대상자",
-      ageBand: "65–69세",
+      ageBand: "67",
       allergies: [],
       conditions: [],
       mobilityNote: "",

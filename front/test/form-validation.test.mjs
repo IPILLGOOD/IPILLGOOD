@@ -9,7 +9,7 @@ import {
 
 const validProfileForm = {
   displayName: "김영희 어르신",
-  ageBand: "75–79세",
+  ageBand: "77",
   heightCm: "",
   weightKg: "",
   allergies: "",
@@ -27,6 +27,14 @@ test("프로필 필수값의 공백 입력과 동의 누락을 거부한다", ()
   const withoutConsent = { ...validProfileForm };
   delete withoutConsent.consentConfirmed;
   assert.equal(profileSchema.safeParse(withoutConsent).success, false);
+});
+
+test("나이는 1세부터 120세 사이의 정수만 허용한다", () => {
+  assert.equal(profileSchema.safeParse({ ...validProfileForm, ageBand: "75" }).success, true);
+  assert.equal(profileSchema.safeParse({ ...validProfileForm, ageBand: "75–79세" }).success, false);
+  assert.equal(profileSchema.safeParse({ ...validProfileForm, ageBand: "75.5" }).success, false);
+  assert.equal(profileSchema.safeParse({ ...validProfileForm, ageBand: "0" }).success, false);
+  assert.equal(profileSchema.safeParse({ ...validProfileForm, ageBand: "121" }).success, false);
 });
 
 test("비어 있는 선택 측정값을 Firestore 문서에서 제거한다", () => {
