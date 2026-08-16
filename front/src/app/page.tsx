@@ -9,7 +9,6 @@ import Link from "next/link";
 import { TodayTaskList } from "@/components/today/TodayTaskList";
 import { TodayQuickCheckIn } from "@/components/today/TodayQuickCheckIn";
 import { Card } from "@/components/ui/Card";
-import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { createMedicationSchedule } from "@/lib/presentation";
 import { getCareSnapshot, getTodayDailyCheckIn } from "@care-atlas/backend";
@@ -58,7 +57,6 @@ export default async function TodayPage() {
         eyebrow="오늘 할 일"
         title={`${snapshot.recipient.displayName}의 오늘 돌봄`}
         description="복용 시간과 완료 여부를 먼저 확인하고, 몸 상태까지 한 번에 기록하세요."
-        action={<ConnectionStatus source={snapshot.dataSource} />}
       />
 
       <div className="today-workspace">

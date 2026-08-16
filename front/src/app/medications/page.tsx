@@ -3,7 +3,6 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { OfficialMedicationSearch } from "@/components/medications/OfficialMedicationSearch";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot, searchPharmacogenomicInfo } from "@care-atlas/backend";
@@ -30,7 +29,6 @@ export default async function MedicationsPage({
         eyebrow="현재 복용약"
         title="약 설명을 쉬운 말로 확인하세요"
         description="처방 목적을 추측하지 않고, 문서에서 확인된 복용법과 약의 일반적인 쓰임을 구분해 보여드려요."
-        action={<ConnectionStatus source={snapshot.dataSource} />}
       />
 
       <OfficialMedicationSearch query={query} result={officialMedicationResult} />

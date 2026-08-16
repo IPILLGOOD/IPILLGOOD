@@ -2,7 +2,6 @@ import { Accessibility, History, ShieldCheck } from "lucide-react";
 
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { Card } from "@/components/ui/Card";
-import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot } from "@care-atlas/backend";
 
@@ -16,7 +15,6 @@ export default async function ProfilePage() {
         eyebrow="어르신 프로필"
         title="돌봄에 필요한 정보만 관리해요"
         description="정확한 복약 설명과 편한 사용을 위해 필요한 최소 정보만 입력해주세요."
-        action={<ConnectionStatus source={snapshot.dataSource} />}
       />
       <div className="profile-layout">
         <Card>
