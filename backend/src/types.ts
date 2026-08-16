@@ -87,6 +87,33 @@ export interface ClinicalDocument {
 
 export type ClinicalDocumentType = "처방전" | "진단서";
 
+export interface DiseaseReference {
+  title: string;
+  url: string;
+}
+
+export interface DiseaseInformation {
+  query: string;
+  matchedName: string;
+  code?: string;
+  overview: string;
+  practicalPoints: string[];
+  warningSigns: string[];
+  source: "official_api" | "openai_web" | "demo";
+  sourceLabel: string;
+  references: DiseaseReference[];
+}
+
+export interface DiseaseLookupStatus {
+  status:
+    | "official_match"
+    | "openai_fallback"
+    | "not_configured"
+    | "no_diagnosis"
+    | "failed";
+  message: string;
+}
+
 export interface DocumentAnalysis {
   documentType: ClinicalDocumentType;
   summary: string;
@@ -97,7 +124,13 @@ export interface DocumentAnalysis {
   carePoints: string[];
   questionsForProfessional: string[];
   disclaimer: string;
-  source: "demo" | "api";
+  source: "demo" | "api" | "openai";
+  diagnoses?: Array<{
+    name: string;
+    code?: string;
+  }>;
+  diseaseInformation?: DiseaseInformation[];
+  diseaseLookup?: DiseaseLookupStatus;
 }
 
 export interface ClinicianQuestion {

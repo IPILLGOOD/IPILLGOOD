@@ -1,4 +1,10 @@
-import type { ClinicalDocumentType, DocumentAnalysis } from "../types";
+import type { ClinicalDocumentType, DiseaseInformation, DocumentAnalysis } from "../types";
+import { searchOfficialDiseaseInfo } from "../official-disease-api";
+
+import {
+  analyzeClinicalDocumentWithOpenAI,
+  searchDiseaseWithOpenAI,
+} from "./openai-medical";
 
 export interface MedicationAnalyzerInput {
   documentType: ClinicalDocumentType;
@@ -35,6 +41,25 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
       disclaimer:
         "이 결과는 비식별 데모 문서를 기준으로 만든 예시이며 진단을 대신하지 않아요. 실제 내용은 원본과 의료진 설명으로 확인해주세요.",
       source: "demo",
+      diagnoses: [{ name: "고혈압", code: "I10" }],
+      diseaseInformation: [
+        {
+          query: "고혈압",
+          matchedName: "고혈압",
+          code: "I10",
+          overview:
+            "비식별 샘플에서 고혈압 진단을 확인한 예시예요. 실제 문서에서는 공식 질병 API를 먼저 조회하고, 일치하지 않으면 OpenAI 웹 검색으로 정보를 보완해요.",
+          practicalPoints: ["혈압 기록과 복용 중인 약 목록을 다음 진료 때 함께 확인하세요."],
+          warningSigns: [],
+          source: "demo",
+          sourceLabel: "비식별 데모",
+          references: [],
+        },
+      ],
+      diseaseLookup: {
+        status: "official_match",
+        message: "데모에서는 공식 질병 API 매칭 흐름을 예시로 보여드려요.",
+      },
     };
   }
 
@@ -61,6 +86,112 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
   };
 }
 
+function diagnosisCandidates(
+  analysis: DocumentAnalysis,
+): Array<{ name: string; code?: string }> {
+  const explicit = (analysis.diagnoses ?? [])
+    .map((diagnosis) => ({ name: diagnosis.name.trim(), code: diagnosis.code?.trim() }))
+    .filter((diagnosis) => diagnosis.name.length >= 2);
+  if (explicit.length > 0) return explicit.slice(0, 3);
+
+  return analysis.findings
+    .filter((finding) => /진단|상병|질병|병명|확인된 내용/.test(finding.label))
+    .flatMap((finding) => finding.value.split(/[,;/\n]/))
+    .map((name) => ({ name: name.replace(/\s*\([A-Z][A-Z0-9.]+\)\s*/i, " ").trim() }))
+    .filter((diagnosis) => diagnosis.name.length >= 2 && diagnosis.name.length <= 60)
+    .slice(0, 3);
+}
+
+async function enrichDiagnosisAnalysis(analysis: DocumentAnalysis): Promise<DocumentAnalysis> {
+  if (analysis.documentType !== "진단서" || analysis.source === "demo") return analysis;
+
+  const candidates = diagnosisCandidates(analysis);
+  if (candidates.length === 0) {
+    return {
+      ...analysis,
+      diseaseLookup: {
+        status: "no_diagnosis",
+        message: "진단서에서 조회할 수 있는 진단명이나 질병코드를 찾지 못했어요.",
+      },
+    };
+  }
+
+  const lookupResults = await Promise.all(
+    candidates.map(async (candidate) => {
+      const official = await searchOfficialDiseaseInfo(candidate.name, candidate.code);
+      if (official.status === "matched") {
+        const information: DiseaseInformation = {
+          query: candidate.name,
+          matchedName: official.item.koreanName,
+          code: official.item.code,
+          overview: official.item.englishName
+            ? `건강보험심사평가원 질병정보에서 KCD 코드 ${official.item.code}, 영문명 ${official.item.englishName}(으)로 확인됐어요.`
+            : `건강보험심사평가원 질병정보에서 KCD 코드 ${official.item.code}(으)로 확인됐어요.`,
+          practicalPoints: [
+            "진단서의 질병명과 질병코드가 공식 정보와 같은지 원본에서 다시 확인해주세요.",
+          ],
+          warningSigns: [],
+          source: "official_api",
+          sourceLabel: "건강보험심사평가원 질병정보 API",
+          references: [
+            {
+              title: "건강보험심사평가원 질병정보서비스",
+              url: official.sourceUrl,
+            },
+          ],
+        };
+        return { route: "official" as const, information };
+      }
+
+      if (!process.env.OPENAI_API_KEY) return { route: "none" as const };
+      try {
+        return {
+          route: "openai" as const,
+          information: await searchDiseaseWithOpenAI(candidate.name, candidate.code),
+        };
+      } catch (error) {
+        console.error("OpenAI disease search failed", error);
+        return { route: "failed" as const };
+      }
+    }),
+  );
+  const diseaseInformation = lookupResults.flatMap((result) =>
+    result.information ? [result.information] : [],
+  );
+  const usedOpenAI = lookupResults.some((result) => result.route === "openai");
+  const officialMatches = lookupResults.filter((result) => result.route === "official").length;
+  const lookupFailed = lookupResults.some((result) => result.route === "failed");
+
+  if (diseaseInformation.length === 0) {
+    return {
+      ...analysis,
+      diseaseLookup: {
+        status: process.env.OPENAI_API_KEY && lookupFailed ? "failed" : "not_configured",
+        message: process.env.OPENAI_API_KEY
+          ? "공식 API와 OpenAI 웹 검색에서 확인 가능한 질병 정보를 찾지 못했어요."
+          : "공식 API가 일치하지 않았고 OpenAI API 키가 없어 웹 검색으로 전환하지 못했어요.",
+      },
+    };
+  }
+
+  return {
+    ...analysis,
+    diseaseInformation,
+    diseaseLookup: usedOpenAI
+      ? {
+          status: "openai_fallback",
+          message:
+            officialMatches > 0
+              ? "공식 API 매칭 결과와 OpenAI 웹 검색 결과를 함께 사용했어요."
+              : "공식 API에서 일치 항목을 찾지 못해 OpenAI 웹 검색으로 전환했어요.",
+        }
+      : {
+          status: "official_match",
+          message: "건강보험심사평가원 질병정보 API에서 일치하는 정보를 찾았어요.",
+        },
+  };
+}
+
 function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
   if (!value || typeof value !== "object") return false;
   const analysis = value as Partial<DocumentAnalysis>;
@@ -78,6 +209,15 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
     analysis.carePoints.every((point) => typeof point === "string") &&
     Array.isArray(analysis.questionsForProfessional) &&
     analysis.questionsForProfessional.every((question) => typeof question === "string") &&
+    (analysis.diagnoses === undefined ||
+      (Array.isArray(analysis.diagnoses) &&
+        analysis.diagnoses.every(
+          (diagnosis) =>
+            diagnosis &&
+            typeof diagnosis === "object" &&
+            typeof diagnosis.name === "string" &&
+            (diagnosis.code === undefined || typeof diagnosis.code === "string"),
+        ))) &&
     typeof analysis.disclaimer === "string"
   );
 }
@@ -91,6 +231,14 @@ export async function analyzeMedicationDocument(
 ): Promise<MedicationAnalyzerResult> {
   const endpoint = process.env.AI_ANALYSIS_ENDPOINT;
   const apiKey = process.env.AI_API_KEY;
+
+  if (!input.contentBase64) {
+    return {
+      status: "complete",
+      message: "비식별 데모 분석을 마쳤어요. 실제 API를 연결하면 업로드한 문서를 분석해요.",
+      analysis: demoAnalysis(input.documentType),
+    };
+  }
 
   if (endpoint && apiKey) {
     const response = await fetch(endpoint, {
@@ -112,16 +260,42 @@ export async function analyzeMedicationDocument(
       throw new Error("문서 분석 API 응답 형식이 올바르지 않습니다.");
     }
 
+    const analysis = await enrichDiagnosisAnalysis({
+      ...body.analysis,
+      documentType: input.documentType,
+      source: "api",
+    });
     return {
       status: "complete",
-      message: "문서 분석을 마쳤어요. 원본과 비교해 내용을 확인해주세요.",
-      analysis: { ...body.analysis, documentType: input.documentType, source: "api" },
+      message:
+        input.documentType === "진단서"
+          ? "진단서 분석과 질병 정보 조회를 마쳤어요. 원본과 출처를 함께 확인해주세요."
+          : "문서 분석을 마쳤어요. 원본과 비교해 내용을 확인해주세요.",
+      analysis,
+    };
+  }
+
+  if (process.env.OPENAI_API_KEY) {
+    const analysis = await enrichDiagnosisAnalysis(
+      await analyzeClinicalDocumentWithOpenAI({
+        ...input,
+        contentBase64: input.contentBase64,
+      }),
+    );
+    return {
+      status: "complete",
+      message:
+        input.documentType === "진단서"
+          ? "진단서 분석과 질병 정보 조회를 마쳤어요. 원본과 출처를 함께 확인해주세요."
+          : "OpenAI 문서 분석을 마쳤어요. 원본과 비교해 내용을 확인해주세요.",
+      analysis,
     };
   }
 
   return {
     status: "complete",
-    message: "비식별 데모 분석을 마쳤어요. 실제 API를 연결하면 업로드한 문서를 분석해요.",
+    message:
+      "분석 API가 설정되지 않아 비식별 데모 결과를 표시해요. 실제 문서 분석에는 OPENAI_API_KEY 또는 외부 분석 API 설정이 필요해요.",
     analysis: demoAnalysis(input.documentType),
   };
 }

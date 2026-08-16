@@ -33,7 +33,11 @@ export function DocumentUploadForm() {
 
   async function requestAnalysis(formData: FormData) {
     setStatus("pending");
-    setMessage("문서에서 중요한 내용을 찾고 쉬운 말로 정리하고 있어요.");
+    setMessage(
+      documentType === "진단서"
+        ? "진단명을 확인하고 공식 질병 정보와 신뢰할 수 있는 출처를 조회하고 있어요."
+        : "문서에서 중요한 내용을 찾고 쉬운 말로 정리하고 있어요.",
+    );
     setAnalysis(null);
 
     try {

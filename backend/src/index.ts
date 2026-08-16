@@ -16,6 +16,11 @@ export {
   type PharmacogenomicInfo,
   type PharmacogenomicLookupResult,
 } from "./official-medication-api";
+export {
+  searchOfficialDiseaseInfo,
+  type OfficialDiseaseItem,
+  type OfficialDiseaseLookupResult,
+} from "./official-disease-api";
 export type {
   ActionState,
   CareRecipient,
@@ -27,6 +32,9 @@ export type {
   DocumentAnalysis,
   DoseEvent,
   DoseResponse,
+  DiseaseInformation,
+  DiseaseLookupStatus,
+  DiseaseReference,
   MedicationPlan,
   SymptomEvent,
 } from "./types";
