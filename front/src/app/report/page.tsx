@@ -86,23 +86,25 @@ export default async function ReportPage() {
         </div>
 
         <aside className="report-side">
-          <Card tone="warning">
-            <div className="section-heading">
-              <div>
-                <h2>의료진에게 확인할 질문</h2>
-                <p>진료나 약국 방문 때 보여주세요.</p>
+          {snapshot.clinicianQuestions.length > 0 ? (
+            <Card tone="warning">
+              <div className="section-heading">
+                <div>
+                  <h2>의료진에게 확인할 질문</h2>
+                  <p>진료나 약국 방문 때 보여주세요.</p>
+                </div>
+                <CircleHelp size={22} color="var(--color-warning)" aria-hidden="true" />
               </div>
-              <CircleHelp size={22} color="var(--color-warning)" aria-hidden="true" />
-            </div>
-            <ol className="report-questions">
-              {snapshot.clinicianQuestions.map((question) => (
-                <li key={question.id}>
-                  <strong>{question.question}</strong>
-                  <p>{question.reason}</p>
-                </li>
-              ))}
-            </ol>
-          </Card>
+              <ol className="report-questions">
+                {snapshot.clinicianQuestions.map((question) => (
+                  <li key={question.id}>
+                    <strong>{question.question}</strong>
+                    <p>{question.reason}</p>
+                  </li>
+                ))}
+              </ol>
+            </Card>
+          ) : null}
 
           <Card tone="soft" className="report-limit">
             <Info size={22} aria-hidden="true" />

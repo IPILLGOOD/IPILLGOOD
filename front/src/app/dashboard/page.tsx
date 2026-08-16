@@ -29,6 +29,9 @@ export default async function DashboardPage() {
   const medications = activeMedications(snapshot.medications);
   const adherence = adherenceSummary(snapshot.doseEvents);
   const symptomDays = uniqueSymptomDays(snapshot.symptomEvents);
+  const dizzinessDays = uniqueSymptomDays(
+    snapshot.symptomEvents.filter((event) => event.symptomType === "어지러움"),
+  );
 
   return (
     <>
@@ -111,47 +114,51 @@ export default async function DashboardPage() {
             </div>
           </Card>
 
-          <Card tone="warning" className="signal-card">
-            <div className="signal-card__headline">
-              <TriangleAlert size={22} aria-hidden="true" />
-              <div>
-                <Badge tone="warning">함께 확인하기</Badge>
-                <h2>어지러움이 3일 기록됐어요</h2>
+          {dizzinessDays >= 3 ? (
+            <Card tone="warning" className="signal-card">
+              <div className="signal-card__headline">
+                <TriangleAlert size={22} aria-hidden="true" />
+                <div>
+                  <Badge tone="warning">함께 확인하기</Badge>
+                  <h2>어지러움이 {dizzinessDays}일 기록됐어요</h2>
+                </div>
               </div>
-            </div>
-            <p>
-              새 약을 시작한 다음 날부터 기록됐지만, 약 때문이라고 판단할 수는 없어요.
-              기록을 보여주며 약사에게 확인해보세요.
-            </p>
-            <Link className="button button--secondary" href="/report">
-              상담용 기록 보기 <ArrowRight size={17} aria-hidden="true" />
-            </Link>
-          </Card>
+              <p>
+                기록이 반복되고 있지만, 약 때문이라고 판단할 수는 없어요. 기록을 보여주며
+                의료진이나 약사에게 확인해보세요.
+              </p>
+              <Link className="button button--secondary" href="/report">
+                상담용 기록 보기 <ArrowRight size={17} aria-hidden="true" />
+              </Link>
+            </Card>
+          ) : null}
 
-          <Card>
-            <div className="section-heading">
-              <div>
-                <h2>의료진에게 물어볼 내용</h2>
-                <p>관찰 기록을 질문으로 정리했어요.</p>
+          {snapshot.clinicianQuestions.length > 0 ? (
+            <Card>
+              <div className="section-heading">
+                <div>
+                  <h2>의료진에게 물어볼 내용</h2>
+                  <p>관찰 기록을 질문으로 정리했어요.</p>
+                </div>
+                <MessageCircleQuestion
+                  size={21}
+                  color="var(--color-primary-700)"
+                  aria-hidden="true"
+                />
               </div>
-              <MessageCircleQuestion
-                size={21}
-                color="var(--color-primary-700)"
-                aria-hidden="true"
-              />
-            </div>
-            <ul className="question-list">
-              {snapshot.clinicianQuestions.slice(0, 2).map((question) => (
-                <li className="question-item" key={question.id}>
-                  <Badge tone={question.priority === "today" ? "warning" : "neutral"}>
-                    {question.priority === "today" ? "오늘 확인" : "다음 진료"}
-                  </Badge>
-                  <strong>{question.question}</strong>
-                  <p>{question.reason}</p>
-                </li>
-              ))}
-            </ul>
-          </Card>
+              <ul className="question-list">
+                {snapshot.clinicianQuestions.slice(0, 2).map((question) => (
+                  <li className="question-item" key={question.id}>
+                    <Badge tone={question.priority === "today" ? "warning" : "neutral"}>
+                      {question.priority === "today" ? "오늘 확인" : "다음 진료"}
+                    </Badge>
+                    <strong>{question.question}</strong>
+                    <p>{question.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
         </aside>
       </div>
     </>
