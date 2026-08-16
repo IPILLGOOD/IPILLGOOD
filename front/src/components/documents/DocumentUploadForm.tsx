@@ -11,6 +11,7 @@ import type { ClinicalDocumentType, DocumentAnalysis } from "@care-atlas/backend
 interface AnalysisResponse {
   message?: string;
   analysis?: DocumentAnalysis;
+  addedMedicationCount?: number;
 }
 
 export function DocumentUploadForm() {

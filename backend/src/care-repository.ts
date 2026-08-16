@@ -391,17 +391,61 @@ export async function registerDocument(scope: CareDataScope, input: {
     size: input.size,
     analysis: input.analysis,
   };
+  const prescriptionMedications = medicationPlansFromPrescription(document);
   const nextSnapshot: CareSnapshot = {
     ...snapshot,
+    medications: [...snapshot.medications, ...prescriptionMedications],
     documents: [document, ...snapshot.documents]
       .sort(byDateDescending<ClinicalDocument>("uploadedAt"))
       .slice(0, MAX_DOCUMENTS),
   };
   const batch = firestore.batch();
   batch.set(documentRef, document);
+  for (const medication of prescriptionMedications) {
+    batch.set(recipientRef.collection("medicationPlans").doc(medication.id), medication);
+  }
   batch.set(readModelRef(firestore, scope.recipientId), toStoredReadModel(nextSnapshot));
   await batch.commit();
   return document;
+}
+
+const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+export function medicationPlansFromPrescription(
+  document: Pick<ClinicalDocument, "id" | "documentType" | "uploadedAt" | "analysis">,
+): MedicationPlan[] {
+  if (document.documentType !== "처방전") return [];
+  const sourceMedications = document.analysis?.medications ?? [];
+  const uploadedDate = dateKeyInSeoul(new Date(document.uploadedAt));
+
+  return sourceMedications
+    .filter((medication) => medication.productName.trim() && medication.frequency.trim())
+    .map((medication, index) => {
+      const startDate = isoDatePattern.test(medication.startDate)
+        ? medication.startDate
+        : uploadedDate;
+      const endDate = medication.endDate && isoDatePattern.test(medication.endDate)
+        ? medication.endDate
+        : undefined;
+      return {
+        id: `rx-${document.id}-${index + 1}`,
+        productName: medication.productName.trim(),
+        ingredientName: medication.ingredientName.trim() || "성분 확인 필요",
+        categoryPlain: "처방약",
+        purposePlain: medication.purposePlain.trim() || "처방 목적을 의료진에게 확인해주세요.",
+        descriptionPlain: "처방전에서 확인한 복용약이에요. 약 봉투와 원본 처방전을 함께 확인해주세요.",
+        doseAmount: medication.doseAmount.trim() || "1회 복용량 확인 필요",
+        frequency: medication.frequency.trim(),
+        timing: medication.timing.trim() || "복용 시간 확인 필요",
+        startDate,
+        ...(endDate ? { endDate } : {}),
+        status: "active" as const,
+        isNew: true,
+        sourceLabel: "처방전 분석에서 자동 등록 · 보호자 확인 필요",
+        sourceDocumentId: document.id,
+        watchFor: medication.precautions.filter(Boolean),
+      };
+    });
 }
 
 export async function deleteDocument(
@@ -420,10 +464,18 @@ export async function deleteDocument(
   const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
   const nextSnapshot: CareSnapshot = {
     ...snapshot,
+    medications: snapshot.medications.filter(
+      (medication) => medication.sourceDocumentId !== document.id,
+    ),
     documents: snapshot.documents.filter((item) => item.id !== documentId),
   };
   const batch = firestore.batch();
   batch.delete(recipientRef.collection("clinicalDocuments").doc(document.id));
+  for (const medication of snapshot.medications) {
+    if (medication.sourceDocumentId === document.id) {
+      batch.delete(recipientRef.collection("medicationPlans").doc(medication.id));
+    }
+  }
   batch.set(
     readModelRef(firestore, scope.recipientId),
     toStoredReadModel(nextSnapshot),

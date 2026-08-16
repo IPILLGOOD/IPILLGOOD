@@ -76,10 +76,16 @@ export async function POST(request: Request) {
       analysis: result.analysis,
     });
 
+    const addedMedicationCount =
+      typedDocumentType === "처방전" ? (result.analysis.medications?.length ?? 0) : 0;
     return Response.json({
-      message: result.message,
+      message:
+        addedMedicationCount > 0
+          ? `${result.message} 약 ${addedMedicationCount}개를 복약 일정에 추가했어요.`
+          : result.message,
       analysis: result.analysis,
       document,
+      addedMedicationCount,
     });
   } catch (error) {
     console.error("Document analysis failed", error);

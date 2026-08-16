@@ -61,6 +61,35 @@ const documentAnalysisSchema = {
         required: ["name", "code"],
       },
     },
+    medications: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          productName: { type: "string" },
+          ingredientName: { type: "string" },
+          doseAmount: { type: "string" },
+          frequency: { type: "string" },
+          timing: { type: "string" },
+          startDate: { type: "string" },
+          endDate: { type: "string" },
+          purposePlain: { type: "string" },
+          precautions: { type: "array", items: { type: "string" } },
+        },
+        required: [
+          "productName",
+          "ingredientName",
+          "doseAmount",
+          "frequency",
+          "timing",
+          "startDate",
+          "endDate",
+          "purposePlain",
+          "precautions",
+        ],
+      },
+    },
   },
   required: [
     "summary",
@@ -69,6 +98,7 @@ const documentAnalysisSchema = {
     "questionsForProfessional",
     "disclaimer",
     "diagnoses",
+    "medications",
   ],
 } as const;
 
@@ -161,6 +191,9 @@ function documentContent(input: DocumentInput): ResponseInputContent[] {
         "문서에 실제로 적힌 내용만 사용하고, 불명확한 부분은 추측하지 마세요.",
         "진단서라면 diagnoses에 진단명과 KCD/ICD 코드를 각각 넣고, 코드가 없으면 빈 문자열을 넣으세요.",
         "처방전이라면 diagnoses는 빈 배열로 반환하세요.",
+        "처방전이라면 medications에 처방된 약을 한 항목씩 넣으세요. 진단서라면 medications는 빈 배열로 반환하세요.",
+        "복용 시작일과 종료일은 YYYY-MM-DD로 쓰고, 문서에 종료일이 없으면 endDate를 빈 문자열로 쓰세요.",
+        "약 이름은 용량을 포함한 제품명, doseAmount는 1회 복용량, frequency는 '하루 2회' 같은 횟수, timing은 '아침·저녁 식사 후'처럼 적으세요.",
         "개인식별정보는 결과에 포함하지 마세요.",
       ].join("\n"),
     },
@@ -195,6 +228,13 @@ export async function analyzeClinicalDocumentWithOpenAI(
     diagnoses: parsed.diagnoses?.map((diagnosis) => ({
       name: diagnosis.name.trim(),
       ...(diagnosis.code?.trim() ? { code: diagnosis.code.trim() } : {}),
+    })),
+    medications: parsed.medications?.map((medication) => ({
+      ...medication,
+      productName: medication.productName.trim(),
+      ingredientName: medication.ingredientName.trim(),
+      startDate: medication.startDate.trim(),
+      ...(medication.endDate?.trim() ? { endDate: medication.endDate.trim() } : { endDate: undefined }),
     })),
     documentType: input.documentType,
     source: "openai",

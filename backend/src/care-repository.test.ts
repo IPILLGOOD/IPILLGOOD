@@ -6,7 +6,10 @@ import {
   applyDailyCheckInToSnapshot,
   currentDailyCheckIn,
 } from "./care-read-model.ts";
-import { createInitialCareSnapshot } from "./care-repository.ts";
+import {
+  createInitialCareSnapshot,
+  medicationPlansFromPrescription,
+} from "./care-repository.ts";
 import type { CareSnapshot } from "./types.ts";
 
 const snapshot = {
@@ -90,4 +93,52 @@ test("read model의 체크인은 서울 날짜가 오늘과 일치할 때만 반
 
   assert.equal(currentDailyCheckIn(checkIn, new Date("2026-08-16T14:59:00.000Z")), checkIn);
   assert.equal(currentDailyCheckIn(checkIn, new Date("2026-08-16T15:01:00.000Z")), null);
+});
+
+test("처방전에서 추출한 약을 복약 일정용 활성 계획으로 변환한다", () => {
+  const medications = medicationPlansFromPrescription({
+    id: "doc-rx-1",
+    documentType: "처방전",
+    uploadedAt: "2026-08-16T10:00:00+09:00",
+    analysis: {
+      documentType: "처방전",
+      summary: "약 1개",
+      findings: [],
+      carePoints: [],
+      questionsForProfessional: [],
+      disclaimer: "원본 확인",
+      source: "openai",
+      medications: [
+        {
+          productName: "테스트정 5mg",
+          ingredientName: "테스트 성분",
+          doseAmount: "한 번에 1정",
+          frequency: "하루 2회",
+          timing: "아침·저녁 식사 후",
+          startDate: "날짜 확인 필요",
+          purposePlain: "증상 관리",
+          precautions: ["어지러움 확인"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(medications.length, 1);
+  assert.equal(medications[0]?.id, "rx-doc-rx-1-1");
+  assert.equal(medications[0]?.startDate, "2026-08-16");
+  assert.equal(medications[0]?.frequency, "하루 2회");
+  assert.equal(medications[0]?.sourceDocumentId, "doc-rx-1");
+  assert.equal(medications[0]?.status, "active");
+});
+
+test("진단서 분석 결과는 복약 계획으로 만들지 않는다", () => {
+  assert.deepEqual(
+    medicationPlansFromPrescription({
+      id: "doc-diagnosis-1",
+      documentType: "진단서",
+      uploadedAt: "2026-08-16T10:00:00+09:00",
+      analysis: undefined,
+    }),
+    [],
+  );
 });

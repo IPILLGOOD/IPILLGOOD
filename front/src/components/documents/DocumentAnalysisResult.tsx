@@ -7,6 +7,7 @@ import {
   SearchCheck,
   ShieldCheck,
   TriangleAlert,
+  CalendarCheck2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
@@ -43,6 +44,16 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
           </div>
         ))}
       </dl>
+
+      {analysis.documentType === "처방전" && analysis.medications?.length ? (
+        <div className="disease-lookup-status disease-lookup-status--official_match" role="status">
+          <CalendarCheck2 size={18} aria-hidden="true" />
+          <p>
+            <strong>복약 일정에 반영됨</strong>
+            처방전에서 확인한 약 {analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.
+          </p>
+        </div>
+      ) : null}
 
       <div className="analysis-columns">
         <div>
