@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   buildPatientQuestionResponse,
   dateKeyInSeoul,
+  deleteDocument,
   getCareSnapshot,
   getPatientQuestionSet,
   saveDailyCheckIn,
@@ -34,6 +35,29 @@ async function demoWriteGuard(): Promise<ActionState | null> {
     status: "error",
     message: "현재는 읽기 전용 모드예요. 인증을 연결한 뒤 저장 기능을 활성화해주세요.",
   };
+}
+
+export async function deleteDocumentAction(formData: FormData): Promise<void> {
+  const guard = await demoWriteGuard();
+  if (guard) throw new Error(guard.message);
+
+  const documentId = formData.get("documentId");
+  if (typeof documentId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(documentId)) {
+    throw new Error("삭제할 문서를 확인하지 못했어요.");
+  }
+
+  try {
+    const session = await getSession();
+    if (!session) throw new Error("로그인 정보가 만료되었어요.");
+    const scope = careScopeFor(session);
+    const snapshot = await getCareSnapshot(scope);
+    await deleteDocument(scope, documentId, snapshot);
+    revalidatePath("/documents");
+    revalidatePath("/dashboard");
+  } catch (error) {
+    console.error(error);
+    throw new Error("문서를 삭제하지 못했어요. 잠시 후 다시 시도해주세요.");
+  }
 }
 
 export async function saveProfileAction(
