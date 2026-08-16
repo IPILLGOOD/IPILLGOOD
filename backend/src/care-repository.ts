@@ -13,7 +13,7 @@ import type {
   SymptomEvent,
 } from "./types";
 
-import { firestore } from "./firebase-admin";
+import { getAdminFirestore } from "./firebase-admin";
 
 export const DEMO_RECIPIENT_ID = "demo-kim-yeonghui";
 
@@ -35,7 +35,7 @@ function byDateDescending<T>(field: keyof T) {
     String(b[field]).localeCompare(String(a[field]));
 }
 
-async function ensureDemoData() {
+async function ensureDemoData(firestore: Awaited<ReturnType<typeof getAdminFirestore>>) {
   const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
   const existing = await recipientRef.get();
   if (existing.exists) return;
@@ -64,7 +64,8 @@ async function ensureDemoData() {
 
 export async function getCareSnapshot(): Promise<CareSnapshot> {
   try {
-    await ensureDemoData();
+    const firestore = await getAdminFirestore();
+    await ensureDemoData(firestore);
     const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
     const [recipientDoc, medications, doseEvents, symptomEvents, documents, questions] =
       await Promise.all([
@@ -98,12 +99,15 @@ export async function getCareSnapshot(): Promise<CareSnapshot> {
       dataSource: "firestore",
     };
   } catch (error) {
-    console.error("Firestore unavailable; using demo fallback", error);
+    if (globalThis.navigator?.userAgent !== "Cloudflare-Workers") {
+      console.error("Firestore unavailable; using demo fallback", error);
+    }
     return { ...seed, dataSource: "local-fallback" };
   }
 }
 
 export async function updateRecipientProfile(recipient: CareRecipient) {
+  const firestore = await getAdminFirestore();
   await firestore
     .collection("careRecipients")
     .doc(DEMO_RECIPIENT_ID)
@@ -112,7 +116,8 @@ export async function updateRecipientProfile(recipient: CareRecipient) {
 
 export async function getTodayDailyCheckIn(): Promise<DailyCheckIn | null> {
   try {
-    await ensureDemoData();
+    const firestore = await getAdminFirestore();
+    await ensureDemoData(firestore);
     const dateKey = dateKeyInSeoul(new Date());
     const document = await firestore
       .collection("careRecipients")
@@ -122,7 +127,9 @@ export async function getTodayDailyCheckIn(): Promise<DailyCheckIn | null> {
       .get();
     return document.exists ? (document.data() as DailyCheckIn) : null;
   } catch (error) {
-    console.error("Daily check-in unavailable", error);
+    if (globalThis.navigator?.userAgent !== "Cloudflare-Workers") {
+      console.error("Daily check-in unavailable", error);
+    }
     return null;
   }
 }
@@ -134,6 +141,7 @@ export async function saveDailyCheckIn(input: {
   note: string;
   answeredBy: "caregiver" | "recipient";
 }) {
+  const firestore = await getAdminFirestore();
   const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
   const now = new Date().toISOString();
   const dateKey = dateKeyInSeoul(new Date());
@@ -201,6 +209,7 @@ export async function registerDocument(input: {
   isSample: boolean;
   analysis: ClinicalDocument["analysis"];
 }) {
+  const firestore = await getAdminFirestore();
   const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
   const documentRef = recipientRef.collection("clinicalDocuments").doc(randomUUID());
   const document: ClinicalDocument & { size: number } = {
