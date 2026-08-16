@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "care-atlas-seoul-2026",
+  "name": "ipillgood",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-08-16",
   "compatibility_flags": [
@@ -19,7 +19,7 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "care-atlas-seoul-2026"
+      "service": "ipillgood"
     }
   ],
   "observability": {
