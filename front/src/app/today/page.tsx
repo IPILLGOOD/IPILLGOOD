@@ -115,7 +115,7 @@ export default async function TodayPage() {
           <div className="today-quick-actions">
             <Link className="today-action-card" href="/documents">
               <FileText size={21} aria-hidden="true" />
-              <span><strong>새 문서 분석</strong><small>처방전·진단서 내용을 쉬운 말로 확인</small></span>
+              <span><strong>내원 기록 추가하기</strong><small>처방전·진단서 내용을 쉬운 말로 확인</small></span>
               <ArrowRight size={18} aria-hidden="true" />
             </Link>
             <Link className="today-action-card" href="/dashboard">
