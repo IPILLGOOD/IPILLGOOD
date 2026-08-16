@@ -112,7 +112,7 @@ export function CheckInForm({
 
       <DynamicQuestionFields questionSet={questionSet} />
 
-      <div className="form-grid">
+      <div className="form-grid form-grid--check-in-details">
         <div className="field">
           <label htmlFor="severity">불편한 정도</label>
           <select id="severity" name="severity" defaultValue="3">

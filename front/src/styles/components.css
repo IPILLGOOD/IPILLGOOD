@@ -400,6 +400,20 @@
   gap: var(--space-5);
 }
 
+.form-grid--check-in-details {
+  align-items: start;
+}
+
+.form-grid--check-in-details .field {
+  align-content: start;
+}
+
+.form-grid--check-in-details select,
+.form-grid--check-in-details textarea {
+  height: 7rem;
+  min-height: 7rem;
+}
+
 .form-grid__wide {
   grid-column: 1 / -1;
 }
