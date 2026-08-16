@@ -33,8 +33,13 @@ await page.getByText("비식별 데모 분석을 마쳤어요.").waitFor();
 await page.getByRole("heading", { name: "처방전 분석 결과" }).waitFor();
 
 await page.goto(`${baseUrl}/today`, { waitUntil: "networkidle" });
-const firestoreStatus = await page.getByText("안전하게 저장 중").isVisible();
-if (!firestoreStatus) throw new Error("Firestore connection status was not visible");
+const persistedNote = await page.getByLabel("보호자 메모").inputValue();
+if (persistedNote !== "자동 검증: 첫 화면에서 확인했고 잠깐 쉰 뒤 괜찮아졌어요.") {
+  throw new Error("Persisted check-in note was not restored from Firestore");
+}
+if (!(await page.getByLabel("어지러움", { exact: true }).isChecked())) {
+  throw new Error("Persisted symptom was not restored from Firestore");
+}
 
 console.log("Functional QA passed: inline check-in edit, sample document write, dashboard read.");
 await browser.close();

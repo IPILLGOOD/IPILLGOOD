@@ -107,6 +107,7 @@ care-atlas/
 - Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
 - Google OAuth 2.0, `jose` 기반 서명 세션, Next.js Route Proxy
 - OpenAI Responses API, 식약처·HIRA Open API
+- 화면 조회는 bounded read model 한 문서로 통합하고 원본 이벤트는 하위 컬렉션에 보존
 - Zod 입력 검증, Lucide SVG 아이콘
 - Noto Sans KR, 딥그린·세이지 기반 접근성 디자인 시스템
 
