@@ -62,6 +62,18 @@ export interface SymptomEvent {
   note?: string;
 }
 
+export interface DailyCheckIn {
+  id: string;
+  completedAt: string;
+  completedBy: "caregiver" | "recipient";
+  medicationResponses: Array<
+    Pick<DoseEvent, "medicationPlanId" | "response" | "scheduledAt">
+  >;
+  symptoms: string[];
+  severity?: number;
+  note: string;
+}
+
 export interface ClinicalDocument {
   id: string;
   fileName: string;

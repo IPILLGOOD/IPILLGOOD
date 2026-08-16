@@ -1,26 +1,54 @@
 import {
   ArrowRight,
   CheckCircle2,
-  ClipboardCheck,
   FileText,
   ListChecks,
-  MessageSquareText,
-  Pill,
 } from "lucide-react";
 import Link from "next/link";
 
 import { TodayTaskList } from "@/components/today/TodayTaskList";
+import { TodayQuickCheckIn } from "@/components/today/TodayQuickCheckIn";
 import { Card } from "@/components/ui/Card";
 import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { createMedicationSchedule } from "@/lib/presentation";
-import { getCareSnapshot } from "@care-atlas/backend";
+import { getCareSnapshot, getTodayDailyCheckIn } from "@care-atlas/backend";
+import type { DailyCheckIn } from "@care-atlas/backend";
 
 export const dynamic = "force-dynamic";
 
+const seoulDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 export default async function TodayPage() {
-  const snapshot = await getCareSnapshot();
+  const [snapshot, todayCheckIn] = await Promise.all([
+    getCareSnapshot(),
+    getTodayDailyCheckIn(),
+  ]);
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
+  const dateKey = seoulDateFormatter.format(new Date());
+  const todaySymptoms = snapshot.symptomEvents.filter(
+    (event) => seoulDateFormatter.format(new Date(event.occurredAt)) === dateKey,
+  );
+  const fallbackCheckIn: DailyCheckIn | null = todaySymptoms[0]
+    ? {
+        id: dateKey,
+        completedAt: todaySymptoms[0].occurredAt,
+        completedBy:
+          todaySymptoms[0].reporterType === "caregiver_observed"
+            ? "caregiver"
+            : "recipient",
+        medicationResponses: [],
+        symptoms: [...new Set(todaySymptoms.map((event) => event.symptomType))],
+        severity: Math.max(...todaySymptoms.map((event) => event.severity)),
+        note: todaySymptoms[0].note ?? "",
+      }
+    : null;
+  const checkIn = todayCheckIn ?? fallbackCheckIn;
   const completed = tasks.filter((task) => task.response === "completed").length;
   const progress = tasks.length === 0 ? 0 : Math.round((completed / tasks.length) * 100);
 
@@ -99,32 +127,9 @@ export default async function TodayPage() {
           </div>
         </div>
 
-        <aside className="today-checklist" aria-labelledby="today-checklist-title">
+        <aside className="today-checklist">
           <Card tone="accent">
-            <div className="today-checklist__header">
-              <ClipboardCheck size={23} aria-hidden="true" />
-              <div>
-                <h2 id="today-checklist-title">오늘의 안부 확인</h2>
-                <p>약 1분이면 기록할 수 있어요.</p>
-              </div>
-            </div>
-            <ol>
-              <li>
-                <Pill size={17} aria-hidden="true" />
-                <span>각 복용 시간의 약을 챙겼는지 확인</span>
-              </li>
-              <li>
-                <CheckCircle2 size={17} aria-hidden="true" />
-                <span>어지러움·두통 등 몸 상태 확인</span>
-              </li>
-              <li>
-                <MessageSquareText size={17} aria-hidden="true" />
-                <span>보호자가 직접 본 내용을 메모</span>
-              </li>
-            </ol>
-            <Link className="button button--primary" href="/check-in">
-              안부 확인 시작 <ArrowRight size={18} aria-hidden="true" />
-            </Link>
+            <TodayQuickCheckIn tasks={tasks} checkIn={checkIn} />
           </Card>
         </aside>
       </div>

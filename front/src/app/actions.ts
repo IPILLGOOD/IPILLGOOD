@@ -138,7 +138,7 @@ export async function saveCheckInAction(
     });
   }
 
-  if (responses.length === 0) {
+  if (schedule.size > 0 && responses.length === 0) {
     return { status: "error", message: "복용 여부를 한 가지 이상 확인해주세요." };
   }
 
