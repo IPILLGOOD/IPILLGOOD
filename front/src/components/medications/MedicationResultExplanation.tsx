@@ -12,6 +12,12 @@ export function MedicationResultExplanation({
 }) {
   const explanation = item.plainExplanation;
   const category = explanation?.categoryPlain || item.categoryPlain || "분류 확인 필요";
+  const sourceSummary =
+    item.source === "openai_web"
+      ? "OpenAI 웹 검색 출처 확인"
+      : item.source === "verified_example"
+        ? "예시 정보 확인"
+        : "식약처 공식 원문 확인";
 
   return (
     <div className="official-drug-result__details">
@@ -57,7 +63,7 @@ export function MedicationResultExplanation({
       ) : null}
 
       <details className="official-drug-result__original" open={!explanation}>
-        <summary>식약처 공식 원문 확인</summary>
+        <summary>{sourceSummary}</summary>
         <div>
           {item.generalInfo ? (
             <section>
@@ -78,6 +84,17 @@ export function MedicationResultExplanation({
             </section>
           ) : null}
         </div>
+        {item.references && item.references.length > 0 ? (
+          <ul>
+            {item.references.map((reference) => (
+              <li key={reference.url}>
+                <a href={reference.url} rel="noreferrer" target="_blank">
+                  {reference.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </details>
     </div>
   );

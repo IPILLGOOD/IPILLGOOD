@@ -19,6 +19,8 @@ export interface PharmacogenomicInfo {
   generalInfo: string;
   productInfo: string;
   plainExplanation?: PlainMedicationExplanation;
+  source?: "mfds_pharmacogenomic" | "verified_example" | "openai_web";
+  references?: Array<{ title: string; url: string }>;
 }
 
 export interface PlainMedicationExplanation {
@@ -50,6 +52,13 @@ export type PharmacogenomicLookupResult =
       totalCount: number;
       sourceUrl: string;
       message: string;
+    }
+  | {
+      status: "openai_fallback";
+      items: PharmacogenomicInfo[];
+      totalCount: number;
+      sourceUrl: string;
+      message: string;
     };
 
 interface SearchOptions {
@@ -59,7 +68,13 @@ interface SearchOptions {
   format?: DataFormat;
   openAiApiKey?: string;
   simplifier?: MedicationSimplifier;
+  webSearcher?: MedicationWebSearcher;
 }
+
+type MedicationWebSearcher = (
+  query: string,
+  options?: { apiKey?: string; model?: string },
+) => Promise<PharmacogenomicInfo>;
 
 type MedicationSimplifier = (
   items: PharmacogenomicInfo[],
@@ -159,12 +174,13 @@ function searchLocalMedicationInfo(query: string): PharmacogenomicInfo[] {
         categoryPlain: medication.categoryPlain,
         pharmacogenomicInfo: "",
         generalInfo: medication.descriptionPlain,
-        productInfo: [
+          productInfo: [
           medication.productName,
           medication.doseAmount,
           medication.frequency,
           medication.timing,
-        ].join(" · "),
+          ].join(" · "),
+          source: "verified_example",
       },
     ];
   });
@@ -222,6 +238,7 @@ export function parsePharmacogenomicResponse(
         pharmacogenomicInfo: asString(item.BASC_INFO),
         generalInfo: asString(item.GNRL_INFO),
         productInfo: asString(item.PRDLST_NM),
+        source: "mfds_pharmacogenomic",
       },
     ];
   });
@@ -233,22 +250,64 @@ export function parsePharmacogenomicResponse(
   };
 }
 
+type FallbackReason = "not_configured" | "no_match" | "unavailable";
+
+async function searchMedicationFallback(
+  query: string,
+  reason: FallbackReason,
+  options: SearchOptions,
+): Promise<Extract<
+  PharmacogenomicLookupResult,
+  { status: "local_fallback" | "openai_fallback" }
+> | null> {
+  const localItems = searchLocalMedicationInfo(query);
+  if (localItems.length > 0) {
+    const reasonMessage =
+      reason === "not_configured"
+        ? "식약처 API 키가 없어"
+        : reason === "unavailable"
+          ? "식약처 API를 불러오지 못해"
+          : "식약처 약물 유전 정보에 일치하는 항목이 없어";
+    return {
+      status: "local_fallback",
+      items: localItems,
+      totalCount: localItems.length,
+      sourceUrl: SOURCE_URL,
+      message: `${reasonMessage} 검증된 예시 약 정보에서 검색했어요.`,
+    };
+  }
+
+  const openAiApiKey = options.openAiApiKey ?? process.env.OPENAI_API_KEY;
+  if (!openAiApiKey) return null;
+
+  try {
+    const searcher = options.webSearcher ??
+      (await import("./ai/openai-medical")).searchMedicationWithOpenAI;
+    const item = await searcher(query, { apiKey: openAiApiKey });
+    const reasonMessage =
+      reason === "not_configured"
+        ? "식약처 API 키가 없어"
+        : reason === "unavailable"
+          ? "식약처 API 호출에 실패해"
+          : "식약처 약물 유전 정보에 없어";
+    return {
+      status: "openai_fallback",
+      items: [item],
+      totalCount: 1,
+      sourceUrl: item.references?.[0]?.url ?? SOURCE_URL,
+      message: `${reasonMessage} OpenAI가 공신력 있는 웹 출처를 검색했어요.`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류";
+    console.error("OpenAI medication web search unavailable", message);
+    return null;
+  }
+}
+
 export async function searchPharmacogenomicInfo(
   medicationName: string,
   options: SearchOptions = {},
 ): Promise<PharmacogenomicLookupResult> {
-  const apiKey = options.apiKey ?? process.env.MFDS_PARMGEN_API_KEY;
-  if (!apiKey) {
-    const items = searchLocalMedicationInfo(medicationName);
-    return {
-      status: "local_fallback",
-      items,
-      totalCount: items.length,
-      sourceUrl: SOURCE_URL,
-      message: "공식 API 키가 없어 현재 등록된 복용약의 데모 정보에서 검색했어요.",
-    };
-  }
-
   const query = medicationName.trim().slice(0, 100);
   if (!query) {
     return {
@@ -257,6 +316,19 @@ export async function searchPharmacogenomicInfo(
       totalCount: 0,
       sourceUrl: SOURCE_URL,
       plainLanguageStatus: process.env.OPENAI_API_KEY ? "complete" : "not_configured",
+    };
+  }
+
+  const apiKey = options.apiKey ?? process.env.MFDS_PARMGEN_API_KEY;
+  if (!apiKey) {
+    const fallback = await searchMedicationFallback(query, "not_configured", options);
+    if (fallback) return fallback;
+    return {
+      status: "unavailable",
+      items: [],
+      totalCount: 0,
+      sourceUrl: SOURCE_URL,
+      message: "식약처와 OpenAI 약물 검색을 사용할 수 없어요.",
     };
   }
 
@@ -287,6 +359,10 @@ export async function searchPharmacogenomicInfo(
     }
 
     const parsed = parsePharmacogenomicResponse(await response.text(), format);
+    if (parsed.items.length === 0) {
+      const fallback = await searchMedicationFallback(query, "no_match", options);
+      if (fallback) return fallback;
+    }
     const openAiApiKey = options.openAiApiKey ?? process.env.OPENAI_API_KEY;
     if (!openAiApiKey || parsed.items.length === 0) {
       return {
@@ -310,12 +386,14 @@ export async function searchPharmacogenomicInfo(
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     console.error("MFDS pharmacogenomic API unavailable", message);
+    const fallback = await searchMedicationFallback(query, "unavailable", options);
+    if (fallback) return fallback;
     return {
       status: "unavailable",
       items: [],
       totalCount: 0,
       sourceUrl: SOURCE_URL,
-      message: "식약처 공식 정보를 불러오지 못했어요. 잠시 후 다시 검색해주세요.",
+      message: "식약처와 OpenAI 약물 정보를 모두 불러오지 못했어요. 잠시 후 다시 검색해주세요.",
     };
   }
 }
