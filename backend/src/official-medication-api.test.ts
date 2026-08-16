@@ -36,6 +36,7 @@ test("JSON 배열 응답을 약물 정보 목록으로 정규화한다", () => {
     pharmacogenomicInfo: "유전 정보",
     generalInfo: "일반 정보",
     productInfo: "제품 정보",
+    source: "mfds_pharmacogenomic",
   });
 });
 
@@ -101,6 +102,108 @@ test("한글 검색어와 키를 URL 쿼리로 전달하고 키를 결과에 노
   assert.equal(requested.searchParams.get("DRFSTF_KOR_NM"), "와파린");
   assert.equal(requested.searchParams.get("serviceKey"), "secret-key");
   assert.equal(JSON.stringify(result).includes("secret-key"), false);
+});
+
+test("공식 약물 유전 정보에 없는 암로디핀은 검증된 예시 정보로 폴백한다", async () => {
+  const result = await searchPharmacogenomicInfo("암로디핀", {
+    apiKey: "mfds-key",
+    fetcher: async () =>
+      new Response(
+        JSON.stringify({
+          header: { resultCode: "00", resultMsg: "NORMAL SERVICE." },
+          body: { totalCount: 0, items: "" },
+        }),
+        { status: 200 },
+      ),
+  });
+
+  assert.equal(result.status, "local_fallback");
+  assert.equal(result.totalCount, 1);
+  assert.equal(result.items[0]?.koreanName, "암로디핀");
+  assert.equal(result.items[0]?.englishName, "Amlodipine");
+  assert.match("message" in result ? result.message : "", /약물 유전 정보에 일치/);
+});
+
+test("공식 정보와 예시 목록에 없는 약은 OpenAI 웹 검색으로 폴백한다", async () => {
+  let searchedQuery = "";
+  const result = await searchPharmacogenomicInfo("아목시실린", {
+    apiKey: "mfds-key",
+    openAiApiKey: "openai-key",
+    fetcher: async () =>
+      new Response(
+        JSON.stringify({
+          header: { resultCode: "00", resultMsg: "NORMAL SERVICE." },
+          body: { totalCount: 0, items: "" },
+        }),
+        { status: 200 },
+      ),
+    webSearcher: async (query) => {
+      searchedQuery = query;
+      return {
+        koreanName: "아목시실린",
+        englishName: "Amoxicillin",
+        pharmacogenomicInfo: "",
+        generalInfo: "세균 감염 치료에 쓰이는 항생제예요.",
+        productInfo: "아목시실린 성분의 허가 제품이 있어요.",
+        source: "openai_web",
+        references: [{ title: "DailyMed", url: "https://dailymed.nlm.nih.gov/" }],
+      };
+    },
+  });
+
+  assert.equal(searchedQuery, "아목시실린");
+  assert.equal(result.status, "openai_fallback");
+  assert.equal(result.items[0]?.englishName, "Amoxicillin");
+  assert.equal(result.items[0]?.references?.length, 1);
+});
+
+test("식약처 API 키가 없어도 예시 목록에 없으면 OpenAI를 호출한다", async () => {
+  let searched = false;
+  const result = await searchPharmacogenomicInfo("가바펜틴", {
+    apiKey: "",
+    openAiApiKey: "openai-key",
+    webSearcher: async () => {
+      searched = true;
+      return {
+        koreanName: "가바펜틴",
+        englishName: "Gabapentin",
+        pharmacogenomicInfo: "",
+        generalInfo: "공식 출처 기반 설명",
+        productInfo: "",
+        source: "openai_web",
+        references: [{ title: "DailyMed", url: "https://dailymed.nlm.nih.gov/" }],
+      };
+    },
+  });
+
+  assert.equal(searched, true);
+  assert.equal(result.status, "openai_fallback");
+});
+
+test("식약처 API가 오류를 반환하면 마지막으로 OpenAI를 호출한다", async (context) => {
+  context.mock.method(console, "error", () => undefined);
+  let searched = false;
+  const result = await searchPharmacogenomicInfo("푸로세미드", {
+    apiKey: "mfds-key",
+    openAiApiKey: "openai-key",
+    fetcher: async () => new Response("gateway error", { status: 503 }),
+    webSearcher: async () => {
+      searched = true;
+      return {
+        koreanName: "푸로세미드",
+        englishName: "Furosemide",
+        pharmacogenomicInfo: "",
+        generalInfo: "공식 출처 기반 설명",
+        productInfo: "",
+        source: "openai_web",
+        references: [{ title: "DailyMed", url: "https://dailymed.nlm.nih.gov/" }],
+      };
+    },
+  });
+
+  assert.equal(searched, true);
+  assert.equal(result.status, "openai_fallback");
+  assert.match("message" in result ? result.message : "", /API 호출에 실패/);
 });
 
 test("공식 검색 결과를 쉬운 설명 생성기에 전달한다", async () => {

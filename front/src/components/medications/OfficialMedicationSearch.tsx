@@ -23,12 +23,26 @@ export function OfficialMedicationSearch({
           </span>
           <div>
             <div className="medication-row__name">
-              <h2 id="official-drug-title">식약처 공식 약물 유전 정보</h2>
-              <Badge tone={officialApiConfigured ? "success" : "neutral"}>
-                {officialApiConfigured ? "공공 API 연결됨" : "공식 API 설정 필요"}
+              <h2 id="official-drug-title">약 정보 검색</h2>
+              <Badge
+                tone={
+                  result?.status === "local_fallback"
+                    ? "neutral"
+                    : result || officialApiConfigured
+                      ? "success"
+                      : "neutral"
+                }
+              >
+                {result?.status === "local_fallback"
+                  ? "검증된 예시 정보"
+                  : result
+                    ? "약 정보 + GPT 설명"
+                    : officialApiConfigured
+                      ? "공공 API 연결됨"
+                      : "약 정보 검색 준비됨"}
               </Badge>
             </div>
-            <p>약물의 한글명 또는 영문명으로 공식 등록 정보를 확인하세요.</p>
+            <p>약물의 한글명·제품명·영문명으로 공식 또는 검증된 예시 정보를 확인하세요.</p>
           </div>
         </div>
       </div>
@@ -53,11 +67,11 @@ export function OfficialMedicationSearch({
             />
             <button className="button button--primary" type="submit">
               <Search size={18} aria-hidden="true" />
-              공식 정보 검색
+              약 정보 검색
             </button>
           </div>
           <p className="field-hint">
-            식약처 공식 결과만 서버에서 GPT에 전달하며, 어르신의 개인정보는 보내지 않아요.
+            식약처 결과를 우선 확인하고, 찾지 못하면 공신력 있는 출처를 검색해요. 어르신의 개인정보는 보내지 않아요.
           </p>
         </div>
       </form>
@@ -68,15 +82,15 @@ export function OfficialMedicationSearch({
           <p>
             {officialApiConfigured
               ? "현재 복용약과 별도로 조회되며, 검색 결과가 처방이나 복용법을 바꾸지는 않아요."
-              : "현재 공식 API 인증키가 없어 등록된 데모 복용약만 검색할 수 있어요. 운영 환경에 MFDS_PARMGEN_API_KEY를 설정해주세요."}
+              : "식약처 API를 사용할 수 없으면 검증된 예시 정보와 공신력 있는 웹 출처를 순서대로 확인해요."}
           </p>
         </div>
       ) : null}
 
       {query && result?.status === "local_fallback" ? (
         <div className="official-drug-message official-drug-message--warning" role="status">
-          <strong>현재 복용약 데모 정보에서 찾았어요.</strong>
-          <p>{result.message} 약물 유전 정보는 공식 API 연결 후 제공됩니다.</p>
+          <strong>검증된 예시 약 정보에서 찾았어요.</strong>
+          <p>{result.message} 공식 약물 유전 정보가 아닌 예시 정보임을 확인해주세요.</p>
         </div>
       ) : null}
 
@@ -112,13 +126,15 @@ export function OfficialMedicationSearch({
           <strong>“{query}” 검색 결과가 없어요.</strong>
           <p>
             {result.status === "local_fallback"
-              ? "현재 등록된 복용약의 제품명이나 성분명으로 다시 검색해보세요."
+              ? "예시로 제공되는 약의 제품명이나 성분명으로 다시 검색해보세요."
               : "제품명이 아닌 성분명이나 영문 약물명으로 다시 검색해보세요."}
           </p>
         </div>
       ) : null}
 
-      {(result?.status === "connected" || result?.status === "local_fallback") &&
+      {(result?.status === "connected" ||
+        result?.status === "local_fallback" ||
+        result?.status === "openai_fallback") &&
       result.items.length > 0 ? (
         <div className="official-drug-results" aria-live="polite">
           <p className="official-drug-results__count">
@@ -139,9 +155,9 @@ export function OfficialMedicationSearch({
             ))}
           </ul>
           <p className="official-drug-results__notice">
-            {result.status === "connected"
-              ? "식품의약품안전처 원문을 GPT가 쉬운 말로 정리한 설명이에요. 진단이나 복용 변경을 대신하지 않으며, 원문도 함께 확인할 수 있어요."
-              : "현재 등록된 데모 복약 정보이며, 식약처 공식 약물 유전 정보가 아니에요."}
+            {result.status === "local_fallback"
+              ? "검증된 예시 복약 정보이며, 식약처 공식 약물 유전 정보가 아니에요."
+              : "확인 가능한 약물 정보 출처를 GPT가 쉬운 말로 정리한 설명이에요. 진단이나 복용 변경을 대신하지 않으며, 출처 원문도 함께 확인할 수 있어요."}
           </p>
         </div>
       ) : null}
