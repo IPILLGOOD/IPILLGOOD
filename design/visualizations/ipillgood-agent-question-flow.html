@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IPILLGOOD Flow Visualization</title>
+  <style>
+    :root {
+      --ink: #143f34;
+      --muted: #60776f;
+      --line: #98b6aa;
+      --green: #187455;
+      --green-light: #e9f5ef;
+      --amber: #ad6728;
+      --amber-light: #fff3e5;
+      --blue: #367894;
+      --blue-light: #eaf4f8;
+      --purple: #705d92;
+      --purple-light: #f2eef8;
+      --red: #af4e46;
+      --red-light: #fff0ee;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #eef3f0;
+      color: var(--ink);
+      font-family: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Segoe UI", sans-serif;
+    }
+
+    body { padding: 24px 24px 50px; }
+
+    .controls {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      width: max-content;
+      gap: 6px;
+      margin: 0 auto 18px;
+      padding: 6px;
+      border: 1px solid #c9d8d2;
+      border-radius: 999px;
+      background: rgba(255,255,255,.96);
+      box-shadow: 0 6px 18px rgba(20,63,52,.12);
+    }
+
+    .controls button {
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 16px;
+      color: var(--muted);
+      background: transparent;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .controls button.active { color: white; background: var(--green); }
+
+    .diagram {
+      width: min(1500px, calc(100vw - 48px));
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid #d4e0db;
+      border-radius: 18px;
+      background: white;
+      box-shadow: 0 12px 36px rgba(20,63,52,.1);
+    }
+
+    .diagram.hidden { display: none; }
+    svg { display: block; width: 100%; height: auto; }
+
+    .node rect, .node path.node-shape {
+      stroke-width: 2;
+      rx: 14;
+      filter: drop-shadow(0 5px 8px rgba(20,63,52,.08));
+    }
+
+    .node text { fill: var(--ink); text-anchor: middle; }
+    .node .title { font-size: 20px; font-weight: 850; }
+    .node .sub { fill: var(--muted); font-size: 13px; font-weight: 650; }
+    .node .tiny { fill: var(--muted); font-size: 12px; font-weight: 700; }
+    .node.green rect { fill: var(--green-light); stroke: var(--green); }
+    .node.green-strong rect { fill: var(--green); stroke: var(--green); }
+    .node.green-strong text { fill: white; }
+    .node.green-strong .sub { fill: rgba(255,255,255,.78); }
+    .node.amber rect { fill: var(--amber-light); stroke: var(--amber); }
+    .node.blue rect { fill: var(--blue-light); stroke: var(--blue); }
+    .node.purple rect { fill: var(--purple-light); stroke: var(--purple); }
+    .node.red rect { fill: var(--red-light); stroke: var(--red); }
+    .node.neutral rect { fill: #f8faf9; stroke: #afc2ba; }
+
+    .edge { fill: none; stroke: var(--line); stroke-width: 3; }
+    .edge.strong { stroke: var(--green); stroke-width: 4; }
+    .edge.amber { stroke: var(--amber); }
+    .edge.blue { stroke: var(--blue); }
+    .edge.purple { stroke: var(--purple); }
+    .edge.red { stroke: var(--red); }
+    .edge.dashed { stroke-dasharray: 8 7; }
+    .edge-label { fill: var(--muted); font-size: 13px; font-weight: 800; text-anchor: middle; }
+
+    .lane-label { fill: var(--ink); font-size: 18px; font-weight: 850; }
+    .lane-sub { fill: var(--muted); font-size: 12px; font-weight: 650; }
+    .section-label { fill: var(--green); font-size: 13px; font-weight: 900; letter-spacing: .12em; }
+    .rule-text { fill: #6f481f; font-size: 14px; font-weight: 800; text-anchor: middle; }
+
+    @media print {
+      body { padding: 0; background: white; }
+      .controls { display: none; }
+      .diagram { width: 100%; border: 0; border-radius: 0; box-shadow: none; page-break-after: always; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="controls" aria-label="다이어그램 선택">
+    <button class="active" data-target="agent-flow">에이전트 실행 흐름</button>
+    <button data-target="question-flow">질문 설계 로직</button>
+    <button data-target="user-flow">전체 사용자 플로우</button>
+  </nav>
+
+  <main>
+    <section class="diagram" id="agent-flow" aria-label="IPILLGOOD 에이전트 실행 흐름">
+      <svg viewBox="0 0 1500 1375" role="img" aria-labelledby="agent-title agent-desc">
+        <title id="agent-title">IPILLGOOD 에이전트 실행 흐름</title>
+        <desc id="agent-desc">사용자 입력을 Orchestrator가 네 가지 의도로 분류하고 전문 에이전트를 호출한 뒤 Safety Evidence 검증과 답변 합성을 수행한다.</desc>
+        <defs>
+          <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill="#187455" /></marker>
+          <marker id="arrow-line" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill="#98b6aa" /></marker>
+          <marker id="arrow-amber" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill="#ad6728" /></marker>
+          <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill="#367894" /></marker>
+        </defs>
+
+        <!-- central start -->
+        <g class="node neutral">
+          <rect x="585" y="35" width="330" height="72" />
+          <text class="title" x="750" y="79">사용자 입력</text>
+        </g>
+        <path class="edge strong" d="M750 107 L750 145" marker-end="url(#arrow-green)" />
+        <g class="node green-strong">
+          <rect x="535" y="150" width="430" height="92" />
+          <text class="title" x="750" y="190">IPILLGOOD Orchestrator</text>
+          <text class="sub" x="750" y="217">자연어 의도 파악 · 필요한 기능 선택</text>
+        </g>
+
+        <!-- routing trunk -->
+        <path class="edge strong" d="M750 242 L750 270 L275 270 L275 935" />
+        <text class="section-label" x="105" y="292">INTENT ROUTING</text>
+
+        <!-- document route -->
+        <path class="edge amber" d="M275 340 L390 340" marker-end="url(#arrow-amber)" />
+        <text class="lane-label" x="400" y="322">처방전 등록</text>
+        <text class="lane-sub" x="400" y="345">사진·PDF에서 복약 정보 추출</text>
+        <path class="edge amber" d="M600 340 L690 340" marker-end="url(#arrow-amber)" />
+        <g class="node amber">
+          <rect x="700" y="297" width="300" height="86" />
+          <text class="title" x="850" y="333">Document Agent</text>
+          <text class="sub" x="850" y="358">처방 정보 후보 추출</text>
+        </g>
+        <path class="edge amber" d="M850 383 L850 420" marker-end="url(#arrow-amber)" />
+        <g class="node neutral">
+          <rect x="700" y="425" width="300" height="72" />
+          <text class="title" x="850" y="456">사용자 확인</text>
+          <text class="sub" x="850" y="479">확인 전에는 DB 등록 금지</text>
+        </g>
+        <path class="edge amber" d="M1000 461 L1080 461" marker-end="url(#arrow-amber)" />
+        <g class="node blue">
+          <rect x="1090" y="418" width="300" height="86" />
+          <text class="title" x="1240" y="454">Medication Agent</text>
+          <text class="sub" x="1240" y="479">확인된 약 정규화·검토</text>
+        </g>
+
+        <!-- medication route -->
+        <path class="edge blue" d="M275 550 L390 550" marker-end="url(#arrow-blue)" />
+        <text class="lane-label" x="400" y="532">약 질문 · 안전 질문</text>
+        <text class="lane-sub" x="400" y="555">성분·병용 주의·부작용 확인</text>
+        <path class="edge blue" d="M600 550 L690 550" marker-end="url(#arrow-blue)" />
+        <g class="node blue">
+          <rect x="700" y="507" width="300" height="86" />
+          <text class="title" x="850" y="544">Medication Agent</text>
+          <text class="sub" x="850" y="569">공식 근거 기반 약 정보 검토</text>
+        </g>
+        <path class="edge blue" d="M1000 550 L1060 550" />
+        <path class="edge blue" d="M1060 548 L1060 664" />
+        <path class="edge blue" d="M1060 548 L1090 548" marker-end="url(#arrow-blue)" />
+        <path class="edge blue" d="M1060 606 L1090 606" marker-end="url(#arrow-blue)" />
+        <path class="edge blue" d="M1060 664 L1090 664" marker-end="url(#arrow-blue)" />
+        <g class="node neutral"><rect x="1100" y="522" width="290" height="52" /><text class="title" x="1245" y="554">공식 의약품 API</text></g>
+        <g class="node neutral"><rect x="1100" y="580" width="290" height="52" /><text class="title" x="1245" y="612">DUR 정보</text></g>
+        <g class="node neutral"><rect x="1100" y="638" width="290" height="52" /><text class="title" x="1245" y="670">현재 복용약 DB</text></g>
+
+        <!-- care route -->
+        <path class="edge strong" d="M275 770 L390 770" marker-end="url(#arrow-green)" />
+        <text class="lane-label" x="400" y="752">증상 · 혈압 · 복약 기록</text>
+        <text class="lane-sub" x="400" y="775">오늘의 상태와 실제 복약 사실</text>
+        <path class="edge strong" d="M600 770 L690 770" marker-end="url(#arrow-green)" />
+        <g class="node green">
+          <rect x="700" y="727" width="300" height="86" />
+          <text class="title" x="850" y="764">Care Agent</text>
+          <text class="sub" x="850" y="789">시간에 따른 변화 분석</text>
+        </g>
+        <path class="edge strong" d="M1000 770 L1090 770" marker-end="url(#arrow-green)" />
+        <g class="node neutral">
+          <rect x="1100" y="727" width="290" height="86" />
+          <text class="title" x="1245" y="764">Longitudinal Record</text>
+          <text class="sub" x="1245" y="789">지속·악화·반복·누락</text>
+        </g>
+
+        <!-- integrated route -->
+        <path class="edge purple" d="M275 920 L390 920" marker-end="url(#arrow-line)" />
+        <text class="lane-label" x="400" y="902">통합 질문</text>
+        <text class="lane-sub" x="400" y="925">약 정보와 최근 상태를 함께 확인</text>
+        <path class="edge purple" d="M600 920 L690 920" marker-end="url(#arrow-line)" />
+        <g class="node purple">
+          <rect x="700" y="877" width="350" height="86" />
+          <text class="title" x="875" y="914">Medication + Care Agent</text>
+          <text class="sub" x="875" y="939">각 결과를 독립적으로 수집</text>
+        </g>
+        <path class="edge purple" d="M1050 920 L1090 920" marker-end="url(#arrow-line)" />
+        <g class="node purple">
+          <rect x="1100" y="877" width="290" height="86" />
+          <text class="title" x="1245" y="914">User Profile Context</text>
+          <text class="sub" x="1245" y="939">필요한 필드만 최소 조회</text>
+        </g>
+
+        <!-- merge and validation -->
+        <path class="edge dashed" d="M1390 461 L1440 461" />
+        <path class="edge dashed" d="M1390 606 L1440 606" />
+        <path class="edge dashed" d="M1390 770 L1440 770" />
+        <path class="edge dashed" d="M1390 920 L1440 920" />
+        <path class="edge dashed" d="M1440 461 L1440 1020 C1310 1020 1180 1106 1010 1106" marker-end="url(#arrow-line)" />
+        <g class="node green">
+          <rect x="500" y="1060" width="500" height="92" />
+          <text class="title" x="750" y="1100">Safety / Evidence 검증</text>
+          <text class="sub" x="750" y="1127">공식 근거 · 인과 단정 · 불확실성 · 긴급 신호 확인</text>
+        </g>
+        <path class="edge strong" d="M750 1152 L750 1190" marker-end="url(#arrow-green)" />
+        <g class="node green-strong">
+          <rect x="535" y="1195" width="430" height="82" />
+          <text class="title" x="750" y="1229">Orchestrator 답변 합성</text>
+          <text class="sub" x="750" y="1254">승인된 사실 + 불확실성 + 다음 행동</text>
+        </g>
+        <path class="edge strong" d="M750 1277 L750 1307" marker-end="url(#arrow-green)" />
+        <g class="node neutral"><rect x="610" y="1312" width="280" height="48" /><text class="title" x="750" y="1343">사용자 답변</text></g>
+
+        <rect x="80" y="1065" width="330" height="82" rx="14" fill="#fff3e5" stroke="#d5a36e" />
+        <text class="rule-text" x="245" y="1099">시간적 연관성 ≠ 인과관계</text>
+        <text class="rule-text" x="245" y="1125">확인되지 않은 값은 추측하지 않음</text>
+      </svg>
+    </section>
+
+    <section class="diagram hidden" id="question-flow" aria-label="IPILLGOOD 질문 설계 로직">
+      <svg viewBox="0 0 1500 930" role="img" aria-labelledby="question-title question-desc">
+        <title id="question-title">IPILLGOOD 질문 설계 로직</title>
+        <desc id="question-desc">에이전트 JSON 결과에서 확인이 필요한 근거를 추출하고 승인된 질문 템플릿과 검증 단계를 거쳐 환자 질문을 생성한다.</desc>
+        <defs>
+          <marker id="q-arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill="#187455" /></marker>
+        </defs>
+
+        <text class="section-label" x="60" y="52">AGENT JSON OUTPUT</text>
+        <g class="node amber"><rect x="55" y="75" width="290" height="86" /><text class="title" x="200" y="110">Document Agent</text><text class="sub" x="200" y="136">미확인·불명확 처방 필드</text></g>
+        <g class="node blue"><rect x="415" y="75" width="290" height="86" /><text class="title" x="560" y="110">Medication Agent</text><text class="sub" x="560" y="136">공식 근거가 있는 관찰사항</text></g>
+        <g class="node green"><rect x="775" y="75" width="290" height="86" /><text class="title" x="920" y="110">Care Agent</text><text class="sub" x="920" y="136">새 증상·지속·악화·누락</text></g>
+        <g class="node purple"><rect x="1135" y="75" width="290" height="86" /><text class="title" x="1280" y="110">Personal Context</text><text class="sub" x="1280" y="136">필요한 값의 누락·오래됨</text></g>
+
+        <path class="edge amber" d="M200 161 C200 225 390 220 500 255" />
+        <path class="edge blue" d="M560 161 L560 245" />
+        <path class="edge strong" d="M920 161 C920 225 730 220 620 255" />
+        <path class="edge purple" d="M1280 161 C1280 250 850 230 680 270" />
+
+        <g class="node green-strong">
+          <rect x="430" y="250" width="440" height="92" />
+          <text class="title" x="650" y="287">1. Trigger 추출</text>
+          <text class="sub" x="650" y="316">unresolved · missing · finding · safety finding</text>
+        </g>
+        <path class="edge strong" d="M870 296 L945 296" marker-end="url(#q-arrow)" />
+        <g class="node green">
+          <rect x="955" y="250" width="420" height="92" />
+          <text class="title" x="1165" y="287">2. 승인 템플릿 매핑</text>
+          <text class="sub" x="1165" y="316">허용된 template_id에 확인된 값만 주입</text>
+        </g>
+
+        <path class="edge strong" d="M1165 342 L1165 395" marker-end="url(#q-arrow)" />
+        <g class="node neutral">
+          <rect x="955" y="405" width="420" height="92" />
+          <text class="title" x="1165" y="442">3. 중복 제거 · 상세화</text>
+          <text class="sub" x="1165" y="471">기본 질문과 겹치면 시점·경과 질문으로 전환</text>
+        </g>
+        <path class="edge strong" d="M955 451 L880 451" marker-end="url(#q-arrow)" />
+        <g class="node neutral">
+          <rect x="430" y="405" width="440" height="92" />
+          <text class="title" x="650" y="442">4. 우선순위 · 최대 3개</text>
+          <text class="sub" x="650" y="471">긴급 → 등록 차단 → 악화·누락 → 일반 확인</text>
+        </g>
+
+        <path class="edge strong" d="M650 497 L650 548" marker-end="url(#q-arrow)" />
+        <g class="node green">
+          <rect x="430" y="558" width="440" height="96" />
+          <text class="title" x="650" y="596">5. Safety / Evidence 검증</text>
+          <text class="sub" x="650" y="625">원인 유도 · 근거 없는 값 · 긴급 분기 누락 차단</text>
+        </g>
+
+        <path class="edge strong" d="M870 606 L945 606" marker-end="url(#q-arrow)" />
+        <g class="node green-strong">
+          <rect x="955" y="558" width="420" height="96" />
+          <text class="title" x="1165" y="596">patient-question-set.v1</text>
+          <text class="sub" x="1165" y="625">검증을 통과한 맞춤 질문만 프론트 전달</text>
+        </g>
+
+        <!-- output example -->
+        <rect x="55" y="405" width="300" height="249" rx="16" fill="#f8fbf9" stroke="#bfd1ca" stroke-width="2" />
+        <text class="section-label" x="80" y="438">QUESTION RULES</text>
+        <circle cx="84" cy="476" r="5" fill="#187455" /><text class="lane-label" x="103" y="482">한 질문에는 한 사실만</text>
+        <circle cx="84" cy="518" r="5" fill="#187455" /><text class="lane-label" x="103" y="524">“확인하지 못함” 제공</text>
+        <circle cx="84" cy="560" r="5" fill="#187455" /><text class="lane-label" x="103" y="566">인과관계 유도 금지</text>
+        <circle cx="84" cy="602" r="5" fill="#187455" /><text class="lane-label" x="103" y="608">질문 이유를 함께 표시</text>
+
+        <path class="edge strong" d="M1165 654 L1165 707" marker-end="url(#q-arrow)" />
+        <g class="node neutral">
+          <rect x="930" y="717" width="470" height="128" />
+          <text class="tiny" x="1165" y="748">최근 기록 확인</text>
+          <text class="title" x="1165" y="783">어지럼이 오늘도 계속됐나요?</text>
+          <text class="sub" x="1165" y="813">계속 · 호전 · 해소 · 악화 · 확인하지 못함</text>
+        </g>
+        <path class="edge strong" d="M930 781 L790 781" marker-end="url(#q-arrow)" />
+        <g class="node green">
+          <rect x="455" y="717" width="325" height="128" />
+          <text class="title" x="617" y="765">응답 저장</text>
+          <text class="sub" x="617" y="794">DoseEvent · SymptomEvent 연결</text>
+          <text class="sub" x="617" y="818">처방 계획은 자동 변경하지 않음</text>
+        </g>
+        <path class="edge strong" d="M455 781 L330 781" marker-end="url(#q-arrow)" />
+        <g class="node green-strong">
+          <rect x="55" y="717" width="265" height="128" />
+          <text class="title" x="188" y="765">Care Agent 재분석</text>
+          <text class="sub" x="188" y="794">새 원본 기록을 반영한</text>
+          <text class="sub" x="188" y="818">새로운 분석 run 생성</text>
+        </g>
+
+        <path class="edge dashed" d="M188 717 C188 675 370 690 495 654" marker-end="url(#q-arrow)" />
+        <text class="edge-label" x="320" y="688">다음 질문 생성에 반영</text>
+      </svg>
+    </section>
+
+    <section class="diagram hidden" id="user-flow" aria-label="IPILLGOOD 전체 사용자 플로우">
+      <svg viewBox="0 0 1500 980" role="img" aria-labelledby="user-title user-desc">
+        <title id="user-title">IPILLGOOD 전체 사용자 플로우</title>
+        <desc id="user-desc">보호자 또는 환자가 프로필과 처방전을 등록하고 매일 안부 확인을 수행한 뒤 돌봄 기록과 Care Report를 의료진 상담에 활용하는 전체 흐름이다.</desc>
+        <defs>
+          <marker id="u-arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill="#187455" /></marker>
+          <marker id="u-arrow-line" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill="#98b6aa" /></marker>
+          <marker id="u-arrow-red" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L0,8 L9,4 z" fill="#af4e46" /></marker>
+        </defs>
+
+        <text class="section-label" x="60" y="72">01 · ONBOARDING &amp; MEDICATION SETUP</text>
+        <line x1="60" y1="88" x2="1440" y2="88" stroke="#d7e3de" stroke-width="2" />
+
+        <!-- first row: onboarding and prescription -->
+        <g class="node neutral">
+          <rect x="55" y="120" width="230" height="84" />
+          <text class="title" x="170" y="154">서비스 시작</text>
+          <text class="sub" x="170" y="179">보호자 또는 환자 본인</text>
+        </g>
+        <path class="edge strong" d="M285 162 L320 162" marker-end="url(#u-arrow)" />
+        <g class="node purple">
+          <rect x="330" y="120" width="230" height="84" />
+          <text class="title" x="445" y="154">어르신 프로필</text>
+          <text class="sub" x="445" y="179">연령대·알레르기·확인 정보</text>
+        </g>
+        <path class="edge strong" d="M560 162 L590 162" marker-end="url(#u-arrow)" />
+        <g class="node amber">
+          <rect x="600" y="120" width="230" height="84" />
+          <text class="title" x="715" y="154">처방전 등록</text>
+          <text class="sub" x="715" y="179">사진 또는 PDF 업로드</text>
+        </g>
+        <path class="edge amber" d="M830 162 L860 162" marker-end="url(#u-arrow-line)" />
+        <g class="node amber">
+          <rect x="870" y="120" width="230" height="84" />
+          <text class="title" x="985" y="154">Document Agent</text>
+          <text class="sub" x="985" y="179">약·용량·횟수·기간 추출</text>
+        </g>
+        <path class="edge amber" d="M1100 162 L1130 162" marker-end="url(#u-arrow-line)" />
+        <g class="node neutral">
+          <rect x="1140" y="120" width="230" height="84" />
+          <text class="title" x="1255" y="154">사용자 확인</text>
+          <text class="sub" x="1255" y="179">원본 내용과 맞는지 확인</text>
+        </g>
+
+        <!-- confirmation correction loop -->
+        <path class="edge amber dashed" d="M1255 120 C1255 42 985 42 985 110" marker-end="url(#u-arrow-line)" />
+        <text class="edge-label" x="1120" y="42">수정 · 재촬영이 필요하면 다시 확인</text>
+
+        <!-- second row: medication and daily care, right to left -->
+        <text class="section-label" x="60" y="345">02 · DAILY CARE LOOP</text>
+        <line x1="60" y1="361" x2="1440" y2="361" stroke="#d7e3de" stroke-width="2" />
+        <path class="edge strong" d="M1255 204 L1255 390" marker-end="url(#u-arrow)" />
+        <g class="node blue">
+          <rect x="1140" y="400" width="230" height="84" />
+          <text class="title" x="1255" y="434">복용약 등록</text>
+          <text class="sub" x="1255" y="459">확인된 약 + 공식 정보 연결</text>
+        </g>
+        <path class="edge strong" d="M1140 442 L1110 442" marker-end="url(#u-arrow)" />
+        <g class="node blue">
+          <rect x="870" y="400" width="230" height="84" />
+          <text class="title" x="985" y="434">복약 대시보드</text>
+          <text class="sub" x="985" y="459">복용 일정·쉬운 설명 확인</text>
+        </g>
+        <path class="edge strong" d="M870 442 L840 442" marker-end="url(#u-arrow)" />
+        <g class="node green">
+          <rect x="600" y="400" width="230" height="84" />
+          <text class="title" x="715" y="434">오늘 할 일</text>
+          <text class="sub" x="715" y="459">예정된 복약과 안부 확인</text>
+        </g>
+        <path class="edge strong" d="M600 442 L570 442" marker-end="url(#u-arrow)" />
+        <g class="node green">
+          <rect x="330" y="400" width="230" height="84" />
+          <text class="title" x="445" y="434">안부 확인</text>
+          <text class="sub" x="445" y="459">복약 여부·증상·보호자 메모</text>
+        </g>
+        <path class="edge strong" d="M330 442 L295 442" marker-end="url(#u-arrow)" />
+        <g class="node green-strong">
+          <rect x="55" y="400" width="230" height="84" />
+          <text class="title" x="170" y="434">맞춤 질문</text>
+          <text class="sub" x="170" y="459">필요한 경우에만 최대 3개</text>
+        </g>
+
+        <!-- urgent branch -->
+        <path class="edge red" d="M285 466 C320 500 340 520 385 540" marker-end="url(#u-arrow-red)" />
+        <text class="edge-label" x="355" y="510">긴급 신호</text>
+        <g class="node red">
+          <rect x="395" y="520" width="250" height="74" />
+          <text class="title" x="520" y="550">즉시 도움 안내</text>
+          <text class="sub" x="520" y="574">일반 질문보다 먼저 표시</text>
+        </g>
+
+        <!-- third row: records and insights -->
+        <text class="section-label" x="60" y="670">03 · RECORD, INSIGHT &amp; NEXT CARE</text>
+        <line x1="60" y1="686" x2="1440" y2="686" stroke="#d7e3de" stroke-width="2" />
+        <path class="edge strong" d="M170 484 L170 710" marker-end="url(#u-arrow)" />
+        <g class="node neutral">
+          <rect x="55" y="720" width="230" height="94" />
+          <text class="title" x="170" y="756">원본 기록 저장</text>
+          <text class="sub" x="170" y="781">DoseEvent · SymptomEvent</text>
+          <text class="sub" x="170" y="800">처방 계획은 자동 변경하지 않음</text>
+        </g>
+        <path class="edge strong" d="M285 767 L320 767" marker-end="url(#u-arrow)" />
+        <g class="node green">
+          <rect x="330" y="720" width="230" height="94" />
+          <text class="title" x="445" y="756">Care Agent 재분석</text>
+          <text class="sub" x="445" y="781">지속·악화·반복·누락</text>
+          <text class="sub" x="445" y="800">인과관계는 단정하지 않음</text>
+        </g>
+        <path class="edge strong" d="M560 767 L590 767" marker-end="url(#u-arrow)" />
+        <g class="node green">
+          <rect x="600" y="720" width="230" height="94" />
+          <text class="title" x="715" y="756">대시보드 갱신</text>
+          <text class="sub" x="715" y="781">오늘 기록과 최근 변화 반영</text>
+        </g>
+        <path class="edge strong" d="M830 767 L860 767" marker-end="url(#u-arrow)" />
+        <g class="node purple">
+          <rect x="870" y="720" width="230" height="94" />
+          <text class="title" x="985" y="756">Care Report</text>
+          <text class="sub" x="985" y="781">시간순 기록·상담 질문 정리</text>
+        </g>
+        <path class="edge purple" d="M1100 767 L1130 767" marker-end="url(#u-arrow-line)" />
+        <g class="node purple">
+          <rect x="1140" y="720" width="230" height="94" />
+          <text class="title" x="1255" y="756">의사·약사 상담</text>
+          <text class="sub" x="1255" y="781">기록과 확인 질문을 함께 전달</text>
+        </g>
+
+        <!-- repeat loops -->
+        <path class="edge strong dashed" d="M1255 814 C1255 900 715 915 715 494" marker-end="url(#u-arrow)" />
+        <text class="edge-label" x="985" y="906">다음 날 다시 오늘 할 일로</text>
+        <path class="edge purple dashed" d="M1370 767 C1450 767 1450 162 1380 162" marker-end="url(#u-arrow-line)" />
+        <text class="edge-label" x="1435" y="465" transform="rotate(90 1435 465)">새 처방이 생기면 처방전 등록 흐름으로</text>
+
+        <rect x="55" y="865" width="360" height="70" rx="14" fill="#e9f5ef" stroke="#9bc6b5" />
+        <text class="rule-text" x="235" y="894" style="fill:#245f4d">한 번의 사용으로 끝나는 서비스가 아니라</text>
+        <text class="rule-text" x="235" y="919" style="fill:#245f4d">매일의 기록이 다음 돌봄 질문으로 이어지는 순환 구조</text>
+      </svg>
+    </section>
+  </main>
+
+  <script>
+    const buttons = [...document.querySelectorAll('[data-target]')];
+    const diagrams = [...document.querySelectorAll('.diagram')];
+
+    function showDiagram(id) {
+      diagrams.forEach((diagram) => diagram.classList.toggle('hidden', diagram.id !== id));
+      buttons.forEach((button) => button.classList.toggle('active', button.dataset.target === id));
+      const url = new URL(location.href);
+      const queryName = {
+        'agent-flow': 'agent',
+        'question-flow': 'question',
+        'user-flow': 'user'
+      }[id];
+      url.searchParams.set('diagram', queryName);
+      history.replaceState({}, '', url);
+    }
+
+    buttons.forEach((button) => button.addEventListener('click', () => showDiagram(button.dataset.target)));
+    const requested = new URLSearchParams(location.search).get('diagram');
+    if (requested === 'question') showDiagram('question-flow');
+    if (requested === 'user') showDiagram('user-flow');
+  </script>
+</body>
+</html>
