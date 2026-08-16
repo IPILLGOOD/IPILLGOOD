@@ -10,6 +10,10 @@ import type {
   DailyCheckIn,
   DoseEvent,
   MedicationPlan,
+  AgentRunRecord,
+  CareAgentOutput,
+  PatientQuestionResponse,
+  PatientQuestionSet,
   SymptomEvent,
 } from "./types";
 
@@ -189,8 +193,45 @@ export async function getTodayDailyCheckIn(): Promise<DailyCheckIn | null> {
   }
 }
 
+export async function getPatientQuestionSet(
+  questionSetId: string,
+): Promise<PatientQuestionSet | null> {
+  const firestore = await getAdminFirestore();
+  const document = await firestore
+    .collection("careRecipients")
+    .doc(DEMO_RECIPIENT_ID)
+    .collection("questionSets")
+    .doc(questionSetId)
+    .get();
+  return document.exists ? (document.data() as PatientQuestionSet) : null;
+}
+
+export async function saveQuestionSetGeneration(input: {
+  questionSet: PatientQuestionSet;
+  analysis: CareAgentOutput;
+  run: AgentRunRecord;
+}) {
+  const firestore = await getAdminFirestore();
+  const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
+  const batch = firestore.batch();
+  batch.set(
+    recipientRef.collection("questionSets").doc(input.questionSet.question_set_id),
+    input.questionSet,
+  );
+  batch.set(
+    recipientRef.collection("careAnalyses").doc(input.analysis.analysis_id),
+    {
+      ...input.analysis,
+      promptVersion: input.questionSet.prompt_version,
+      inputRevision: input.questionSet.input_revision,
+    },
+  );
+  batch.set(recipientRef.collection("agentRuns").doc(input.run.runId), input.run);
+  await batch.commit();
+}
+
 export async function saveDailyCheckIn(
-  input: DailyCheckInInput,
+  input: DailyCheckInInput & { questionResponse: PatientQuestionResponse },
   currentSnapshot?: CareSnapshot,
 ) {
   const firestore = await getAdminFirestore();
@@ -208,8 +249,33 @@ export async function saveDailyCheckIn(
   for (const event of update.symptomEvents) {
     batch.set(recipientRef.collection("symptomEvents").doc(event.id), event);
   }
-  batch.set(recipientRef.collection("dailyCheckIns").doc(update.checkIn.id), update.checkIn);
-  batch.set(readModelRef(firestore), toStoredReadModel(update.nextSnapshot));
+  const checkIn: DailyCheckIn = {
+    ...update.checkIn,
+    questionSetId: input.questionResponse.question_set_id,
+    questionResponseId: input.questionResponse.response_id,
+  };
+  const nextSnapshot: CareSnapshot = {
+    ...update.nextSnapshot,
+    todayCheckIn: checkIn,
+  };
+  batch.set(recipientRef.collection("dailyCheckIns").doc(checkIn.id), checkIn);
+  batch.set(
+    recipientRef
+      .collection("questionResponses")
+      .doc(input.questionResponse.response_id),
+    input.questionResponse,
+  );
+  batch.set(
+    recipientRef
+      .collection("questionSets")
+      .doc(input.questionResponse.question_set_id),
+    {
+      response_status: "answered",
+      answered_at: input.questionResponse.answered_at,
+    } satisfies Pick<PatientQuestionSet, "response_status" | "answered_at">,
+    { merge: true },
+  );
+  batch.set(readModelRef(firestore), toStoredReadModel(nextSnapshot));
   await batch.commit();
 }
 

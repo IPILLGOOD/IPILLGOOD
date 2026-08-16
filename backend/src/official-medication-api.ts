@@ -69,7 +69,7 @@ async function defaultMedicationSimplifier(
   options?: { apiKey?: string; model?: string },
 ) {
   const { simplifyMedicationInformationWithOpenAI } = await import(
-    "./ai/openai-medical"
+    "./ai/openai-medical.ts"
   );
   return simplifyMedicationInformationWithOpenAI(items, options);
 }

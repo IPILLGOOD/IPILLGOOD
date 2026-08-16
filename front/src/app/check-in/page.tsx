@@ -3,13 +3,22 @@ import { HeartHandshake, ShieldCheck } from "lucide-react";
 import { CheckInForm } from "@/components/check-in/CheckInForm";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareSnapshot } from "@care-atlas/backend";
+import {
+  DEMO_RECIPIENT_ID,
+  getCareSnapshot,
+  getOrCreateQuestionSet,
+} from "@care-atlas/backend";
 import { createMedicationSchedule } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
 
 export default async function CheckInPage() {
   const snapshot = await getCareSnapshot();
+  const questionSet = await getOrCreateQuestionSet({
+    recipientId: DEMO_RECIPIENT_ID,
+    answerer: "caregiver",
+    snapshot,
+  });
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
 
   return (
@@ -21,7 +30,7 @@ export default async function CheckInPage() {
       />
       <div className="checkin-layout">
         <Card>
-          <CheckInForm tasks={tasks} />
+          <CheckInForm tasks={tasks} questionSet={questionSet} />
         </Card>
         <aside className="checkin-aside">
           <Card tone="accent">

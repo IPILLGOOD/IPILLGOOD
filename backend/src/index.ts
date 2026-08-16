@@ -1,13 +1,17 @@
 export {
   DEMO_RECIPIENT_ID,
   getCareSnapshot,
+  getPatientQuestionSet,
   getTodayDailyCheckIn,
   registerDocument,
   saveDailyCheckIn,
   updateRecipientProfile,
 } from "./care-repository";
+export { dateKeyInSeoul, getOrCreateQuestionSet } from "./care-orchestration-service";
+export { buildPatientQuestionResponse } from "./ai/questions/apply-question-response";
 export {
   analyzeMedicationDocument,
+  DocumentAnalysisNotConfiguredError,
   type MedicationAnalyzerInput,
   type MedicationAnalyzerResult,
 } from "./ai/medication-analyzer";
@@ -24,6 +28,9 @@ export {
 } from "./official-disease-api";
 export type {
   ActionState,
+  AgentRunRecord,
+  CareAgentOutput,
+  CareFindingType,
   CareRecipient,
   CareSnapshot,
   ClinicalDocument,
@@ -37,5 +44,10 @@ export type {
   DiseaseLookupStatus,
   DiseaseReference,
   MedicationPlan,
+  PatientQuestion,
+  PatientQuestionResponse,
+  PatientQuestionSet,
+  QuestionAnswerType,
+  QuestionPriority,
   SymptomEvent,
 } from "./types";

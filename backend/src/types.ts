@@ -72,6 +72,140 @@ export interface DailyCheckIn {
   symptoms: string[];
   severity?: number;
   note: string;
+  questionSetId?: string;
+  questionResponseId?: string;
+}
+
+export type QuestionPriority = "urgent" | "blocking" | "high" | "normal" | "optional";
+export type QuestionAnswerType =
+  | "single_choice"
+  | "multi_choice"
+  | "yes_no_unknown"
+  | "approximate_time"
+  | "number"
+  | "short_text"
+  | "confirmation";
+
+export interface PatientQuestion {
+  question_id: string;
+  template_id: string;
+  category: string;
+  priority: QuestionPriority;
+  source_agents: Array<"document" | "medication" | "care" | "profile" | "safety">;
+  trigger_refs: string[];
+  display: {
+    badge: string;
+    caregiver_text: string;
+    recipient_text: string;
+    helper_text: string;
+  };
+  answer_type: QuestionAnswerType;
+  options: Array<{ value: string; label: string }>;
+  options_source: null | {
+    type: "medication_schedule";
+    date: string;
+    include_unknown_option: boolean;
+  };
+  required: boolean;
+  allow_unknown: boolean;
+  follow_up_rules: Array<{
+    when_answer_in: string[];
+    next_template_id: string;
+  }>;
+  safety: {
+    validation_status: "pass";
+    urgent_answer_values: string[];
+  };
+}
+
+export interface PatientQuestionSet {
+  schema_version: "patient-question-set.v1";
+  question_set_id: string;
+  generated_at: string;
+  timezone: "Asia/Seoul";
+  target_date: string;
+  subject_ref: string;
+  answerer: "caregiver" | "recipient";
+  status: "ready" | "needs_confirmation" | "urgent" | "blocked";
+  maximum_display_count: 3;
+  questions: PatientQuestion[];
+  source_analysis_refs: string[];
+  safety_validation_ref: string;
+  input_revision: string;
+  prompt_version: string;
+  generation_source: "agent" | "safe_fallback";
+  response_status: "unanswered" | "answered";
+  answered_at: string | null;
+}
+
+export interface PatientQuestionResponse {
+  schema_version: "patient-question-response.v1";
+  response_id: string;
+  question_set_id: string;
+  subject_ref: string;
+  answered_by: "caregiver" | "recipient";
+  answered_at: string;
+  timezone: "Asia/Seoul";
+  responses: Array<{
+    question_id: string;
+    answer: string | number | string[] | null;
+    skipped: boolean;
+  }>;
+  triggered_by_response: Array<{
+    question_id: string;
+    answer_value: string;
+    action: "show_follow_up" | "show_urgent_guidance";
+  }>;
+  source_refs: Array<{
+    source_type: "patient_question_set";
+    source_id: string;
+  }>;
+}
+
+export type CareFindingType =
+  | "symptom_onset"
+  | "symptom_persistence"
+  | "symptom_repeated"
+  | "symptom_improving"
+  | "symptom_worsening"
+  | "vital_change"
+  | "medication_completed"
+  | "medication_missed"
+  | "medication_unconfirmed";
+
+export interface CareAgentOutput {
+  schema_version: "care-agent.v1";
+  analysis_id: string;
+  generated_at: string;
+  timezone: "Asia/Seoul";
+  status: "completed" | "partial" | "insufficient";
+  findings: Array<{
+    finding_id: string;
+    type: CareFindingType;
+    summary: string;
+    symptom_type: string;
+    medication_plan_id: string;
+    event_refs: string[];
+  }>;
+  missing_data: string[];
+  urgency: "emergency" | "prompt_review" | "routine_review" | "unknown";
+  source_refs: Array<{ source_type: string; source_id: string }>;
+}
+
+export interface AgentRunRecord {
+  runId: string;
+  requestId: string;
+  agentType: "care";
+  promptVersion: string;
+  outputSchemaVersion: "care-agent.v1";
+  inputRefs: Array<{ sourceType: string; sourceId: string }>;
+  outputRef: string | null;
+  validationRef: string | null;
+  supersedesRunId: string | null;
+  status: "completed" | "not_configured" | "failed";
+  startedAt: string;
+  completedAt: string;
+  errorCode: string | null;
 }
 
 export interface ClinicalDocument {

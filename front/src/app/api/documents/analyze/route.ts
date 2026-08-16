@@ -1,5 +1,6 @@
 import {
   analyzeMedicationDocument,
+  DocumentAnalysisNotConfiguredError,
   registerDocument,
   type ClinicalDocumentType,
 } from "@care-atlas/backend";
@@ -81,6 +82,12 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Document analysis failed", error);
+    if (error instanceof DocumentAnalysisNotConfiguredError) {
+      return Response.json(
+        { message: "실제 문서 분석 API가 설정되지 않았어요. 비식별 샘플만 이용할 수 있어요." },
+        { status: 503 },
+      );
+    }
     return Response.json(
       { message: "문서를 분석하지 못했어요. 파일을 확인한 뒤 다시 시도해주세요." },
       { status: 500 },

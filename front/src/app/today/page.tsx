@@ -12,7 +12,11 @@ import { TodayQuickCheckIn } from "@/components/today/TodayQuickCheckIn";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { createMedicationSchedule } from "@/lib/presentation";
-import { getCareSnapshot } from "@care-atlas/backend";
+import {
+  DEMO_RECIPIENT_ID,
+  getCareSnapshot,
+  getOrCreateQuestionSet,
+} from "@care-atlas/backend";
 import type { DailyCheckIn } from "@care-atlas/backend";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +37,11 @@ export default async function TodayPage() {
   const snapshot = await getCareSnapshot();
   const todayCheckIn = snapshot.todayCheckIn ?? null;
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
+  const questionSet = await getOrCreateQuestionSet({
+    recipientId: DEMO_RECIPIENT_ID,
+    answerer: "caregiver",
+    snapshot,
+  });
   const dateKey = seoulDateFormatter.format(new Date());
   const todaySymptoms = snapshot.symptomEvents.filter(
     (event) => seoulDateFormatter.format(new Date(event.occurredAt)) === dateKey,
@@ -117,7 +126,9 @@ export default async function TodayPage() {
         </div>
 
         <aside className="today-checklist">
-          <Card tone="accent"><TodayQuickCheckIn tasks={tasks} checkIn={checkIn} /></Card>
+          <Card tone="accent">
+            <TodayQuickCheckIn tasks={tasks} checkIn={checkIn} questionSet={questionSet} />
+          </Card>
         </aside>
       </div>
     </>

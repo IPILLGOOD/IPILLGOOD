@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import {
   DEMO_RECIPIENT_ID,
+  buildPatientQuestionResponse,
+  dateKeyInSeoul,
   getCareSnapshot,
+  getPatientQuestionSet,
   saveDailyCheckIn,
   updateRecipientProfile,
   type ActionState,
@@ -99,8 +102,30 @@ export async function saveCheckInAction(
     .filter((value): value is string => typeof value === "string");
   const severity = Number(formData.get("severity") ?? 0);
   const note = String(formData.get("note") ?? "").trim();
+  const questionSetId = String(formData.get("questionSetId") ?? "").trim();
+  if (!/^question-set-[a-zA-Z0-9-]{10,100}$/.test(questionSetId)) {
+    return { status: "error", message: "오늘의 맞춤 질문을 다시 불러와주세요." };
+  }
 
   try {
+    const questionSet = await getPatientQuestionSet(questionSetId);
+    if (
+      !questionSet ||
+      questionSet.subject_ref !== DEMO_RECIPIENT_ID ||
+      questionSet.target_date !== dateKeyInSeoul()
+    ) {
+      return { status: "error", message: "오늘의 맞춤 질문이 변경됐어요. 새로고침해주세요." };
+    }
+    const questionResponse = buildPatientQuestionResponse({
+      questionSet,
+      answeredBy,
+      answers: Object.fromEntries(
+        questionSet.questions.map((question) => [
+          question.question_id,
+          formData.get(`question_${question.question_id}`) as string | null,
+        ]),
+      ),
+    });
     await saveDailyCheckIn(
       {
         doseResponses: responses,
@@ -108,6 +133,7 @@ export async function saveCheckInAction(
         severity: symptoms.length > 0 ? Math.min(Math.max(severity, 1), 10) : 0,
         note,
         answeredBy,
+        questionResponse,
       },
       snapshot,
     );

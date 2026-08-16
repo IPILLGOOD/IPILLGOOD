@@ -1,10 +1,10 @@
-import type { ClinicalDocumentType, DiseaseInformation, DocumentAnalysis } from "../types";
-import { searchOfficialDiseaseInfo } from "../official-disease-api";
+import type { ClinicalDocumentType, DiseaseInformation, DocumentAnalysis } from "../types.ts";
+import { searchOfficialDiseaseInfo } from "../official-disease-api.ts";
 
 import {
   analyzeClinicalDocumentWithOpenAI,
   searchDiseaseWithOpenAI,
-} from "./openai-medical";
+} from "./openai-medical.ts";
 
 export interface MedicationAnalyzerInput {
   documentType: ClinicalDocumentType;
@@ -17,6 +17,15 @@ export interface MedicationAnalyzerResult {
   status: "complete";
   message: string;
   analysis: DocumentAnalysis;
+}
+
+export class DocumentAnalysisNotConfiguredError extends Error {
+  readonly code = "DOCUMENT_ANALYSIS_NOT_CONFIGURED";
+
+  constructor() {
+    super("실제 문서 분석 API가 설정되지 않았습니다.");
+    this.name = "DocumentAnalysisNotConfiguredError";
+  }
 }
 
 function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
@@ -292,10 +301,5 @@ export async function analyzeMedicationDocument(
     };
   }
 
-  return {
-    status: "complete",
-    message:
-      "분석 API가 설정되지 않아 비식별 데모 결과를 표시해요. 실제 문서 분석에는 OPENAI_API_KEY 또는 외부 분석 API 설정이 필요해요.",
-    analysis: demoAnalysis(input.documentType),
-  };
+  throw new DocumentAnalysisNotConfiguredError();
 }
