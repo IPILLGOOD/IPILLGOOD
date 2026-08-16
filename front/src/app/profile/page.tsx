@@ -16,7 +16,7 @@ export default async function ProfilePage() {
       <PageHeader
         eyebrow="어르신 프로필"
         title="돌봄에 필요한 정보만 관리해요"
-        description="정확한 복약 설명과 편한 사용을 위해 필요한 최소 정보만 입력해주세요."
+        description="정확한 복약 설명과 편한 사용을 위해 필요한 최소 정보만 입력해주세요. 각 정보의 활용 목적은 입력란 아래에서 확인할 수 있어요."
       />
       <div className="profile-layout">
         <Card>
