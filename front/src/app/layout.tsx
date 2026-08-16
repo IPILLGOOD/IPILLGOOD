@@ -19,11 +19,11 @@ const notoSans = Noto_Sans_KR({
 
 export const metadata: Metadata = {
   title: {
-    default: "Care Atlas",
-    template: "%s | Care Atlas",
+    default: "IPILLGOOD",
+    template: "%s | IPILLGOOD",
   },
   description:
-    "처방전의 어려운 말을 쉬운 돌봄 행동으로 바꾸는 노인 복약·웰니스 컨설턴트",
+    "처방전의 어려운 말을 쉬운 돌봄 행동으로 바꾸는 고령자 복약·웰니스 컨설턴트",
 };
 
 export const viewport: Viewport = {

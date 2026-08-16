@@ -26,7 +26,7 @@ async function demoWriteGuard(): Promise<ActionState | null> {
       message: "로그인 정보가 만료되었어요. 다시 로그인해주세요.",
     };
   }
-  if (process.env.CARE_ATLAS_DEMO_MODE === "true") return null;
+  if (process.env.IPILLGOOD_DEMO_MODE === "true") return null;
   return {
     status: "error",
     message: "현재는 읽기 전용 모드예요. 인증을 연결한 뒤 저장 기능을 활성화해주세요.",

@@ -11,7 +11,7 @@ export function LoginPanel({ errorMessage }: { errorMessage?: string }) {
         <Link className="login-back" href="/"><ArrowLeft size={17} aria-hidden="true" /> 홈으로</Link>
         <div className="login-brand-copy">
           <span className="login-brand-mark" aria-hidden="true"><HeartPulse size={25} /></span>
-          <p className="landing-section-label">Care Atlas</p>
+          <p className="landing-section-label">IPILLGOOD</p>
           <h1>오늘의 확인이<br />내일의 안심이 되도록.</h1>
           <p>처방 이후의 복약과 몸 상태를 가족이 함께 살피고, 다음 진료에 가져갈 기록으로 이어가세요.</p>
         </div>
@@ -26,7 +26,7 @@ export function LoginPanel({ errorMessage }: { errorMessage?: string }) {
         <section className="login-panel" aria-labelledby="login-title">
           <div className="login-panel__heading">
             <span className="login-panel__secure"><ShieldCheck size={15} aria-hidden="true" /> 안전한 로그인</span>
-            <h2 id="login-title">Care Atlas 시작하기</h2>
+            <h2 id="login-title">IPILLGOOD 시작하기</h2>
             <p>원하는 방법을 선택하세요. 데모에서는 비식별 샘플만 사용합니다.</p>
           </div>
 
@@ -54,7 +54,7 @@ export function LoginPanel({ errorMessage }: { errorMessage?: string }) {
 
           <p className="login-panel__notice">
             로그인하면 서비스 이용 목적의 최소 계정 정보 처리에 동의하게 됩니다.
-            Care Atlas는 의료진의 진단이나 복약지도를 대신하지 않습니다.
+            IPILLGOOD는 의료진의 진단이나 복약지도를 대신하지 않습니다.
           </p>
         </section>
       </div>

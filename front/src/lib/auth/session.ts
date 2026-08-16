@@ -18,7 +18,7 @@ function getSessionSecret() {
   const configured = process.env.SESSION_SECRET;
   if (configured) return new TextEncoder().encode(configured);
 
-  if (process.env.CARE_ATLAS_DEMO_MODE === "true") {
+  if (process.env.IPILLGOOD_DEMO_MODE === "true") {
     return new TextEncoder().encode(
       "care-atlas-local-demo-session-secret-change-before-deploying",
     );

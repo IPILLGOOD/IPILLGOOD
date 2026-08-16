@@ -26,12 +26,12 @@ const navigation = [
 
 function Brand() {
   return (
-    <Link className="brand" href="/today" aria-label="Care Atlas 오늘 할 일 화면으로 이동">
+    <Link className="brand" href="/today" aria-label="IPILLGOOD 오늘 할 일 화면으로 이동">
       <span className="brand__mark" aria-hidden="true">
         <HeartPulse size={22} strokeWidth={2.2} />
       </span>
       <span>
-        <strong>Care Atlas</strong>
+        <strong>IPILLGOOD</strong>
         <small>매일 이어지는 안심 돌봄</small>
       </span>
     </Link>
@@ -118,7 +118,7 @@ export function AppShell({
             {children}
           </main>
           <footer className="app-footer">
-            Care Atlas는 의사·약사의 진단과 복약지도를 대신하지 않아요. 약을 임의로
+            IPILLGOOD는 의사·약사의 진단과 복약지도를 대신하지 않아요. 약을 임의로
             중단하거나 양을 바꾸지 마세요.
           </footer>
         </div>

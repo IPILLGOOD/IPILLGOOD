@@ -73,7 +73,7 @@ export function LandingPage() {
             </div>
             <div className="landing-problem__copy">
               <p>어려운 약 이름, 여러 장의 메모, 뒤늦게 떠오르는 질문. 보호자는 약의 목적과 실제 복용 여부, 몸 상태 변화를 서로 다른 곳에서 기억해야 했어요.</p>
-              <p>Care Atlas는 정보를 더 많이 보여주는 대신, <strong>오늘 무엇을 확인하고 누구에게 무엇을 물어볼지</strong> 알 수 있게 정리합니다.</p>
+              <p>IPILLGOOD는 정보를 더 많이 보여주는 대신, <strong>오늘 무엇을 확인하고 누구에게 무엇을 물어볼지</strong> 알 수 있게 정리합니다.</p>
             </div>
           </div>
         </section>
@@ -131,7 +131,7 @@ export function LandingPage() {
             <div className="landing-safety__intro">
               <p className="landing-section-label">안심하고 기록할 수 있도록</p>
               <h2 id="safety-title">판단 대신 이해와 기록을 돕습니다.</h2>
-              <p>Care Atlas는 의료진을 대신하지 않습니다. 확인된 정보의 출처와 한계를 드러내고, 보호자가 더 나은 질문을 준비하도록 돕습니다.</p>
+              <p>IPILLGOOD는 의료진을 대신하지 않습니다. 확인된 정보의 출처와 한계를 드러내고, 보호자가 더 나은 질문을 준비하도록 돕습니다.</p>
             </div>
             <div className="landing-safety__list">
               <article><BookOpenCheck size={22} aria-hidden="true" /><div><h3>공식 정보와 분리된 AI</h3><p>약 이름과 주의 정보는 공식 데이터를 우선하고, AI는 쉬운 설명을 만드는 데 사용해요.</p></div></article>
@@ -148,12 +148,12 @@ export function LandingPage() {
               <h2 id="final-cta-title">다음 진료에서 기억에만 의존하지 마세요.</h2>
               <p>오늘의 작은 확인을 가족이 함께 보는 돌봄 기록으로 남겨보세요.</p>
             </div>
-            <Link className="landing-button landing-button--light" href="/login">Care Atlas 시작하기 <ArrowRight size={18} aria-hidden="true" /></Link>
+            <Link className="landing-button landing-button--light" href="/login">IPILLGOOD 시작하기 <ArrowRight size={18} aria-hidden="true" /></Link>
           </div>
         </section>
       </main>
       <footer className="landing-footer">
-        <div className="landing-container landing-footer__inner"><span>© 2026 Care Atlas</span><span>의사·약사의 진단과 복약지도를 대신하지 않습니다.</span></div>
+        <div className="landing-container landing-footer__inner"><span>© 2026 IPILLGOOD</span><span>의사·약사의 진단과 복약지도를 대신하지 않습니다.</span></div>
       </footer>
     </div>
   );

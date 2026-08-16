@@ -1,4 +1,4 @@
-# Care Atlas 기술 구조
+# IPILLGOOD 기술 구조
 
 ## 설계 목표
 
@@ -23,7 +23,7 @@ Document analysis ── Firestore metadata/result
                   └─ uploaded source file is discarded after the request
 ```
 
-Firestore 보안 규칙은 클라이언트 읽기·쓰기를 모두 거부합니다. 서버 액션은 공개 POST 진입점이므로 1차 MVP에서는 `CARE_ATLAS_DEMO_MODE`로 쓰기를 제한합니다. 실제 서비스에서는 각 액션에서 인증·보호자 권한·돌봄 대상자 소유권을 다시 확인해야 합니다.
+Firestore 보안 규칙은 클라이언트 읽기·쓰기를 모두 거부합니다. 서버 액션은 공개 POST 진입점이므로 1차 MVP에서는 `IPILLGOOD_DEMO_MODE`로 쓰기를 제한합니다. 실제 서비스에서는 각 액션에서 인증·보호자 권한·돌봄 대상자 소유권을 다시 확인해야 합니다.
 
 ## Firestore 구조
 

@@ -6,7 +6,7 @@
 
 ---
 
-**Project:** Care Atlas
+**Project:** IPILLGOOD
 **Generated:** 2026-08-16 13:03:19
 **Category:** Medication & Pill Reminder
 **Design Dials:** Variance 4/10 (Balanced / Modern) | Motion 2/10 (Subtle) | Density 7/10 (Standard)
