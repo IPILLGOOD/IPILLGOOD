@@ -25,7 +25,7 @@ IPILLGOOD는 이미 존재하는 처방 정보와 공식 의약품 안전 정보
 7. **식약처 공식 정보 검색** — 약물명을 검색해 식약처 약물 유전 정보 Open API의 일반·유전·제품 정보를 확인
 8. **진단서 질병 정보 보강** — 진단명·KCD/ICD 코드를 추출해 건강보험심사평가원 질병정보 API를 우선 조회하고, 미설정·장애·불일치일 때 OpenAI 웹 검색으로 공신력 있는 출처를 보강
 
-Google 계정으로 로그인하거나, 가입 없이 데모 로그인으로 비식별 샘플의 핵심 흐름을 바로 체험할 수 있습니다. 실제 환자 정보는 사용하지 않습니다.
+Google 계정으로 로그인하면 계정별로 분리된 빈 돌봄 공간을 사용하고, 가입 없이 데모 로그인하면 공용 비식별 샘플로 핵심 흐름을 바로 체험할 수 있습니다. 저장소에 포함된 데모 데이터에는 실제 환자 정보를 사용하지 않습니다.
 
 ## 아키텍처
 
@@ -41,40 +41,55 @@ flowchart LR
     PX -->|"서명 세션 확인"| RSC["React Server Components"]
     B -->|"폼 제출"| SA["Server Actions"]
     B -->|"문서 업로드"| RH["Route Handler"]
-    SA --> V["세션 · 데모 쓰기 guard · Zod"]
+    RSC --> SCOPE["계정별 CareDataScope"]
+    SA --> V["세션 · 소유 범위 · 데모 쓰기 guard · Zod"]
     RH --> V
   end
 
   subgraph D["Domain & data · backend"]
-    RSC --> CR["Care Repository"]
+    SCOPE --> CR["Care Repository"]
     V --> CR
-    RH --> MA["Medication Analyzer"]
+    RSC --> ORCH["Care Orchestrator"]
+    ORCH --> CA["Care Agent<br/>최근 14일 구조화 분석"]
+    CA --> QG["승인된 템플릿으로<br/>질문 최대 3개 생성"]
+    QG --> CR
+    RH --> MA["Document Analyzer"]
     CR --> AD["Runtime Firestore Adapter"]
   end
 
   AD -->|"Node.js: Firebase Admin + ADC"| FS[("Cloud Firestore<br/>asia-northeast3")]
   AD -->|"Cloudflare: REST + Service Account"| FS
-  MA --> EXT["외부 분석 API 또는 OpenAI Responses API"]
-  RSC --> OFFICIAL["식약처 · HIRA Open API"]
-  CR -. "읽기 실패 시" .-> SEED["비식별 demo-seed.json"]
+  CA --> OAI["OpenAI Responses API<br/>Structured Outputs · store:false"]
+  MA --> EXT["외부 분석 API 우선<br/>또는 OpenAI 이미지·PDF 분석"]
+  RSC --> MFDS["식약처 원문 API"]
+  MFDS -->|"공식 원문만 전달"| OAI
+  MA --> HIRA["HIRA 질병정보 API"]
+  HIRA -. "미설정 · 장애 · 불일치" .-> WEB["OpenAI Web Search<br/>허용 도메인 제한"]
+  CA -. "키 없음 · 호출 실패" .-> SAFE["기록 기반 safe fallback"]
+  CR -. "데모 읽기 실패 시" .-> SEED["비식별 demo-seed.json"]
 ```
 
 ### 요청별 데이터 흐름
 
 | 흐름 | 진입점 | 처리 | 저장 |
 |---|---|---|---|
-| 화면 조회 | Server Component | 세션 확인 → 저장소 병렬 조회 → 화면 모델 구성 | 없음 |
-| 프로필·안부 기록 | Server Action | 세션·데모 모드 확인 → Zod/도메인 검증 → 저장소 호출 | Firestore |
+| 화면 조회 | Server Component | 세션 확인 → 계정별 `CareDataScope` 결정 → bounded read model 조회 | 없음 |
+| 맞춤 안부 질문 | `/today`, `/check-in` | 최근 14일 기록만 구조화 분석 → event ref 검증 → 승인된 템플릿으로 최대 3개 구성 | `careAnalyses`, `questionSets`, `agentRuns` |
+| 프로필·안부 기록 | Server Action | 세션·소유 범위·데모 모드 확인 → Zod/도메인 검증 → 질문 답변과 복약·증상 기록을 원자적으로 저장 | `questionResponses`, 원본 이벤트, read model |
 | 문서 분석 | `POST /api/documents/analyze` | 세션·5MB·형식 검증 → 분석 어댑터 → 응답 스키마 확인 | 원본이 아닌 메타데이터와 결과 |
-| 공식 정보 | 약·문서 화면 | 식약처/HIRA를 우선 조회하고 필요한 경우에만 AI 보강 | 없음 |
+| 약물 쉬운 설명 | `/medications` | 식약처 원문 조회 → 원문 범위 안에서만 구조화된 쉬운 설명 생성 | 없음 |
+| 진단서 질병 보강 | 문서 분석 후처리 | HIRA 정확 일치 우선 → 실패한 항목만 허용 도메인 웹 검색 | 분석 결과에 출처 URL 저장 |
 
 ### 보안과 의료 안전 경계
 
 - 세션은 `HttpOnly`, `SameSite=Lax`, 프로덕션 `Secure` 쿠키에 7일 만료 JWT로 저장합니다.
 - 앱 경로는 Cloudflare 호환 Edge Middleware가 인증 쿠키를 확인하고, 쓰기 진입점은 서버에서 세션을 다시 검증합니다.
+- Google 로그인은 Firebase 사용자 ID에서 `google-{uid}` 범위를 만들고 모든 저장소 호출에서 대상 ID 일치를 검사합니다. 데모 로그인만 고정된 비식별 대상을 공유합니다.
 - Firestore 보안 규칙은 브라우저의 직접 읽기·쓰기를 차단합니다.
 - 업로드 문서 원본은 영구 저장하지 않고 요청 처리 후 폐기합니다.
 - 복약 계획과 실제 응답, 본인 응답과 보호자 관찰을 별도 필드로 보존합니다.
+- Care Agent 입력은 대상자의 최소 프로필, 활성 약, 목표일 이전 최근 14일 복약·증상 기록으로 제한하며 프로필 메모와 문서 안의 명령문을 실행 지시로 취급하지 않습니다.
+- AI 출력은 JSON Schema와 Zod로 검증하고, 실제 입력에 없는 이벤트 참조는 제거합니다. 질문 문구와 선택지는 코드에 승인된 템플릿으로만 구성합니다.
 - 생성형 AI는 진단, 복용 중단·용량 변경·대체 약 추천, 증상과 약의 인과관계 판정을 수행하지 않습니다.
 
 ## 모노레포 구성
@@ -88,7 +103,8 @@ care-atlas/
 │   ├── src/styles/        # 디자인 토큰과 반응형 스타일
 │   └── scripts/           # 기능·시각·접근성 QA
 ├── backend/
-│   ├── src/ai/            # OpenAI·외부 분석 제공자 경계
+│   ├── src/ai/            # Care Agent, 질문 템플릿, OpenAI·외부 분석 제공자 경계
+│   ├── src/care-orchestration-service.ts # 질문 세트 캐시·생성·폴백 조정
 │   ├── src/firestore-*    # Node/Cloudflare 런타임별 Firestore 접근
 │   ├── src/official-*     # 식약처·HIRA API 클라이언트
 │   └── src/data/          # 비식별 fallback seed
@@ -107,11 +123,12 @@ care-atlas/
 - Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
 - Google OAuth 2.0, `jose` 기반 서명 세션, Cloudflare 호환 Edge Middleware
 - OpenAI Responses API, 식약처·HIRA Open API
-- 화면 조회는 bounded read model 한 문서로 통합하고 원본 이벤트는 하위 컬렉션에 보존
+- Google 로그인은 계정별 `CareDataScope`, 데모 로그인은 고정 비식별 scope로 분리
+- 화면 조회는 bounded read model 한 문서로 통합하고 원본 이벤트와 AI 분석·질문·응답·실행 이력은 하위 컬렉션에 보존
 - Zod 입력 검증, Lucide SVG 아이콘
 - Noto Sans KR, 딥그린·세이지 기반 접근성 디자인 시스템
 
-브라우저의 Firestore 직접 접근은 보안 규칙으로 모두 차단했습니다. 현재 쓰기는 로그인 세션이 있고 `IPILLGOOD_DEMO_MODE=true`일 때만 서버에서 실행됩니다. 실제 배포 전에는 사용자별 돌봄 대상자 소유권과 보호자 역할 모델을 추가해야 합니다.
+브라우저의 Firestore 직접 접근은 보안 규칙으로 모두 차단했습니다. Google 로그인은 계정별 돌봄 범위에서 바로 읽고 쓸 수 있고, 데모 로그인 쓰기는 `IPILLGOOD_DEMO_MODE=true`일 때만 허용됩니다. 현재 계정 단위 데이터 격리는 구현되어 있으며, 여러 보호자가 한 대상을 함께 돌보는 초대·역할 기반 권한 모델은 실제 배포 전에 추가해야 합니다.
 
 ## 빠른 실행
 
@@ -194,13 +211,39 @@ npm run firebase:deploy
 
 ## AI 연결 지점
 
-`front/.env.local`에 `AI_ANALYSIS_ENDPOINT`와 `AI_API_KEY`를 추가하면 [medication-analyzer.ts](backend/src/ai/medication-analyzer.ts)의 제공자 독립 인터페이스가 외부 분석 API를 호출합니다. 외부 분석 API가 없고 `OPENAI_API_KEY`가 있으면 OpenAI Responses API가 이미지/PDF를 분석합니다. 진단서는 건강보험심사평가원 질병정보 API를 먼저 확인하며, 공식 정보가 없을 때만 OpenAI 웹 검색으로 전환합니다. 약 검색은 식약처 원문을 먼저 조회한 뒤 원문 내용만 GPT에 전달해 보호자용 쉬운 설명을 만듭니다. 키가 없거나 GPT 호출이 실패해도 식약처 원문은 유지됩니다.
+현재 생성형 AI는 네 군데에서 사용합니다. 모든 OpenAI 요청은 Responses API에 `store: false`, 낮은 reasoning effort, 30초 timeout을 적용하며 기본 모델은 `OPENAI_MODEL` 또는 `gpt-5.6-luna`입니다.
+
+| 기능 | AI 입력 | AI 출력과 후처리 | 실패 시 동작 |
+|---|---|---|---|
+| Care Agent 맞춤 안부 | 최소 프로필, 활성 약, 목표일 이전 최근 14일 복약·증상 이벤트 | `care-agent.v1` Structured Output → Zod 검증 → 존재하는 event ID만 허용 → 코드의 승인 템플릿으로 질문 최대 3개 생성 | 같은 기록을 결정적 규칙으로 분석하는 `safe_fallback`; 안부 기능은 계속 동작 |
+| 처방전·진단서 분석 | 요청 중 메모리에만 둔 이미지/PDF | 문서 사실, 돌봄 확인점, 의료진 질문, 진단명·코드를 JSON Schema로 추출 | 외부 분석 API가 설정되면 그 제공자를 우선 사용; 어떤 분석기도 없으면 실제 파일 분석은 503, 비식별 샘플은 데모 결과 제공 |
+| 진단서 질병 정보 | 문서에서 추출한 진단명·KCD/ICD 코드 | HIRA 정확 일치를 우선 사용하고, 실패한 항목만 OpenAI 웹 검색으로 보강해 출처 URL과 함께 반환 | 공식·웹 결과가 없다는 상태를 명시하고 추측하지 않음 |
+| 식약처 약물 쉬운 설명 | 식약처 API에서 받은 공개 원문만 전달하며 환자 프로필은 전달하지 않음 | `overview`, `geneInfo`, `productInfo`, `caregiverNote` Structured Output | 쉬운 설명만 생략하고 식약처 원문은 그대로 유지 |
+
+### Care Agent 실행 흐름
+
+1. `getOrCreateQuestionSet`이 계정별 돌봄 snapshot에서 목표일 이전 기록만 잘라 SHA-256 입력 revision을 만듭니다. 당일 답변은 입력에서 제외해 제출 직후 질문 세트가 바뀌지 않게 합니다.
+2. 대상자·날짜·응답자·입력 revision·프롬프트 버전으로 결정적인 질문 세트 ID를 만들고, 이미 저장된 세트가 있으면 AI를 다시 호출하지 않습니다.
+3. Care Agent는 최근 변화, 반복 증상, 미복용·미확인 기록을 구조화해 반환합니다. 모델이 입력에 없던 이벤트 ID를 만들면 서버가 해당 finding과 reference를 제거합니다.
+4. 모델은 사용자에게 보일 질문 문장을 직접 쓰지 않습니다. `generate-question-set.ts`가 검증된 finding을 증상 추적, 복약 어려움, 새 약 관찰, 일상 상태 템플릿에 연결합니다.
+5. 분석 결과, 질문 세트, 실행 메타데이터를 각각 `careAnalyses`, `questionSets`, `agentRuns`에 저장합니다. 프롬프트·출력 스키마 버전, 입력·출력 참조, 성공·미설정·실패 상태를 남깁니다.
+6. 제출된 답변은 `questionResponses`에 별도로 보존하고, 같은 batch에서 복약·증상 이벤트, 일일 체크인, bounded read model을 갱신합니다. 생성 결과가 원본 기록을 덮어쓰지 않습니다.
+
+### 문서·공식 정보 라우팅
+
+`front/.env.local`에 `AI_ANALYSIS_ENDPOINT`와 `AI_API_KEY`를 추가하면 [medication-analyzer.ts](backend/src/ai/medication-analyzer.ts)의 제공자 독립 인터페이스가 외부 문서 분석 API를 우선 호출합니다. 두 값이 없고 `OPENAI_API_KEY`가 있으면 [openai-medical.ts](backend/src/ai/openai-medical.ts)가 OpenAI로 이미지/PDF를 직접 분석합니다.
+
+진단서는 문서 분석 후 HIRA 질병정보를 먼저 확인합니다. 정확한 코드·이름 매칭이 없거나 API가 설정되지 않았거나 일시적으로 실패한 항목만 OpenAI 웹 검색으로 전환하며, 검색 도메인은 질병관리청·HIRA·국민건강보험·대학병원·WHO·CDC·MedlinePlus로 제한합니다. 검색 출처를 받지 못하면 결과를 폐기합니다.
+
+약 검색은 [official-medication-api.ts](backend/src/official-medication-api.ts)가 식약처 원문을 먼저 조회한 뒤 공개 원문만 GPT에 전달해 보호자용 쉬운 설명을 만듭니다. 키가 없거나 GPT 호출이 실패해도 공식 원문은 유지됩니다.
 
 AI를 연결하더라도 다음 경계는 유지합니다.
 
 - OCR 결과를 보호자가 원본과 확인하기 전 약 목록에 반영하지 않음
+- 모델 출력이 원본 복약·증상 이벤트나 복약 계획을 수정하지 않음
+- 미응답을 정상 또는 복용 완료로 해석하지 않고, 증상과 약의 시간적 관계를 인과관계로 바꾸지 않음
+- 질문과 선택지는 승인된 템플릿으로만 노출하고 분석 근거를 원본 event reference로 추적
 - 약 이름·상호작용 판단은 공식 데이터와 결정적 규칙으로 처리
-- 생성형 AI는 검증된 정보를 쉬운 말로 바꾸는 역할만 수행
 - 진단, 복용 중단, 용량 변경, 증상과 약의 인과관계 판정 금지
 
 ## 문서
@@ -213,11 +256,11 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 
 ## 프로덕션 전 필수 과제
 
-- 사용자별 돌봄 대상자 소유권, 보호자 초대와 역할 기반 권한
+- 여러 보호자가 한 돌봄 대상을 공유하는 초대, 역할 기반 권한, 소유권 이전
 - 공개 인증·분석 엔드포인트의 rate limit, 감사 로그, 이상 사용 탐지
 - 동의 이력, 보관 기간, 내보내기와 완전 삭제, 비밀키 회전 정책
 - OCR 신뢰도 표시, 이름·주민번호·주소 자동 가리기, 원문 대조·확정 단계
 - 식약처 품목·성분 ID 매칭과 HIRA DUR 기반 결정적 안전 규칙
 - 의료·약학·개인정보·의료기기 규제 검토와 운영 모니터링·백업·복구
 
-현재 모든 로그인 사용자는 해커톤용 단일 비식별 돌봄 대상을 공유합니다. 실제 건강정보를 입력하거나 건강 의사결정에 사용해서는 안 됩니다.
+현재 Google 로그인 사용자의 데이터는 Firebase 사용자 ID에서 파생한 별도 돌봄 범위에 저장되고, 데모 로그인 사용자만 해커톤용 단일 비식별 대상을 공유합니다. 아직 의료 서비스 운영을 위한 권한·동의·감사 체계를 갖춘 상태가 아니므로 실제 건강정보를 입력하거나 건강 의사결정에 사용해서는 안 됩니다.
