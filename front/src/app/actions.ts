@@ -50,10 +50,13 @@ export async function saveProfileAction(
 
   try {
     const current = await getCareSnapshot();
-    await updateRecipientProfile({
-      ...buildRecipientProfile(current.recipient, result.data),
-      id: DEMO_RECIPIENT_ID,
-    });
+    await updateRecipientProfile(
+      {
+        ...buildRecipientProfile(current.recipient, result.data),
+        id: DEMO_RECIPIENT_ID,
+      },
+      current,
+    );
     revalidatePath("/today");
     revalidatePath("/dashboard");
     revalidatePath("/profile");
@@ -98,13 +101,16 @@ export async function saveCheckInAction(
   const note = String(formData.get("note") ?? "").trim();
 
   try {
-    await saveDailyCheckIn({
-      doseResponses: responses,
-      symptoms,
-      severity: symptoms.length > 0 ? Math.min(Math.max(severity, 1), 10) : 0,
-      note,
-      answeredBy,
-    });
+    await saveDailyCheckIn(
+      {
+        doseResponses: responses,
+        symptoms,
+        severity: symptoms.length > 0 ? Math.min(Math.max(severity, 1), 10) : 0,
+        note,
+        answeredBy,
+      },
+      snapshot,
+    );
     revalidatePath("/today");
     revalidatePath("/dashboard");
     revalidatePath("/check-in");

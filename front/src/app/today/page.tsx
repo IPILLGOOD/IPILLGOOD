@@ -12,7 +12,7 @@ import { TodayQuickCheckIn } from "@/components/today/TodayQuickCheckIn";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { createMedicationSchedule } from "@/lib/presentation";
-import { getCareSnapshot, getTodayDailyCheckIn } from "@care-atlas/backend";
+import { getCareSnapshot } from "@care-atlas/backend";
 import type { DailyCheckIn } from "@care-atlas/backend";
 
 export const dynamic = "force-dynamic";
@@ -30,10 +30,8 @@ const seoulDateFormatter = new Intl.DateTimeFormat("en-CA", {
 });
 
 export default async function TodayPage() {
-  const [snapshot, todayCheckIn] = await Promise.all([
-    getCareSnapshot(),
-    getTodayDailyCheckIn(),
-  ]);
+  const snapshot = await getCareSnapshot();
+  const todayCheckIn = snapshot.todayCheckIn ?? null;
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
   const dateKey = seoulDateFormatter.format(new Date());
   const todaySymptoms = snapshot.symptomEvents.filter(

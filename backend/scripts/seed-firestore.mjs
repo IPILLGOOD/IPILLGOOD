@@ -10,9 +10,15 @@ const seed = JSON.parse(await readFile(seedUrl, "utf8"));
 const app = initializeApp({ credential: applicationDefault(), projectId });
 const db = getFirestore(app);
 const recipientRef = db.collection("careRecipients").doc(seed.recipient.id);
+const readModelRef = db.collection("careReadModels").doc(seed.recipient.id);
 const batch = db.batch();
 
 batch.set(recipientRef, seed.recipient, { merge: true });
+batch.set(readModelRef, {
+  ...seed,
+  todayCheckIn: null,
+  updatedAt: new Date().toISOString(),
+});
 
 const collections = [
   ["medicationPlans", seed.medications],

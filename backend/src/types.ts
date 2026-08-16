@@ -147,6 +147,7 @@ export interface CareSnapshot {
   symptomEvents: SymptomEvent[];
   documents: ClinicalDocument[];
   clinicianQuestions: ClinicianQuestion[];
+  todayCheckIn?: DailyCheckIn | null;
   dataSource: "firestore" | "local-fallback";
 }
 

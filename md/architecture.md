@@ -76,7 +76,16 @@ careRecipients/{recipientId}
 
   clinicianQuestions/{questionId}
     priority / question / reason
+
+careReadModels/{recipientId}
+  recipient / medications[] / clinicianQuestions[]
+  doseEvents[] (최근 90개)
+  symptomEvents[] (최근 45개)
+  documents[] (최근 10개)
+  todayCheckIn / updatedAt
 ```
+
+화면 렌더링은 정규화된 하위 컬렉션을 매번 전부 조회하지 않고 `careReadModels/{recipientId}` 한 문서를 읽습니다. 프로필·체크인·문서 저장은 원본 하위 문서와 read model을 함께 갱신합니다. read model의 이벤트 수를 제한해 Firestore 문서 크기가 계속 커지는 것을 막고, 보고서에 필요한 최근 기록만 유지합니다. read model이 없는 기존 데이터는 최초 한 번 하위 컬렉션에서 재구성됩니다.
 
 ## 데이터 원칙
 
