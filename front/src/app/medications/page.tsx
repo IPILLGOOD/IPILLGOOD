@@ -7,6 +7,7 @@ import { OfficialMedicationSearch } from "@/components/medications/OfficialMedic
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot, searchPharmacogenomicInfo } from "@care-atlas/backend";
 import { activeMedications, daysSince, formatDate } from "@/lib/presentation";
+import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +16,11 @@ export default async function MedicationsPage({
 }: {
   searchParams: Promise<{ q?: string | string[] }>;
 }) {
+  const scope = await requireCareScope();
   const rawQuery = (await searchParams).q;
   const query = (Array.isArray(rawQuery) ? rawQuery[0] : rawQuery)?.trim().slice(0, 100) ?? "";
   const [snapshot, officialMedicationResult] = await Promise.all([
-    getCareSnapshot(),
+    getCareSnapshot(scope),
     query ? searchPharmacogenomicInfo(query) : Promise.resolve(null),
   ]);
   const medications = activeMedications(snapshot.medications);
@@ -108,6 +110,15 @@ export default async function MedicationsPage({
             </div>
           </Card>
         ))}
+        {medications.length === 0 ? (
+          <Card>
+            <div className="empty-state" role="status">
+              <Pill size={28} aria-hidden="true" />
+              <strong>아직 등록된 복용약이 없어요</strong>
+              <p>문서 메뉴에서 처방전을 등록하면 이 계정에 복용약 정보를 모을 수 있어요.</p>
+            </div>
+          </Card>
+        ) : null}
       </div>
 
       <Card tone="warning" className="safety-strip">
