@@ -159,6 +159,8 @@ npm run dev
 
 Google 로그인은 `care-atlas-seoul-2026-v2` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키만 `front/.env.local`에 설정합니다. 설정하지 않아도 데모 로그인은 동작합니다.
 
+운영 배포 전에는 Firebase Console에서 Authentication을 초기화하고 Google 공급자를 활성화한 뒤, 실제 서비스 호스트를 **Authentication > 설정 > 승인된 도메인**에 추가해야 합니다. 이 단계가 빠지면 클라이언트에서 `auth/configuration-not-found` 또는 `auth/unauthorized-domain` 오류가 발생합니다.
+
 ```bash
 SESSION_SECRET=openssl_rand_base64_32로_생성한_값
 ```
