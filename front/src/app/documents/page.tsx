@@ -17,7 +17,7 @@ export default async function DocumentsPage() {
       <PageHeader
         eyebrow="문서 등록"
         title="처방전과 진단서를 쉬운 말로 확인해요"
-        description="문서를 첨부하면 분석 API가 중요한 내용을 정리하고, 보호자가 원본과 비교해 확인할 수 있어요."
+        description="문서를 첨부하면 중요한 내용을 정리하고, 진단서는 공식 질병 API를 우선 조회한 뒤 필요할 때 OpenAI 웹 검색으로 보완해요."
         action={<ConnectionStatus source={snapshot.dataSource} />}
       />
 
@@ -65,6 +65,11 @@ export default async function DocumentsPage() {
                         <details className="saved-analysis">
                           <summary>분석 결과 보기</summary>
                           <p>{document.analysis.summary}</p>
+                          {document.analysis.diseaseLookup ? (
+                            <p className="saved-analysis__lookup">
+                              질병 정보 조회: {document.analysis.diseaseLookup.message}
+                            </p>
+                          ) : null}
                           <dl>
                             {document.analysis.findings.map((finding) => (
                               <div key={`${finding.label}-${finding.value}`}>
