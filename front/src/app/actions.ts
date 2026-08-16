@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 
 import {
   DEMO_RECIPIENT_ID,
@@ -9,10 +8,14 @@ import {
   saveDailyCheckIn,
   updateRecipientProfile,
   type ActionState,
-  type DoseResponse,
 } from "@care-atlas/backend";
 
 import { createMedicationSchedule } from "@/lib/presentation";
+import {
+  buildRecipientProfile,
+  collectCompleteDoseResponses,
+  profileSchema,
+} from "@/lib/form-validation";
 
 function demoWriteGuard(): ActionState | null {
   if (process.env.CARE_ATLAS_DEMO_MODE === "true") return null;
@@ -20,33 +23,6 @@ function demoWriteGuard(): ActionState | null {
     status: "error",
     message: "현재는 읽기 전용 모드예요. 인증을 연결한 뒤 저장 기능을 활성화해주세요.",
   };
-}
-
-const profileSchema = z.object({
-  displayName: z.string().trim().min(2, "이름을 두 글자 이상 입력해주세요."),
-  ageBand: z.string().min(1, "연령대를 선택해주세요."),
-  heightCm: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.coerce.number().min(100).max(220).optional(),
-  ),
-  weightKg: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.coerce.number().min(25).max(200).optional(),
-  ),
-  allergies: z.string(),
-  conditions: z.string(),
-  mobilityNote: z.string().max(300, "300자 안으로 입력해주세요."),
-  caregiverNote: z.string().max(500, "500자 안으로 입력해주세요."),
-  consentConfirmed: z.literal("on", {
-    error: "돌봄 정보 저장 동의를 확인해주세요.",
-  }),
-});
-
-function listFromCommaSeparated(value: string) {
-  return value
-    .split(/[,\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 export async function saveProfileAction(
@@ -67,18 +43,8 @@ export async function saveProfileAction(
   try {
     const current = await getCareSnapshot();
     await updateRecipientProfile({
-      ...current.recipient,
+      ...buildRecipientProfile(current.recipient, result.data),
       id: DEMO_RECIPIENT_ID,
-      displayName: result.data.displayName,
-      ageBand: result.data.ageBand,
-      heightCm: result.data.heightCm,
-      weightKg: result.data.weightKg,
-      allergies: listFromCommaSeparated(result.data.allergies),
-      conditions: listFromCommaSeparated(result.data.conditions),
-      mobilityNote: result.data.mobilityNote,
-      caregiverNote: result.data.caregiverNote,
-      consentConfirmed: true,
-      lastConfirmedAt: new Date().toISOString(),
     });
     revalidatePath("/");
     revalidatePath("/dashboard");
@@ -93,14 +59,6 @@ export async function saveProfileAction(
   }
 }
 
-const doseResponses = new Set<DoseResponse>([
-  "completed",
-  "partial",
-  "skipped",
-  "not_yet",
-  "unconfirmed",
-]);
-
 export async function saveCheckInAction(
   _previousState: ActionState,
   formData: FormData,
@@ -112,12 +70,6 @@ export async function saveCheckInAction(
     return { status: "error", message: "누가 답했는지 선택해주세요." };
   }
 
-  const responses: Array<{
-    medicationPlanId: string;
-    response: DoseResponse;
-    scheduledAt: string;
-  }> = [];
-
   const snapshot = await getCareSnapshot();
   const schedule = new Map(
     createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [
@@ -126,20 +78,9 @@ export async function saveCheckInAction(
     ]),
   );
 
-  for (const [key, value] of formData.entries()) {
-    if (!key.startsWith("dose_") || typeof value !== "string") continue;
-    if (!doseResponses.has(value as DoseResponse)) continue;
-    const task = schedule.get(key.replace("dose_", ""));
-    if (!task) continue;
-    responses.push({
-      medicationPlanId: task.medicationPlanId,
-      response: value as DoseResponse,
-      scheduledAt: task.scheduledAt,
-    });
-  }
-
-  if (schedule.size > 0 && responses.length === 0) {
-    return { status: "error", message: "복용 여부를 한 가지 이상 확인해주세요." };
+  const { responses, missingTaskIds } = collectCompleteDoseResponses(formData, schedule);
+  if (missingTaskIds.length > 0) {
+    return { status: "error", message: "각 복용 일정의 복용 여부를 모두 확인해주세요." };
   }
 
   const symptoms = formData

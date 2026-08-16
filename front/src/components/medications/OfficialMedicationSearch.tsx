@@ -33,13 +33,18 @@ export function OfficialMedicationSearch({
 
       <form className="official-drug-search" role="search" method="get">
         <div className="field">
-          <label htmlFor="official-drug-query">약물명</label>
+          <label htmlFor="official-drug-query">
+            약물명 <span aria-hidden="true">*</span>
+          </label>
           <div className="official-drug-search__controls">
             <input
               id="official-drug-query"
               name="q"
               type="search"
               maxLength={100}
+              minLength={1}
+              pattern=".*\S.*"
+              required
               defaultValue={query}
               placeholder="예: 암로디핀, 노바스크 또는 Amlodipine"
               autoComplete="off"

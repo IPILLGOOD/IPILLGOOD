@@ -57,6 +57,7 @@ export function TodayQuickCheckIn({
           id="quick-answered-by"
           name="answeredBy"
           defaultValue={checkIn?.completedBy ?? "caregiver"}
+          required
         >
           <option value="caregiver">보호자</option>
           <option value="recipient">어르신 본인</option>
@@ -82,6 +83,7 @@ export function TodayQuickCheckIn({
                   id={`quick-dose-${task.id}`}
                   name={`dose_${task.id}`}
                   defaultValue={task.response}
+                  required
                 >
                   {doseOptions.map((option) => (
                     <option key={option.value} value={option.value}>

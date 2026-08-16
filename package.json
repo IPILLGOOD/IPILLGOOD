@@ -12,7 +12,7 @@
     "start": "npm run start --workspace @care-atlas/front",
     "lint": "npm run lint --workspace @care-atlas/front",
     "typecheck": "npm run typecheck --workspace @care-atlas/front",
-    "test": "npm run test --workspace @care-atlas/backend",
+    "test": "npm run test --workspaces --if-present",
     "seed": "npm run seed --workspace @care-atlas/backend",
     "firebase:deploy": "npm run deploy --workspace @care-atlas/backend"
   }

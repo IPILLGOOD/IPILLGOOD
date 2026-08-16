@@ -53,11 +53,11 @@ export function CheckInForm({ tasks }: { tasks: MedicationScheduleTask[] }) {
         <legend>1. 누가 오늘의 상태를 확인했나요?</legend>
         <div className="choice-grid">
           <label className="choice-card">
-            <input name="answeredBy" type="radio" value="caregiver" defaultChecked />
+            <input name="answeredBy" type="radio" value="caregiver" defaultChecked required />
             보호자가 확인했어요
           </label>
           <label className="choice-card">
-            <input name="answeredBy" type="radio" value="recipient" />
+            <input name="answeredBy" type="radio" value="recipient" required />
             어르신이 직접 답했어요
           </label>
         </div>
@@ -81,6 +81,7 @@ export function CheckInForm({ tasks }: { tasks: MedicationScheduleTask[] }) {
                   type="radio"
                   value={option.value}
                   defaultChecked={option.value === task.response}
+                  required
                 />
                 {option.label}
               </label>
