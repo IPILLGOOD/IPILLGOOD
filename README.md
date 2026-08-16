@@ -203,6 +203,8 @@ npm run cf:preview --workspace @care-atlas/front
 npm run cf:deploy --workspace @care-atlas/front
 ```
 
+운영 주소: <https://ipillgood.wkddudgk4869.workers.dev>
+
 `front/scripts/visual-qa.mjs`는 320·768·1024·1440px 화면, 확대 텍스트, 수평 오버플로, 콘솔 오류, WCAG 2.1 AA axe 규칙과 주요 터치 타깃을 검사합니다. `functional-qa.mjs`는 인증된 데모 세션에서 안부 기록과 문서 분석의 핵심 흐름을 검증합니다.
 
 Firestore 규칙 배포:
