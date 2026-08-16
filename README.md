@@ -10,7 +10,7 @@ Care Atlas는 처방전의 어려운 표현을 보호자가 이해할 수 있는
 
 1. **돌봄 대시보드** — 현재 복용약, 복용량·횟수·기간, 7일 기록, 의료진 질문을 한 화면에서 확인
 2. **쉬운 약 설명** — 전문용어 대신 약의 일반적인 쓰임과 보호자가 살펴볼 변화를 구분해 표시
-3. **매일 안부 확인** — 복용 여부, 응답자, 어지러움·두통·졸림 등의 몸 상태를 Firestore에 저장
+3. **매일 안부 확인** — Care Agent가 최근 기록을 분석하고 승인된 템플릿으로 맞춤 질문을 구성하며, 질문·답변 여부·복용·증상을 Firestore에 분리 저장
 4. **문서 분석** — 처방전·진단서 이미지 또는 PDF를 분석 API로 보내고 쉬운 말 결과를 즉시 확인. 원본 파일은 저장하지 않음
 5. **어르신 프로필** — 연령대, 신체 정보, 알레르기, 확인받은 건강 상태와 보호자 메모 관리
 6. **Care Report** — 약 변경과 증상을 인과관계로 단정하지 않고 시간순 기록과 상담 질문으로 정리
@@ -29,7 +29,7 @@ flowchart LR
 
   subgraph F["Next.js 16 · front"]
     B --> PUB["공개 랜딩 · 로그인"]
-    B --> PX["Route Proxy"]
+    B --> PX["Edge Middleware"]
     PX -->|"서명 세션 확인"| RSC["React Server Components"]
     B -->|"폼 제출"| SA["Server Actions"]
     B -->|"문서 업로드"| RH["Route Handler"]
@@ -63,7 +63,7 @@ flowchart LR
 ### 보안과 의료 안전 경계
 
 - 세션은 `HttpOnly`, `SameSite=Lax`, 프로덕션 `Secure` 쿠키에 7일 만료 JWT로 저장합니다.
-- 앱 경로는 Next.js Proxy가 인증 쿠키를 확인하고, 쓰기 진입점은 서버에서 세션을 다시 검증합니다.
+- 앱 경로는 Cloudflare 호환 Edge Middleware가 인증 쿠키를 확인하고, 쓰기 진입점은 서버에서 세션을 다시 검증합니다.
 - Firestore 보안 규칙은 브라우저의 직접 읽기·쓰기를 차단합니다.
 - 업로드 문서 원본은 영구 저장하지 않고 요청 처리 후 폐기합니다.
 - 복약 계획과 실제 응답, 본인 응답과 보호자 관찰을 별도 필드로 보존합니다.
@@ -97,7 +97,7 @@ care-atlas/
 - Firebase 프로젝트: `care-atlas-seoul-2026`
 - Cloud Firestore: 서울 `asia-northeast3`
 - Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
-- Google OAuth 2.0, `jose` 기반 서명 세션, Next.js Route Proxy
+- Google OAuth 2.0, `jose` 기반 서명 세션, Cloudflare 호환 Edge Middleware
 - OpenAI Responses API, 식약처·HIRA Open API
 - Zod 입력 검증, Lucide SVG 아이콘
 - Noto Sans KR, 딥그린·세이지 기반 접근성 디자인 시스템
@@ -150,7 +150,7 @@ MFDS_PARMGEN_API_KEY=공공데이터포털_일반_인증키
 
 ```bash
 OPENAI_API_KEY=OpenAI_API_키
-OPENAI_MODEL=gpt-5.6-terra
+OPENAI_MODEL=gpt-5.6-luna
 HIRA_DISEASE_API_KEY=공공데이터포털_일반_인증키
 ```
 
@@ -161,6 +161,12 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+```
+
+실제 OpenAI·식약처 키로 비식별 처방전/진단서 이미지, 약물 쉬운 설명, Care Agent를 연쇄 검증하려면:
+
+```bash
+OPENAI_API_KEY=... MFDS_PARMGEN_API_KEY=... npm run verify:live --workspace @care-atlas/backend
 ```
 
 Cloudflare Workers 빌드·프리뷰·배포:
