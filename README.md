@@ -90,6 +90,7 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 ## 문서
 
 - [제품 기획안](md/Care_Atlas_제품_기획안.md)
+- [문제 정의 및 필요성 근거 자료](md/Care_Atlas_근거자료.md)
 - [수상전략 가이드](md/Codex_Seoul_2026_수상전략_가이드.md)
 - [기술 구조와 데이터 모델](md/architecture.md)
 - [Value & Viability](md/value-and-viability.md)
