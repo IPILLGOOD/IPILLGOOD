@@ -4,11 +4,11 @@ import type {
   ResponseInputContent,
 } from "openai/resources/responses/responses";
 
-import type { DiseaseInformation, DiseaseReference, DocumentAnalysis } from "../types";
+import type { DiseaseInformation, DiseaseReference, DocumentAnalysis } from "../types.ts";
 import type {
   PharmacogenomicInfo,
   PlainMedicationExplanation,
-} from "../official-medication-api";
+} from "../official-medication-api.ts";
 
 interface DocumentInput {
   documentType: "처방전" | "진단서";
@@ -117,7 +117,7 @@ function getClient(apiKey = process.env.OPENAI_API_KEY): OpenAI {
 }
 
 function modelName(model = process.env.OPENAI_MODEL): string {
-  return model ?? "gpt-5.6-terra";
+  return model ?? "gpt-5.6-luna";
 }
 
 function parseJson<T>(value: string, label: string): T {
