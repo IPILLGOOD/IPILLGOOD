@@ -1,6 +1,6 @@
 # Care Atlas Agent Orchestration — PM 합의 반영안
 
-버전: 0.4
+버전: 0.5
 목적: PM 논의에서 합의한 Care Atlas의 에이전트 역할과 호출 흐름을 시스템 프롬프트 수준으로 구체화  
 범위: Orchestrator, Document Agent, Medication Agent, Care Agent, User Profile / Personal Context, Safety / Evidence  
 제외: DB 테이블, API 엔드포인트, 화면 설계, 특정 벤더·모델에 종속된 구현
@@ -927,7 +927,7 @@ Orchestrator는 approved_claim_ids에 포함된 주장과 안전한 불확실성
   "run_id": "agent-run-uuid",
   "request_id": "request-uuid",
   "agent_type": "document | medication | care | safety_evidence | orchestrator",
-  "prompt_version": "0.4",
+  "prompt_version": "0.5",
   "output_schema_version": "care-agent.v1",
   "generated_at": "2026-08-16T14:30:00+09:00",
   "input_refs": [
@@ -946,7 +946,448 @@ Orchestrator는 approved_claim_ids에 포함된 주장과 안전한 불확실성
 
 ---
 
-## 10. 대표 시나리오
+## 10. Patient Question Generation — 환자·보호자 질문 설계
+
+### 목표
+
+안부 확인 질문은 모델이 매번 자유롭게 만드는 문장이 아니다. Document Agent, Medication Agent, Care Agent가 반환한 구조화 결과에서 **확인이 필요한 사실**을 찾고, Orchestrator가 승인된 질문 템플릿에 값을 채운다. Safety / Evidence 검증을 통과한 질문만 환자 또는 보호자에게 보여준다.
+
+질문은 다음 두 종류로 나눈다.
+
+1. **기본 질문**: 매일 또는 복약 일정마다 항상 확인하는 질문
+2. **맞춤 질문**: 최근 기록, 문서 확인 상태, 공식 약물 정보에서 추가 확인이 필요할 때만 생성하는 질문
+
+기본 질문은 현재 애플리케이션의 복약 일정과 고정 질문 설정에서 만든다. 생성형 모델은 기본 질문을 임의로 추가하거나 삭제하지 않는다. 에이전트는 기본 질문 뒤에 들어갈 맞춤 질문만 제안한다.
+
+### 질문 생성 흐름
+
+~~~text
+Document / Medication / Care Agent JSON
+    ↓
+unresolved_fields / missing_data / findings / safety_findings 추출
+    ↓
+Orchestrator가 승인된 template_id와 변수 선택
+    ↓
+동일한 의미의 질문 제거 및 우선순위 결정
+    ↓
+Safety / Evidence가 질문 문장, 선택지, 긴급 분기 검증
+    ↓
+patient-question-set.v1 생성
+    ↓
+안부 확인 페이지에 기본 질문과 함께 표시
+    ↓
+patient-question-response.v1 저장
+    ↓
+원본 돌봄 기록에 반영한 뒤 Care Agent 재분석
+~~~
+
+### 기본 질문
+
+안부 확인 페이지에는 다음 기본 질문을 유지한다.
+
+1. 누가 오늘의 상태를 확인했는가?
+2. 시간대별로 예정된 약을 복용했는가?
+3. 오늘 평소와 다른 몸 상태가 있었는가?
+4. 증상이 있었다면 어느 정도 불편했는가?
+5. 직접 보거나 들은 내용을 추가로 기록할 것인가?
+
+복약 질문의 기본 선택지는 다음과 같다.
+
+- 모두 먹었어요
+- 일부만 먹었어요
+- 아직 안 먹었어요
+- 먹지 못했어요
+- 확인하지 못했어요
+
+`일부만 먹었어요` 또는 `먹지 못했어요`를 선택하면 다음 이유 질문을 조건부로 보여줄 수 있다.
+
+> 먹지 못한 이유를 알려주실 수 있나요?
+
+- 깜빡했어요
+- 복용 후 불편함이 걱정됐어요
+- 약이 없었어요
+- 의사·약사의 안내가 있었어요
+- 다른 이유가 있어요
+- 잘 모르겠어요
+
+복약 누락 이유는 복약 계획을 자동으로 변경하지 않는다. 사용자가 답한 원본 사실로만 저장한다.
+
+일반 증상 질문에는 무응답과 증상 없음을 구분하기 위해 다음 선택지를 명시한다.
+
+- 특별한 증상이 없었어요
+- 어지러움
+- 두통
+- 졸림
+- 속 불편함
+- 휘청거림
+- 다른 증상이 있었어요
+- 확인하지 못했어요
+
+`특별한 증상이 없었어요`와 개별 증상은 동시에 선택할 수 없다. 아무것도 선택하지 않은 상태를 증상 없음으로 저장하지 않는다.
+
+### 에이전트별 맞춤 질문 생성 조건
+
+#### Document Agent
+
+다음 조건에서 처방전 확인 질문을 만든다.
+
+- `unresolved_fields`에 항목이 있음
+- `requires_user_confirmation`이 true임
+- 약 이름, 함량, 투여량, 횟수, 시점, 기간 중 하나가 uncertain 또는 unknown임
+- 기존 복용약과 비교한 추가·변경·중단 여부를 사용자가 확인해야 함
+
+예시:
+
+> 처방전에서 타이레놀정 500mg을 한 번에 1정, 하루 3회, 3일 복용으로 읽었어요. 원본 내용과 맞나요?
+
+- 처방전 내용과 같아요
+- 수정할 내용이 있어요
+- 원본을 다시 확인해야 해요
+
+#### Medication Agent
+
+다음 조건에서 복용약 관련 관찰 질문을 만든다.
+
+- 공식 근거가 있는 `safety_findings`가 있음
+- 현재 복용약과 함께 확인할 공식 주의정보가 있음
+- Medication Agent가 특정 증상 또는 생활 변화를 관찰할 필요가 있다고 공식 근거와 함께 전달함
+
+Medication Agent 질문은 공식 근거에서 확인된 관찰사항만 다룬다.
+
+좋은 질문:
+
+> 오늘 어지럼이나 휘청거림이 있었나요?
+
+금지 질문:
+
+> 새로 먹은 약 때문에 어지러웠나요?
+
+금지 질문은 약과 증상의 인과관계를 미리 가정하기 때문이다.
+
+#### Care Agent
+
+다음 조건에서 최근 기록 확인 질문을 만든다.
+
+- `missing_data`에 후속 확인이 필요한 값이 있음
+- 새 증상이 발생하거나 증상이 지속·반복·악화됨
+- 복약 누락 또는 미확인 기록이 있으나 대상 약이나 시점이 불명확함
+- 측정값, 증상, 복약 기록 사이의 시간 관계를 정리하려면 추가 사실이 필요함
+
+예시:
+
+- “어지럼이 오늘도 계속됐나요?”
+- “어지럼은 저녁 몇 시쯤 시작됐나요?”
+- “8월 15일에 먹지 못한 약은 무엇인가요?”
+- “어지럼 때문에 걷거나 일어설 때 불편함이 있었나요?”
+
+#### User Profile / Personal Context
+
+프로필 질문은 현재 검토에 필요한 필드가 missing, stale 또는 conflicting일 때만 만든다. 현재 질문과 관련 없는 프로필 정보를 일괄적으로 다시 묻지 않는다.
+
+### 질문 문장 생성 규칙
+
+1. 질문 문장은 승인된 `template_id`를 사용하고 에이전트 결과의 변수만 채운다.
+2. 한 질문에는 하나의 사실만 묻는다.
+3. 환자에게 질환이나 약의 원인을 스스로 판단하게 하지 않는다.
+4. “약 때문에”, “부작용이 맞나요?”, “위험한가요?”처럼 결론을 유도하는 표현을 사용하지 않는다.
+5. 확인되지 않은 약 이름, 증상, 날짜를 질문에 넣지 않는다.
+6. 모든 선택형 질문에는 “잘 모르겠어요” 또는 “확인하지 못했어요”를 제공한다.
+7. 환자와 보호자에게 같은 사실을 묻더라도 주어를 다르게 표현한다.
+8. 질문 아래에 짧은 `helper_text`로 질문 이유를 보여준다.
+9. 내부 에이전트 이름, DUR 코드, 분석 점수는 화면에 노출하지 않는다.
+10. 새 질문에는 답을 미리 선택하지 않는다. 기존 답변을 수정하는 화면에서만 저장된 값을 선택 상태로 보여준다.
+11. 자연어 자유입력은 선택지로 답할 수 없을 때만 사용한다.
+12. 답변이 처방 또는 복약 계획을 자동으로 변경하지 않는다는 경계를 유지한다.
+
+답변자에 따른 문장 예시는 다음과 같다.
+
+- 보호자: “어르신의 어지럼이 오늘도 계속됐나요?”
+- 환자 본인: “어지럼이 오늘도 계속됐나요?”
+
+### 질문 템플릿 유형
+
+초기 버전에서는 다음 템플릿만 허용한다.
+
+- `document.confirm_extracted_medication.v1`: 처방전 추출값 확인
+- `document.clarify_missing_field.v1`: 읽지 못한 처방 필드 확인
+- `care.symptom_course.v1`: 증상의 지속·호전·악화 확인
+- `care.symptom_onset_time.v1`: 증상 시작 시점 확인
+- `care.symptom_impact.v1`: 증상이 일상에 미친 영향 확인
+- `care.missed_medication_identity.v1`: 누락한 약 확인
+- `care.non_adherence_reason.v1`: 일부 복용 또는 미복용 이유 확인
+- `medication.observe_official_precaution.v1`: 공식 근거가 있는 관찰사항 확인
+- `profile.confirm_relevant_context.v1`: 현재 검토에 필요한 프로필 확인
+- `safety.confirm_red_flag.v1`: 이미 입력된 증상과 관련된 긴급 신호 확인
+
+새로운 템플릿은 PM과 안전 기준을 합의한 뒤 버전을 부여해 추가한다.
+
+### 질문 우선순위와 개수
+
+질문 우선순위는 다음 순서로 결정한다.
+
+1. `urgent`: 즉시 도움 여부를 확인해야 하는 긴급 신호
+2. `blocking`: 처방전 또는 약 등록을 막는 필수 확인
+3. `high`: 지속·악화 증상, 대상이 불명확한 복약 누락
+4. `normal`: 공식 근거가 있는 관찰사항, 시간 관계 확인
+5. `optional`: 현재 답변에 필수적이지 않은 프로필·생활 맥락 보완
+
+일반 맞춤 질문은 한 번의 안부 확인에서 최대 3개까지 보여준다. 긴급 질문과 저장을 막는 처방전 확인 질문은 이 제한에서 제외한다.
+
+동일한 증상을 기본 질문과 맞춤 질문이 모두 묻는 경우 다음처럼 합친다.
+
+- 기본 증상 체크에서 어지럼을 선택했다면 “오늘 어지럼이 있었나요?”를 다시 묻지 않는다.
+- 대신 “언제 시작됐나요?”, “지금도 계속되나요?” 같은 상세 질문으로 이어간다.
+- Medication Agent와 Care Agent가 같은 증상을 제안하면 하나의 질문으로 합치고 두 `trigger_refs`를 모두 유지한다.
+
+조건부 후속 질문이 새로 필요하면 우선순위가 낮은 아직 표시하지 않은 질문을 대체한다. 한 화면에 질문을 계속 추가해 사용자가 끝을 예상하지 못하게 하지 않는다.
+
+### 긴급 응답 처리
+
+호흡곤란, 의식 소실, 실신, 심한 흉통, 얼굴·입술·혀의 급격한 부종 등 긴급 신호가 이미 입력되었거나 관련 답변이 선택되면 다음 규칙을 적용한다.
+
+1. 일반 질문 진행보다 긴급 도움 안내를 우선한다.
+2. 약을 중단하거나 변경하라는 지시를 하지 않는다.
+3. 답변 저장을 완료해야만 도움 안내를 볼 수 있게 만들지 않는다.
+4. `patient-question-set.status`를 urgent로 설정한다.
+5. 어떤 응답이 긴급 분기를 발생시켰는지 `triggered_by_response`에 기록한다.
+
+### 안부 확인 화면 배치
+
+현재 안부 확인 페이지에는 다음 순서로 표시한다.
+
+~~~text
+1. 누가 오늘의 상태를 확인했나요?
+2. 오늘의 복약 확인
+3. 오늘 추가로 확인할 내용      ← 에이전트 맞춤 질문
+4. 오늘 평소와 다른 몸 상태
+5. 선택한 증상의 상세 확인      ← 조건부 질문
+6. 보호자 또는 환자 메모
+7. 답변 확인 및 저장
+~~~
+
+맞춤 질문은 아래와 같은 카드로 표시한다.
+
+~~~text
+[최근 기록 확인]                                  1/2
+
+어르신의 어지럼이 오늘도 계속됐나요?
+
+○ 계속됐어요
+○ 조금 나아졌어요
+○ 없어졌어요
+○ 더 심해졌어요
+○ 확인하지 못했어요
+
+왜 묻나요?
+8월 15일부터 어지럼 기록이 이어져 확인해요.
+~~~
+
+사용자 화면에는 `Care Agent` 대신 “최근 기록 확인”, `Medication Agent` 대신 “복용약 관련 확인”, `Document Agent` 대신 “처방전 확인”을 사용한다.
+
+오른쪽 안내 영역에는 다음 정보를 표시할 수 있다.
+
+- 전체 질문 수와 현재 진행 상태
+- 오늘 추가된 맞춤 질문 수
+- “정답을 맞히는 질문이 아니에요” 안내
+- 긴급 증상 발생 시 앱 입력보다 도움 요청을 우선하라는 안내
+
+### 질문 세트 JSON 출력 계약
+
+Orchestrator는 맞춤 질문을 아래 JSON 구조로 프론트에 전달한다. 기본 복약 질문은 현재 애플리케이션의 일정 데이터로 렌더링하고, 이 JSON은 그 뒤에 추가할 맞춤 질문을 나타낸다.
+
+~~~json
+{
+  "schema_version": "patient-question-set.v1",
+  "question_set_id": "question-set-2026-08-16",
+  "generated_at": "2026-08-16T14:30:00+09:00",
+  "timezone": "Asia/Seoul",
+  "target_date": "2026-08-16",
+  "subject_ref": "care-recipient-id",
+  "answerer": "caregiver",
+  "status": "ready",
+  "maximum_display_count": 3,
+  "questions": [
+    {
+      "question_id": "care-dizziness-course-20260816",
+      "template_id": "care.symptom_course.v1",
+      "category": "symptom_follow_up",
+      "priority": "high",
+      "source_agents": ["care"],
+      "trigger_refs": ["care-finding-1"],
+      "display": {
+        "badge": "최근 기록 확인",
+        "caregiver_text": "어르신의 어지럼이 오늘도 계속됐나요?",
+        "recipient_text": "어지럼이 오늘도 계속됐나요?",
+        "helper_text": "8월 15일부터 어지럼 기록이 이어져 확인해요."
+      },
+      "answer_type": "single_choice",
+      "options": [
+        {
+          "value": "continuing",
+          "label": "계속됐어요"
+        },
+        {
+          "value": "improving",
+          "label": "조금 나아졌어요"
+        },
+        {
+          "value": "resolved",
+          "label": "없어졌어요"
+        },
+        {
+          "value": "worsening",
+          "label": "더 심해졌어요"
+        },
+        {
+          "value": "unknown",
+          "label": "확인하지 못했어요"
+        }
+      ],
+      "options_source": null,
+      "required": true,
+      "allow_unknown": true,
+      "follow_up_rules": [
+        {
+          "when_answer_in": ["continuing", "worsening"],
+          "next_template_id": "care.symptom_impact.v1"
+        }
+      ],
+      "safety": {
+        "validation_status": "pass",
+        "urgent_answer_values": []
+      }
+    },
+    {
+      "question_id": "care-missed-medication-20260815",
+      "template_id": "care.missed_medication_identity.v1",
+      "category": "medication_follow_up",
+      "priority": "high",
+      "source_agents": ["care"],
+      "trigger_refs": ["care-finding-2"],
+      "display": {
+        "badge": "복약 기록 확인",
+        "caregiver_text": "8월 15일에 어르신이 먹지 못한 약은 무엇인가요?",
+        "recipient_text": "8월 15일에 먹지 못한 약은 무엇인가요?",
+        "helper_text": "복약 누락 기록은 있지만 어떤 약인지 확인되지 않았어요."
+      },
+      "answer_type": "multi_choice",
+      "options": [],
+      "options_source": {
+        "type": "medication_schedule",
+        "date": "2026-08-15",
+        "include_unknown_option": true
+      },
+      "required": true,
+      "allow_unknown": true,
+      "follow_up_rules": [],
+      "safety": {
+        "validation_status": "pass",
+        "urgent_answer_values": []
+      }
+    },
+    {
+      "question_id": "care-dizziness-onset-time-20260815",
+      "template_id": "care.symptom_onset_time.v1",
+      "category": "symptom_follow_up",
+      "priority": "normal",
+      "source_agents": ["care"],
+      "trigger_refs": ["care-finding-1", "missing-data-dizziness-time"],
+      "display": {
+        "badge": "최근 기록 확인",
+        "caregiver_text": "어르신의 어지럼은 저녁 몇 시쯤 시작됐나요?",
+        "recipient_text": "어지럼은 저녁 몇 시쯤 시작됐나요?",
+        "helper_text": "복용 시간과 증상 기록의 순서를 정확히 남기기 위해 확인해요."
+      },
+      "answer_type": "approximate_time",
+      "options": [
+        {
+          "value": "before_18",
+          "label": "오후 6시 이전"
+        },
+        {
+          "value": "18_to_21",
+          "label": "오후 6시부터 9시 사이"
+        },
+        {
+          "value": "after_21",
+          "label": "오후 9시 이후"
+        },
+        {
+          "value": "unknown",
+          "label": "정확히 모르겠어요"
+        }
+      ],
+      "options_source": null,
+      "required": false,
+      "allow_unknown": true,
+      "follow_up_rules": [],
+      "safety": {
+        "validation_status": "pass",
+        "urgent_answer_values": []
+      }
+    }
+  ],
+  "source_analysis_refs": ["care-analysis-id", "medication-analysis-id"],
+  "safety_validation_ref": "question-validation-id"
+}
+~~~
+
+status는 ready | needs_confirmation | urgent | blocked 중 하나다.
+priority는 urgent | blocking | high | normal | optional 중 하나다.
+answer_type은 single_choice | multi_choice | yes_no_unknown | approximate_time | number | short_text | confirmation 중 하나다.
+Safety / Evidence 검증이 pass가 아닌 질문은 questions 배열에 포함하지 않는다.
+
+### 질문 답변 JSON 저장 계약
+
+질문 정의와 사용자 답변은 분리해 저장한다. 질문 생성 당시의 근거와 문구는 question set에 유지하고, 사용자의 선택은 response 객체에 기록한다.
+
+~~~json
+{
+  "schema_version": "patient-question-response.v1",
+  "response_id": "question-response-uuid",
+  "question_set_id": "question-set-2026-08-16",
+  "subject_ref": "care-recipient-id",
+  "answered_by": "caregiver",
+  "answered_at": "2026-08-16T15:10:00+09:00",
+  "timezone": "Asia/Seoul",
+  "responses": [
+    {
+      "question_id": "care-dizziness-course-20260816",
+      "answer": "continuing",
+      "skipped": false
+    },
+    {
+      "question_id": "care-missed-medication-20260815",
+      "answer": ["medication-plan-id"],
+      "skipped": false
+    },
+    {
+      "question_id": "care-dizziness-onset-time-20260815",
+      "answer": "unknown",
+      "skipped": false
+    }
+  ],
+  "triggered_by_response": [],
+  "source_refs": [
+    {
+      "source_type": "patient_question_set",
+      "source_id": "question-set-2026-08-16"
+    }
+  ]
+}
+~~~
+
+응답을 저장한 뒤 다음 규칙을 적용한다.
+
+- 복약 관련 답변은 해당 복약 일정과 연결된 원본 DoseEvent로 반영한다.
+- 증상 관련 답변은 해당 날짜의 SymptomEvent 또는 돌봄 기록과 연결한다.
+- 질문 응답 자체도 어떤 질문과 선택지에 답했는지 추적할 수 있도록 유지한다.
+- 답변으로 원본 처방전, 복약 계획 또는 이전 기록을 자동 수정하지 않는다.
+- 새 답변을 반영한 Care Agent 분석은 기존 분석을 덮어쓰지 않고 새로운 run으로 저장한다.
+
+---
+
+## 11. 대표 시나리오
 
 ### 상황
 
@@ -979,7 +1420,7 @@ Orchestrator는 approved_claim_ids에 포함된 주장과 안전한 불확실성
 
 ---
 
-## 11. 구현 전 PM과 추가로 합의할 항목
+## 12. 구현 전 PM과 추가로 합의할 항목
 
 - 사용자의 어떤 표현까지 “명시적 저장 확인”으로 인정할 것인가?
 - 처방전 일부 항목만 확인된 경우 확인된 약만 먼저 저장할 것인가?
@@ -993,9 +1434,15 @@ Orchestrator는 approved_claim_ids에 포함된 주장과 안전한 불확실성
 - 에이전트 분석 결과를 얼마 동안 저장하고 언제 재생성할 것인가?
 - 공식 근거가 갱신되었을 때 기존 Medication Agent 결과를 자동으로 재검증할 것인가?
 - 사용자 화면의 체크리스트가 어떤 JSON finding과 evidence에서 만들어졌는지 표시할 것인가?
+- 일반 맞춤 질문을 하루 최대 3개로 제한할 것인가?
+- 어떤 질문 템플릿을 MVP에서 허용할 것인가?
+- 질문 이유인 helper_text를 모든 맞춤 질문에 표시할 것인가?
+- 환자 본인과 보호자 문구를 모두 별도로 관리할 것인가?
+- 조건부 후속 질문이 생겼을 때 기존 질문을 대체할지 추가할지 결정할 것인가?
+- 긴급 분기를 발생시키는 답변과 화면 안내 문구를 누가 관리할 것인가?
 
 ---
 
-## 12. 한 줄 정리
+## 13. 한 줄 정리
 
-> Orchestrator는 사용자의 의도를 라우팅하고, Document Agent는 확인 가능한 처방 정보를 만들며, Medication Agent는 공식 약물 근거를 확인하고, Care Agent는 시간에 따른 상태 변화를 정리한다. 내부 결과는 버전이 있는 JSON 객체로 전달·저장하고, 최종 답변은 User Profile Context와 Safety / Evidence 검증 결과를 바탕으로 Orchestrator가 자연어로 합성한다.
+> Orchestrator는 사용자의 의도를 라우팅하고, Document Agent는 확인 가능한 처방 정보를 만들며, Medication Agent는 공식 약물 근거를 확인하고, Care Agent는 시간에 따른 상태 변화를 정리한다. 내부 결과는 버전이 있는 JSON 객체로 전달·저장하며, 검증된 결과는 질문 템플릿을 통해 환자·보호자 맞춤 질문으로 변환한다. 최종 답변은 User Profile Context와 Safety / Evidence 검증 결과를 바탕으로 Orchestrator가 자연어로 합성한다.
