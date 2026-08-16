@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   transpilePackages: ["@care-atlas/backend"],
   experimental: {
     serverActions: {
@@ -10,3 +12,5 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+initOpenNextCloudflareForDev();
