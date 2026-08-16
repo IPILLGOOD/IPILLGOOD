@@ -130,7 +130,7 @@ export default async function MedicationDetailPage({
                 <TriangleAlert size={21} aria-hidden="true" />
                 <div>
                   <h2>보호자가 주의할 점</h2>
-                  <p>평소와 다른 변화를 사실대로 기록해주세요.</p>
+                  <p>부양자의 특성을 고려하여 알려드려요.</p>
                 </div>
               </div>
               <ul className="watch-list">
