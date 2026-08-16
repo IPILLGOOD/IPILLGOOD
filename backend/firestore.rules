@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Care Atlas는 민감한 건강정보를 다룹니다.
+    // 1차 MVP는 Next.js 서버에서만 검증된 요청을 처리하며,
+    // 브라우저의 Firestore 직접 접근은 모두 차단합니다.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

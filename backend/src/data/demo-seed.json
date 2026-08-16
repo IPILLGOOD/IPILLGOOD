@@ -1,0 +1,92 @@
+{
+  "recipient": {
+    "id": "demo-kim-yeonghui",
+    "displayName": "김영희 어르신",
+    "ageBand": "75–79세",
+    "heightCm": 154,
+    "weightKg": 57,
+    "allergies": ["페니실린계 항생제"],
+    "conditions": ["혈압 관리 중", "무릎 통증"],
+    "mobilityNote": "실내에서는 혼자 걷고, 외출할 때 지팡이를 사용해요.",
+    "accessibilityPreferences": ["큰 글씨", "쉬운 설명"],
+    "caregiverNote": "아침 약을 가끔 잊어 보호자가 전화로 확인해요.",
+    "consentConfirmed": true,
+    "lastConfirmedAt": "2026-08-16T09:20:00+09:00"
+  },
+  "medications": [
+    {
+      "id": "med-amlodipine",
+      "productName": "노바스크정 5mg",
+      "ingredientName": "암로디핀",
+      "purposePlain": "혈압이 너무 높아지지 않도록 도와줘요.",
+      "descriptionPlain": "혈관을 편안하게 넓혀 심장과 혈관의 부담을 덜어주는 데 사용되는 약이에요.",
+      "doseAmount": "한 번에 1정",
+      "frequency": "하루 1회",
+      "timing": "아침 식사 후",
+      "startDate": "2026-07-18",
+      "status": "active",
+      "isNew": false,
+      "sourceLabel": "복약안내서에서 보호자가 확인",
+      "watchFor": ["평소보다 많이 어지러운지", "발목이 붓거나 불편한지"],
+      "clinicianQuestion": "어지러움이 계속될 때 어떤 내용을 기록해 가져가면 될까요?"
+    },
+    {
+      "id": "med-celecoxib",
+      "productName": "쎄레브렉스캡슐 100mg",
+      "ingredientName": "세레콕시브",
+      "purposePlain": "무릎의 통증과 붓는 느낌을 줄이는 데 사용돼요.",
+      "descriptionPlain": "아프고 붓는 반응을 줄여 움직일 때의 불편함을 덜어주는 약이에요.",
+      "doseAmount": "한 번에 1캡슐",
+      "frequency": "하루 2회",
+      "timing": "아침·저녁 식사 후",
+      "startDate": "2026-08-12",
+      "endDate": "2026-08-18",
+      "status": "active",
+      "isNew": true,
+      "sourceLabel": "8월 12일 처방전에서 보호자가 확인",
+      "watchFor": ["속이 많이 쓰리거나 아픈지", "검은색 변처럼 평소와 다른 변화가 있는지"],
+      "clinicianQuestion": "속이 불편한 날에도 같은 방법으로 먹어야 하는지 확인해주세요."
+    },
+    {
+      "id": "med-atorvastatin",
+      "productName": "리피토정 10mg",
+      "ingredientName": "아토르바스타틴",
+      "purposePlain": "혈액 속 기름 성분을 관리하는 데 사용돼요.",
+      "descriptionPlain": "혈관 건강을 위해 혈액 속 기름 성분이 쌓이지 않도록 돕는 약이에요.",
+      "doseAmount": "한 번에 1정",
+      "frequency": "하루 1회",
+      "timing": "저녁 식사 후",
+      "startDate": "2026-06-02",
+      "status": "active",
+      "isNew": false,
+      "sourceLabel": "복약안내서에서 보호자가 확인",
+      "watchFor": ["이유 없이 근육이 많이 아픈지", "평소보다 기운이 크게 떨어지는지"]
+    }
+  ],
+  "doseEvents": [
+    {"id":"dose-0813-am","medicationPlanId":"med-amlodipine","scheduledAt":"2026-08-13T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-13T08:42:00+09:00"},
+    {"id":"dose-0813-pain-am","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-13T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-13T08:42:00+09:00"},
+    {"id":"dose-0813-pain-pm","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-13T19:00:00+09:00","response":"completed","answeredBy":"recipient","answeredAt":"2026-08-13T19:30:00+09:00"},
+    {"id":"dose-0814-am","medicationPlanId":"med-amlodipine","scheduledAt":"2026-08-14T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-14T08:34:00+09:00"},
+    {"id":"dose-0814-pain-am","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-14T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-14T08:34:00+09:00"},
+    {"id":"dose-0814-pain-pm","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-14T19:00:00+09:00","response":"completed","answeredBy":"recipient","answeredAt":"2026-08-14T19:21:00+09:00"},
+    {"id":"dose-0815-am","medicationPlanId":"med-amlodipine","scheduledAt":"2026-08-15T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-15T08:51:00+09:00"},
+    {"id":"dose-0815-pain-am","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-15T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-15T08:51:00+09:00"},
+    {"id":"dose-0815-pain-pm","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-15T19:00:00+09:00","response":"unconfirmed","answeredBy":"caregiver"},
+    {"id":"dose-0816-am","medicationPlanId":"med-amlodipine","scheduledAt":"2026-08-16T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-16T08:30:00+09:00"},
+    {"id":"dose-0816-pain-am","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-16T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-16T08:30:00+09:00"},
+    {"id":"dose-0816-statin","medicationPlanId":"med-atorvastatin","scheduledAt":"2026-08-16T19:00:00+09:00","response":"not_yet","answeredBy":"caregiver"}
+  ],
+  "symptomEvents": [
+    {"id":"symptom-0814","symptomType":"어지러움","occurredAt":"2026-08-14T14:20:00+09:00","severity":3,"dailyLifeImpact":"잠깐 앉아서 쉬었어요.","reporterType":"recipient_reported","note":"점심 이후 잠깐 어지럽다고 말씀하셨어요."},
+    {"id":"symptom-0815","symptomType":"어지러움","occurredAt":"2026-08-15T17:10:00+09:00","severity":5,"dailyLifeImpact":"걸을 때 벽을 짚었어요.","reporterType":"caregiver_observed","note":"보호자가 통화 중 휘청거렸다는 말을 들었어요."},
+    {"id":"symptom-0816","symptomType":"어지러움","occurredAt":"2026-08-16T10:40:00+09:00","severity":3,"dailyLifeImpact":"10분 정도 쉬고 괜찮아졌어요.","reporterType":"recipient_reported"}
+  ],
+  "documents": [
+    {"id":"doc-prescription-0812","fileName":"8월12일_처방전_비식별샘플.jpg","documentType":"처방전","uploadedAt":"2026-08-12T13:05:00+09:00","status":"confirmed","redacted":true,"sourceLabel":"보호자가 원본과 대조해 확인"}
+  ],
+  "clinicianQuestions": [
+    {"id":"question-dizziness","priority":"today","question":"새 약을 시작한 뒤 기록된 어지러움을 함께 확인해도 될까요?","reason":"8월 12일 약 변경 이후 어지러움이 3일 기록됐어요. 약 때문이라는 뜻은 아니에요."},
+    {"id":"question-missed","priority":"next_visit","question":"저녁 약을 확인하지 못한 날에는 다음 날 어떻게 기록하면 될까요?","reason":"8월 15일 저녁 복용 여부가 확인되지 않았어요."}
+  ]
+}

@@ -1,0 +1,22 @@
+"use client";
+
+import { LoaderCircle } from "lucide-react";
+import { useFormStatus } from "react-dom";
+
+export function SubmitButton({
+  children,
+  pendingText = "저장 중…",
+  className = "button button--primary",
+}: {
+  children: React.ReactNode;
+  pendingText?: string;
+  className?: string;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <button className={className} type="submit" disabled={pending} aria-disabled={pending}>
+      {pending ? <LoaderCircle className="spin" size={18} aria-hidden="true" /> : null}
+      {pending ? pendingText : children}
+    </button>
+  );
+}

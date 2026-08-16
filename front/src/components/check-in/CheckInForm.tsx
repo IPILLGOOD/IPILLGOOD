@@ -1,0 +1,133 @@
+"use client";
+
+import { useActionState } from "react";
+import Link from "next/link";
+
+import { saveCheckInAction } from "@/app/actions";
+import { FormMessage } from "@/components/ui/FormMessage";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import type { ActionState, MedicationPlan } from "@care-atlas/backend";
+
+const initialState: ActionState = { status: "idle", message: "" };
+const doseOptions = [
+  { value: "completed", label: "모두 먹었어요" },
+  { value: "partial", label: "일부만 먹었어요" },
+  { value: "not_yet", label: "아직 안 먹었어요" },
+  { value: "skipped", label: "먹지 못했어요" },
+  { value: "unconfirmed", label: "확인하지 못했어요" },
+];
+const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청거림"];
+
+export function CheckInForm({ medications }: { medications: MedicationPlan[] }) {
+  const [state, formAction] = useActionState(saveCheckInAction, initialState);
+
+  if (state.status === "success") {
+    return (
+      <div>
+        <FormMessage state={state} />
+        <div className="completion-panel">
+          <h2>답변이 돌봄 기록에 반영됐어요</h2>
+          <p>
+            오늘의 답변은 약의 처방 내용을 바꾸지 않아요. 대시보드와 상담용 기록에서 시간에
+            따른 변화를 확인할 수 있어요.
+          </p>
+          <div className="form-actions">
+            <Link className="button button--secondary" href="/report">
+              상담용 기록 보기
+            </Link>
+            <Link className="button button--primary" href="/">
+              오늘 화면으로 돌아가기
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form className="checkin-form" action={formAction}>
+      <FormMessage state={state} />
+
+      <fieldset className="question-block">
+        <legend>1. 누가 오늘의 상태를 확인했나요?</legend>
+        <div className="choice-grid">
+          <label className="choice-card">
+            <input name="answeredBy" type="radio" value="caregiver" defaultChecked />
+            보호자가 확인했어요
+          </label>
+          <label className="choice-card">
+            <input name="answeredBy" type="radio" value="recipient" />
+            어르신이 직접 답했어요
+          </label>
+        </div>
+      </fieldset>
+
+      {medications.map((medication, index) => (
+        <fieldset className="question-block" key={medication.id}>
+          <legend>
+            {index + 2}. {medication.timing}에 먹는 {medication.productName}은 챙기셨나요?
+          </legend>
+          <p className="question-block__helper">
+            {medication.doseAmount} · {medication.frequency}
+          </p>
+          <div className="choice-grid">
+            {doseOptions.map((option) => (
+              <label className="choice-card" key={option.value}>
+                <input
+                  name={`dose_${medication.id}`}
+                  type="radio"
+                  value={option.value}
+                  defaultChecked={option.value === "completed"}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ))}
+
+      <fieldset className="question-block">
+        <legend>{medications.length + 2}. 오늘 평소와 다른 몸 상태가 있었나요?</legend>
+        <p className="question-block__helper">없으면 선택하지 않아도 괜찮아요.</p>
+        <div className="choice-grid">
+          {symptoms.map((symptom) => (
+            <label className="choice-card" key={symptom}>
+              <input name="symptoms" type="checkbox" value={symptom} />
+              {symptom}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="form-grid">
+        <div className="field">
+          <label htmlFor="severity">불편한 정도</label>
+          <select id="severity" name="severity" defaultValue="3">
+            <option value="1">1 — 아주 조금</option>
+            <option value="3">3 — 조금 불편함</option>
+            <option value="5">5 — 일상에 영향이 있음</option>
+            <option value="7">7 — 많이 불편함</option>
+            <option value="10">10 — 견디기 매우 어려움</option>
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="note">보호자 메모</label>
+          <textarea
+            id="note"
+            name="note"
+            maxLength={500}
+            placeholder="예: 걸을 때 잠시 벽을 짚었고, 10분 정도 쉬었어요."
+          />
+          <p className="field-hint">진단보다 직접 보거나 들은 사실을 적어주세요.</p>
+        </div>
+      </div>
+
+      <div className="form-actions">
+        <Link className="button button--quiet" href="/">
+          나중에 하기
+        </Link>
+        <SubmitButton pendingText="기록하는 중…">오늘의 답변 저장</SubmitButton>
+      </div>
+    </form>
+  );
+}

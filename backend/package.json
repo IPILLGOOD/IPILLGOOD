@@ -1,0 +1,16 @@
+{
+  "name": "@care-atlas/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "seed": "node scripts/seed-firestore.mjs",
+    "deploy": "firebase deploy --only firestore:rules,firestore:indexes"
+  },
+  "dependencies": {
+    "firebase-admin": "14.2.0"
+  }
+}

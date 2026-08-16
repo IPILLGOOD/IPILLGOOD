@@ -1,0 +1,18 @@
+{
+  "name": "care-atlas-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "front",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @care-atlas/front",
+    "build": "npm run build --workspace @care-atlas/front",
+    "start": "npm run start --workspace @care-atlas/front",
+    "lint": "npm run lint --workspace @care-atlas/front",
+    "typecheck": "npm run typecheck --workspace @care-atlas/front",
+    "seed": "npm run seed --workspace @care-atlas/backend",
+    "firebase:deploy": "npm run deploy --workspace @care-atlas/backend"
+  }
+}
