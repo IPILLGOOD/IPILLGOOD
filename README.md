@@ -1,10 +1,10 @@
 # Care Atlas
 
-> 처방전은 병원에서 끝나지만, 돌봄은 매일 이어집니다.
+> 처방전 한 장을, 오늘의 돌봄으로.
 
 Care Atlas는 처방전의 어려운 표현을 보호자가 이해할 수 있는 말로 정리하고, 매일의 복용 여부와 몸 상태를 다음 진료에 가져갈 기록으로 연결하는 노인 복약·웰니스 컨설턴트입니다.
 
-![Care Atlas 오늘 할 일 화면](design/screenshots/today-desktop.png)
+![Care Atlas 랜딩페이지](design/screenshots/landing-desktop.png)
 
 ## 1차 MVP에서 실제로 되는 것
 
@@ -19,15 +19,74 @@ Care Atlas는 처방전의 어려운 표현을 보호자가 이해할 수 있는
 
 Google 계정으로 로그인하거나, 가입 없이 데모 로그인으로 비식별 샘플의 핵심 흐름을 바로 체험할 수 있습니다. 실제 환자 정보는 사용하지 않습니다.
 
+## 아키텍처
+
+Care Atlas는 인증과 데이터 접근을 서버 경계 안에 두는 Next.js 기반 모노레포입니다. 공개 랜딩·로그인 외 앱 경로는 서명된 세션 쿠키를 확인하며, 브라우저는 Firestore와 외부 API에 직접 접근하지 않습니다.
+
+```mermaid
+flowchart LR
+  U["보호자 · 어르신"] --> B["Browser"]
+
+  subgraph F["Next.js 16 · front"]
+    B --> PUB["공개 랜딩 · 로그인"]
+    B --> PX["Route Proxy"]
+    PX -->|"서명 세션 확인"| RSC["React Server Components"]
+    B -->|"폼 제출"| SA["Server Actions"]
+    B -->|"문서 업로드"| RH["Route Handler"]
+    SA --> V["세션 · 데모 쓰기 guard · Zod"]
+    RH --> V
+  end
+
+  subgraph D["Domain & data · backend"]
+    RSC --> CR["Care Repository"]
+    V --> CR
+    RH --> MA["Medication Analyzer"]
+    CR --> AD["Runtime Firestore Adapter"]
+  end
+
+  AD -->|"Node.js: Firebase Admin + ADC"| FS[("Cloud Firestore<br/>asia-northeast3")]
+  AD -->|"Cloudflare: REST + Service Account"| FS
+  MA --> EXT["외부 분석 API 또는 OpenAI Responses API"]
+  RSC --> OFFICIAL["식약처 · HIRA Open API"]
+  CR -. "읽기 실패 시" .-> SEED["비식별 demo-seed.json"]
+```
+
+### 요청별 데이터 흐름
+
+| 흐름 | 진입점 | 처리 | 저장 |
+|---|---|---|---|
+| 화면 조회 | Server Component | 세션 확인 → 저장소 병렬 조회 → 화면 모델 구성 | 없음 |
+| 프로필·안부 기록 | Server Action | 세션·데모 모드 확인 → Zod/도메인 검증 → 저장소 호출 | Firestore |
+| 문서 분석 | `POST /api/documents/analyze` | 세션·5MB·형식 검증 → 분석 어댑터 → 응답 스키마 확인 | 원본이 아닌 메타데이터와 결과 |
+| 공식 정보 | 약·문서 화면 | 식약처/HIRA를 우선 조회하고 필요한 경우에만 AI 보강 | 없음 |
+
+### 보안과 의료 안전 경계
+
+- 세션은 `HttpOnly`, `SameSite=Lax`, 프로덕션 `Secure` 쿠키에 7일 만료 JWT로 저장합니다.
+- 앱 경로는 Next.js Proxy가 인증 쿠키를 확인하고, 쓰기 진입점은 서버에서 세션을 다시 검증합니다.
+- Firestore 보안 규칙은 브라우저의 직접 읽기·쓰기를 차단합니다.
+- 업로드 문서 원본은 영구 저장하지 않고 요청 처리 후 폐기합니다.
+- 복약 계획과 실제 응답, 본인 응답과 보호자 관찰을 별도 필드로 보존합니다.
+- 생성형 AI는 진단, 복용 중단·용량 변경·대체 약 추천, 증상과 약의 인과관계 판정을 수행하지 않습니다.
+
 ## 모노레포 구성
 
 ```text
 care-atlas/
-├── front/      # Next.js UI, Server Actions, 프론트 QA
-├── backend/    # Firebase 설정, Firestore 저장소, AI 어댑터
-├── design/     # 디자인 시스템과 검증 스크린샷
-├── md/         # 제품·수상전략·기술 문서
-└── package.json
+├── front/
+│   ├── src/app/           # App Router, Server Actions, 인증·분석 Route Handler
+│   ├── src/components/    # 랜딩, 인증, 도메인, 공통 UI 컴포넌트
+│   ├── src/lib/           # 세션, 입력 검증, 화면 모델
+│   ├── src/styles/        # 디자인 토큰과 반응형 스타일
+│   └── scripts/           # 기능·시각·접근성 QA
+├── backend/
+│   ├── src/ai/            # OpenAI·외부 분석 제공자 경계
+│   ├── src/firestore-*    # Node/Cloudflare 런타임별 Firestore 접근
+│   ├── src/official-*     # 식약처·HIRA API 클라이언트
+│   └── src/data/          # 비식별 fallback seed
+├── design/                # 디자인 시스템과 검증 스크린샷
+├── md/                    # 제품·기술·사업성 문서
+└── package.json           # npm workspaces 진입점
 ```
 
 루트 npm 스크립트가 각 워크스페이스 명령을 연결하므로 기존처럼 루트에서 실행하면 됩니다.
@@ -37,11 +96,13 @@ care-atlas/
 - Next.js 16 App Router, React 19, TypeScript
 - Firebase 프로젝트: `care-atlas-seoul-2026`
 - Cloud Firestore: 서울 `asia-northeast3`
-- Firebase Admin SDK + Next.js Server Actions
+- Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
+- Google OAuth 2.0, `jose` 기반 서명 세션, Next.js Route Proxy
+- OpenAI Responses API, 식약처·HIRA Open API
 - Zod 입력 검증, Lucide SVG 아이콘
 - Noto Sans KR, 딥그린·세이지 기반 접근성 디자인 시스템
 
-브라우저의 Firestore 직접 접근은 보안 규칙으로 모두 차단했습니다. 1차 MVP의 쓰기는 `CARE_ATLAS_DEMO_MODE=true`일 때만 Next.js 서버 액션에서 실행됩니다. 실제 배포 전에는 사용자 인증과 보호자별 권한 모델을 추가해야 합니다.
+브라우저의 Firestore 직접 접근은 보안 규칙으로 모두 차단했습니다. 현재 쓰기는 로그인 세션이 있고 `CARE_ATLAS_DEMO_MODE=true`일 때만 서버에서 실행됩니다. 실제 배포 전에는 사용자별 돌봄 대상자 소유권과 보호자 역할 모델을 추가해야 합니다.
 
 ## 빠른 실행
 
@@ -55,6 +116,20 @@ npm run dev
 ```
 
 브라우저에서 `http://localhost:3000`을 엽니다.
+
+### 주요 경로
+
+| 경로 | 설명 |
+|---|---|
+| `/` | 제품 소개와 로그인·데모 진입 랜딩페이지 |
+| `/login` | Google OAuth와 비식별 데모 로그인 |
+| `/today` | 오늘 복약 일정과 인라인 안부 확인 |
+| `/dashboard` | 현재 복용약, 최근 기록, 상담 질문 요약 |
+| `/medications` | 쉬운 약 설명과 식약처 공식 정보 검색 |
+| `/check-in` | 상세 복약·증상 확인 |
+| `/documents` | 처방전·진단서 분석과 출처 확인 |
+| `/profile` | 돌봄 대상자 최소 프로필 관리 |
+| `/report` | 출력 가능한 최근 7일 Care Report |
 
 Google 로그인을 사용하려면 `front/.env.local`에 세션 비밀키와 Google OAuth 웹 클라이언트 정보를 설정합니다. Google Cloud Console의 승인된 리디렉션 URI에는 로컬 개발 기준 `http://localhost:3000/api/auth/google/callback`을 등록하세요. 설정하지 않아도 데모 로그인은 동작합니다.
 
@@ -84,8 +159,19 @@ HIRA_DISEASE_API_KEY=공공데이터포털_일반_인증키
 ```bash
 npm run typecheck
 npm run lint
+npm test
 npm run build
 ```
+
+Cloudflare Workers 빌드·프리뷰·배포:
+
+```bash
+npm run cf:build --workspace @care-atlas/front
+npm run cf:preview --workspace @care-atlas/front
+npm run cf:deploy --workspace @care-atlas/front
+```
+
+`front/scripts/visual-qa.mjs`는 320·768·1024·1440px 화면, 확대 텍스트, 수평 오버플로, 콘솔 오류, WCAG 2.1 AA axe 규칙과 주요 터치 타깃을 검사합니다. `functional-qa.mjs`는 인증된 데모 세션에서 안부 기록과 문서 분석의 핵심 흐름을 검증합니다.
 
 Firestore 규칙 배포:
 
@@ -121,9 +207,13 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 - [Value & Viability](md/value-and-viability.md)
 - [Codex Build Log](md/codex-build-log.md)
 
-## 알려진 한계
+## 프로덕션 전 필수 과제
 
-- Google OAuth와 서명된 세션은 연결했지만, 현재 데이터는 해커톤용 단일 비식별 돌봄 대상자를 모든 로그인 사용자가 함께 보는 구조임
-- 실제 서비스 수준의 OCR 신뢰도 표시와 사용자 원문 대조·확정 단계는 미구현
-- 문서 원본은 개인정보 보호를 위해 저장하지 않고 메타데이터만 기록
-- 의료·약학·개인정보·의료기기 관련 전문가 검토 전 실제 건강 의사결정에 사용할 수 없음
+- 사용자별 돌봄 대상자 소유권, 보호자 초대와 역할 기반 권한
+- 공개 인증·분석 엔드포인트의 rate limit, 감사 로그, 이상 사용 탐지
+- 동의 이력, 보관 기간, 내보내기와 완전 삭제, 비밀키 회전 정책
+- OCR 신뢰도 표시, 이름·주민번호·주소 자동 가리기, 원문 대조·확정 단계
+- 식약처 품목·성분 ID 매칭과 HIRA DUR 기반 결정적 안전 규칙
+- 의료·약학·개인정보·의료기기 규제 검토와 운영 모니터링·백업·복구
+
+현재 모든 로그인 사용자는 해커톤용 단일 비식별 돌봄 대상을 공유합니다. 실제 건강정보를 입력하거나 건강 의사결정에 사용해서는 안 됩니다.

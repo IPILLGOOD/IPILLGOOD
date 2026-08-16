@@ -4,6 +4,7 @@ import {
   FileText,
   ListChecks,
 } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { TodayTaskList } from "@/components/today/TodayTaskList";
@@ -15,6 +16,11 @@ import { getCareSnapshot, getTodayDailyCheckIn } from "@care-atlas/backend";
 import type { DailyCheckIn } from "@care-atlas/backend";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "오늘 할 일",
+  description: "오늘의 복약 일정과 몸 상태를 한 번에 확인하고 기록합니다.",
+};
 
 const seoulDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul",
