@@ -662,7 +662,6 @@
 .official-drug-card__header,
 .official-drug-card__title,
 .official-drug-search__controls,
-.official-drug-card__source,
 .official-drug-card__guide {
   display: flex;
   align-items: center;
@@ -697,20 +696,6 @@
   border-radius: var(--radius-md);
   background: var(--color-primary-700);
   color: white;
-}
-
-.official-drug-card__source {
-  min-height: 2.75rem;
-  flex: 0 0 auto;
-  gap: var(--space-1);
-  color: var(--color-primary-700);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.official-drug-card__source:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.2rem;
 }
 
 .official-drug-search__controls {
@@ -2056,11 +2041,6 @@
   .official-drug-search__controls {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .official-drug-card__source {
-    min-height: auto;
-    align-self: flex-start;
   }
 
   .official-drug-results li {
