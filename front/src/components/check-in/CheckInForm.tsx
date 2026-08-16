@@ -4,10 +4,11 @@ import { useActionState } from "react";
 import Link from "next/link";
 
 import { saveCheckInAction } from "@/app/actions";
+import { DynamicQuestionFields } from "@/components/check-in/DynamicQuestionFields";
 import { FormMessage } from "@/components/ui/FormMessage";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import type { MedicationScheduleTask } from "@/lib/presentation";
-import type { ActionState } from "@care-atlas/backend";
+import type { ActionState, PatientQuestionSet } from "@care-atlas/backend";
 
 const initialState: ActionState = { status: "idle", message: "" };
 const doseOptions = [
@@ -19,7 +20,13 @@ const doseOptions = [
 ];
 const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청거림"];
 
-export function CheckInForm({ tasks }: { tasks: MedicationScheduleTask[] }) {
+export function CheckInForm({
+  tasks,
+  questionSet,
+}: {
+  tasks: MedicationScheduleTask[];
+  questionSet: PatientQuestionSet;
+}) {
   const [state, formAction] = useActionState(saveCheckInAction, initialState);
 
   if (state.status === "success") {
@@ -102,6 +109,8 @@ export function CheckInForm({ tasks }: { tasks: MedicationScheduleTask[] }) {
           ))}
         </div>
       </fieldset>
+
+      <DynamicQuestionFields questionSet={questionSet} />
 
       <div className="form-grid">
         <div className="field">

@@ -6,10 +6,15 @@ import { ArrowRight, ClipboardCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { saveCheckInAction } from "@/app/actions";
+import { DynamicQuestionFields } from "@/components/check-in/DynamicQuestionFields";
 import { FormMessage } from "@/components/ui/FormMessage";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import type { MedicationScheduleTask } from "@/lib/presentation";
-import type { ActionState, DailyCheckIn } from "@care-atlas/backend";
+import type {
+  ActionState,
+  DailyCheckIn,
+  PatientQuestionSet,
+} from "@care-atlas/backend";
 
 const initialState: ActionState = { status: "idle", message: "" };
 const doseOptions = [
@@ -24,9 +29,11 @@ const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청�
 export function TodayQuickCheckIn({
   tasks,
   checkIn,
+  questionSet,
 }: {
   tasks: MedicationScheduleTask[];
   checkIn: DailyCheckIn | null;
+  questionSet: PatientQuestionSet;
 }) {
   const router = useRouter();
   const [state, formAction] = useActionState(saveCheckInAction, initialState);
@@ -116,6 +123,8 @@ export function TodayQuickCheckIn({
           ))}
         </div>
       </fieldset>
+
+      <DynamicQuestionFields questionSet={questionSet} compact />
 
       <div className="field">
         <label htmlFor="quick-severity">불편한 정도</label>

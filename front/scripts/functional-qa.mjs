@@ -21,6 +21,13 @@ await quickCheckIn
   .fill("자동 검증: 첫 화면에서 확인했고 잠깐 쉰 뒤 괜찮아졌어요.");
 const firstDose = quickCheckIn.locator('select[name^="dose_"]').first();
 await firstDose.selectOption("completed");
+const dynamicQuestions = quickCheckIn.locator('select[name^="question_"]');
+for (let index = 0; index < (await dynamicQuestions.count()); index += 1) {
+  const question = dynamicQuestions.nth(index);
+  const firstAnswer = await question.locator("option:not([disabled])").first().getAttribute("value");
+  if (!firstAnswer) throw new Error("Dynamic care question did not include an answer option");
+  await question.selectOption(firstAnswer);
+}
 await quickCheckIn.getByRole("button", { name: "안부 기록 저장" }).click();
 await page.getByText("오늘의 복약과 몸 상태를 기록했어요.").waitFor();
 if ((await firstDose.inputValue()) !== "completed") {
