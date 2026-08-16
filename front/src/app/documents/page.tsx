@@ -1,6 +1,7 @@
 import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
 
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
+import { DemoDocumentSamples } from "@/components/documents/DemoDocumentSamples";
 import { DeleteDocumentButton } from "@/components/documents/DeleteDocumentButton";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -30,6 +31,7 @@ export default async function DocumentsPage() {
               <p>처방전 또는 진단서를 선택하고 분석 결과를 바로 확인하세요.</p>
             </div>
           </div>
+          {scope.useDemoData ? <DemoDocumentSamples /> : null}
           <DocumentUploadForm />
         </Card>
 
