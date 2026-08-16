@@ -12,6 +12,7 @@ const initialState: ActionState = { status: "idle", message: "" };
 export function ProfileForm({ recipient }: { recipient: CareRecipient }) {
   const [state, action] = useActionState(saveProfileAction, initialState);
   const error = (field: string) => state.fieldErrors?.[field]?.[0];
+  const savedAge = /^\d+$/.test(recipient.ageBand) ? recipient.ageBand : "";
 
   return (
     <form action={action}>
@@ -32,12 +33,23 @@ export function ProfileForm({ recipient }: { recipient: CareRecipient }) {
         </div>
 
         <div className="field">
-          <label htmlFor="ageBand">연령대 <span aria-hidden="true">*</span></label>
-          <select id="ageBand" name="ageBand" defaultValue={recipient.ageBand} required>
-            {["65–69세", "70–74세", "75–79세", "80–84세", "85세 이상"].map((age) => (
-              <option key={age}>{age}</option>
-            ))}
-          </select>
+          <label htmlFor="ageBand">나이 <span aria-hidden="true">*</span></label>
+          <input
+            id="ageBand"
+            name="ageBand"
+            type="number"
+            inputMode="numeric"
+            min="1"
+            max="120"
+            step="1"
+            defaultValue={savedAge}
+            placeholder="예: 75"
+            required
+            aria-describedby={error("ageBand") ? "ageBand-error" : undefined}
+          />
+          {error("ageBand") ? (
+            <p className="field-error" id="ageBand-error">{error("ageBand")}</p>
+          ) : null}
         </div>
 
         <div className="field">
