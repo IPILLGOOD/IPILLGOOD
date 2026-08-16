@@ -58,44 +58,46 @@ export default async function MedicationDetailPage({ params }: PageProps<"/medic
             </div>
           </Card>
 
-          <Card>
-            <div className="section-heading">
-              <div>
-                <h2>먹는 방법과 오늘 일정</h2>
-                <p>처방전에서 보호자가 확인한 복용 계획이에요.</p>
+          {id !== "med-amlodipine" ? (
+            <Card>
+              <div className="section-heading">
+                <div>
+                  <h2>먹는 방법과 오늘 일정</h2>
+                  <p>처방전에서 보호자가 확인한 복용 계획이에요.</p>
+                </div>
+                <CalendarClock size={21} color="var(--color-primary-700)" aria-hidden="true" />
               </div>
-              <CalendarClock size={21} color="var(--color-primary-700)" aria-hidden="true" />
-            </div>
-            <dl className="medication-facts medication-facts--detail">
-              <div>
-                <dt>한 번에</dt>
-                <dd>{medication.doseAmount}</dd>
-              </div>
-              <div>
-                <dt>복용 주기</dt>
-                <dd>{medication.frequency}</dd>
-              </div>
-              <div>
-                <dt>먹는 시점</dt>
-                <dd>{medication.timing}</dd>
-              </div>
-            </dl>
-            {schedule.length > 0 ? (
-              <ul className="detail-schedule">
-                {schedule.map((task) => (
-                  <li key={task.id}>
-                    <time dateTime={task.scheduledAt}>{task.timeLabel}</time>
-                    <span>{task.slotLabel}</span>
-                    <Badge tone={task.response === "completed" ? "success" : "neutral"}>
-                      {task.response === "completed" ? "확인 완료" : "복용 예정"}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="detail-empty-schedule">복용 간격에 따라 오늘은 예정된 일정이 없어요.</p>
-            )}
-          </Card>
+              <dl className="medication-facts medication-facts--detail">
+                <div>
+                  <dt>한 번에</dt>
+                  <dd>{medication.doseAmount}</dd>
+                </div>
+                <div>
+                  <dt>복용 주기</dt>
+                  <dd>{medication.frequency}</dd>
+                </div>
+                <div>
+                  <dt>먹는 시점</dt>
+                  <dd>{medication.timing}</dd>
+                </div>
+              </dl>
+              {schedule.length > 0 ? (
+                <ul className="detail-schedule">
+                  {schedule.map((task) => (
+                    <li key={task.id}>
+                      <time dateTime={task.scheduledAt}>{task.timeLabel}</time>
+                      <span>{task.slotLabel}</span>
+                      <Badge tone={task.response === "completed" ? "success" : "neutral"}>
+                        {task.response === "completed" ? "확인 완료" : "복용 예정"}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="detail-empty-schedule">복용 간격에 따라 오늘은 예정된 일정이 없어요.</p>
+              )}
+            </Card>
+          ) : null}
 
           <div className="detail-two-column">
             <Card>
