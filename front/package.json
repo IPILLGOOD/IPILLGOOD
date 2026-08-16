@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@care-atlas/backend": "*",
+    "firebase": "^12.17.1",
     "jose": "^6.2.9",
     "lucide-react": "1.31.0",
     "next": "16.3.1",

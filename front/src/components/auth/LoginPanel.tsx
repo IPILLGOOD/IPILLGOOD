@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Check, HeartPulse, PlayCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
+import { GoogleSignInButton } from "./GoogleSignInButton";
 import { GoogleLogo } from "./GoogleLogo";
 
 export function LoginPanel({ errorMessage }: { errorMessage?: string }) {
@@ -36,9 +37,7 @@ export function LoginPanel({ errorMessage }: { errorMessage?: string }) {
               <span className="login-choice__icon"><GoogleLogo /></span>
               <span><strong>Google로 로그인</strong><small>내 Google 계정으로 안전하게 계속해요.</small></span>
             </div>
-            <Link className="login-provider-button" href="/api/auth/google">
-              Google로 계속하기 <ArrowRight size={17} aria-hidden="true" />
-            </Link>
+            <GoogleSignInButton />
           </div>
 
           <div className="login-divider" role="separator"><span>또는</span></div>

@@ -6,6 +6,14 @@ Care Atlas는 처방전의 어려운 표현을 보호자가 이해할 수 있는
 
 ![Care Atlas 랜딩페이지](design/screenshots/landing-desktop.png)
 
+## 왜 Care Atlas가 필요한가
+
+한국은 이미 국민 5명 중 1명이 노인인 초고령사회이며, 노인 3명 중 1명은 혼자 살고 자녀와 동거하는 비율은 10% 수준에 불과합니다. 동시에 노인의 83.8%가 장기간 처방약을 복용하고 있으며, 일부 노인은 약물 복용 정보 자체를 이해하는 데 어려움을 겪습니다. 여러 약을 동시에 복용하는 고령자에게 어지러움·휘청거림과 같은 작은 변화는 낙상 등 실제 안전 문제와도 연결될 수 있습니다.
+
+따라서 필요한 것은 새로운 의료 판단을 대신하는 AI가 아닙니다.
+
+Care Atlas는 이미 존재하는 처방 정보와 공식 의약품 안전 정보를 보호자가 이해할 수 있는 말과 행동으로 바꾸고, 병원 밖에서 발생하는 실제 복용 여부와 몸 상태를 기록해 다음 진료로 연결하는 도구입니다.
+
 ## 1차 MVP에서 실제로 되는 것
 
 1. **돌봄 대시보드** — 현재 복용약, 복용량·횟수·기간, 7일 기록, 의료진 질문을 한 화면에서 확인
@@ -94,11 +102,12 @@ care-atlas/
 ## 기술 구성
 
 - Next.js 16 App Router, React 19, TypeScript
-- Firebase 프로젝트: `care-atlas-seoul-2026`
+- Firebase 프로젝트: `care-atlas-seoul-2026-v2`
 - Cloud Firestore: 서울 `asia-northeast3`
 - Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
 - Google OAuth 2.0, `jose` 기반 서명 세션, Cloudflare 호환 Edge Middleware
 - OpenAI Responses API, 식약처·HIRA Open API
+- 화면 조회는 bounded read model 한 문서로 통합하고 원본 이벤트는 하위 컬렉션에 보존
 - Zod 입력 검증, Lucide SVG 아이콘
 - Noto Sans KR, 딥그린·세이지 기반 접근성 디자인 시스템
 
@@ -131,12 +140,10 @@ npm run dev
 | `/profile` | 돌봄 대상자 최소 프로필 관리 |
 | `/report` | 출력 가능한 최근 7일 Care Report |
 
-Google 로그인을 사용하려면 `front/.env.local`에 세션 비밀키와 Google OAuth 웹 클라이언트 정보를 설정합니다. Google Cloud Console의 승인된 리디렉션 URI에는 로컬 개발 기준 `http://localhost:3000/api/auth/google/callback`을 등록하세요. 설정하지 않아도 데모 로그인은 동작합니다.
+Google 로그인은 `care-atlas-seoul-2026-v2` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키만 `front/.env.local`에 설정합니다. 설정하지 않아도 데모 로그인은 동작합니다.
 
 ```bash
 SESSION_SECRET=openssl_rand_base64_32로_생성한_값
-GOOGLE_CLIENT_ID=Google_OAuth_클라이언트_ID
-GOOGLE_CLIENT_SECRET=Google_OAuth_클라이언트_보안_비밀번호
 ```
 
 식약처 공식 약물 정보를 검색하려면 `front/.env.local`에 공공데이터포털 인증키를 설정합니다. 이 값은 서버에서만 사용되며 `.env*`는 `.gitignore`로 커밋 대상에서 제외됩니다.

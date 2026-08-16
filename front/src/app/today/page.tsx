@@ -16,7 +16,6 @@ import {
   DEMO_RECIPIENT_ID,
   getCareSnapshot,
   getOrCreateQuestionSet,
-  getTodayDailyCheckIn,
 } from "@care-atlas/backend";
 import type { DailyCheckIn } from "@care-atlas/backend";
 
@@ -35,10 +34,8 @@ const seoulDateFormatter = new Intl.DateTimeFormat("en-CA", {
 });
 
 export default async function TodayPage() {
-  const [snapshot, todayCheckIn] = await Promise.all([
-    getCareSnapshot(),
-    getTodayDailyCheckIn(),
-  ]);
+  const snapshot = await getCareSnapshot();
+  const todayCheckIn = snapshot.todayCheckIn ?? null;
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
   const questionSet = await getOrCreateQuestionSet({
     recipientId: DEMO_RECIPIENT_ID,
