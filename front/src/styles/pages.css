@@ -1109,6 +1109,10 @@
   font-size: 0.8rem;
 }
 
+.dose-question {
+  container-type: inline-size;
+}
+
 .dose-question__meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1140,7 +1144,37 @@
 .dose-choice-grid .choice-card {
   min-height: 4rem;
   justify-content: center;
+  overflow-wrap: normal;
   text-align: center;
+  word-break: keep-all;
+}
+
+@container (max-width: 46rem) {
+  .dose-choice-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .dose-choice-grid .choice-card:nth-child(-n + 3) {
+    grid-column: span 2;
+  }
+
+  .dose-choice-grid .choice-card:nth-child(n + 4) {
+    grid-column: span 3;
+  }
+}
+
+@container (max-width: 30rem) {
+  .dose-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dose-choice-grid .choice-card:nth-child(n) {
+    grid-column: span 1;
+  }
+
+  .dose-choice-grid .choice-card:last-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .checkin-aside {
@@ -1971,10 +2005,6 @@
   .medication-detail-page__side {
     position: static;
   }
-
-  .dose-choice-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 720px) {
@@ -2007,10 +2037,6 @@
   .today-task > .badge {
     grid-column: 3;
     justify-self: start;
-  }
-
-  .dose-choice-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dose-question__meta {
