@@ -84,7 +84,7 @@ export default async function TodayPage() {
             />
           </Card>
 
-          <Card>
+          <Card className="today-tasks-card">
             <div className="section-heading">
               <div>
                 <h2>오늘 해야 하는 일</h2>

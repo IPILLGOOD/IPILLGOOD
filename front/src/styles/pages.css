@@ -2006,6 +2006,34 @@
 }
 
 @media (max-width: 720px) {
+  .today-workspace {
+    grid-template-areas:
+      "progress"
+      "checklist"
+      "tasks"
+      "actions";
+  }
+
+  .today-workspace__main {
+    display: contents;
+  }
+
+  .today-progress-card {
+    grid-area: progress;
+  }
+
+  .today-checklist {
+    grid-area: checklist;
+  }
+
+  .today-tasks-card {
+    grid-area: tasks;
+  }
+
+  .today-quick-actions {
+    grid-area: actions;
+  }
+
   .today-card__content,
   .medication-detail {
     grid-template-columns: 1fr;
