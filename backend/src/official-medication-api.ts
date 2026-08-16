@@ -36,9 +36,16 @@ export type PharmacogenomicLookupResult =
       plainLanguageStatus: "complete" | "not_configured" | "unavailable";
     }
   | {
-      status: "not_configured" | "unavailable";
+      status: "unavailable";
       items: [];
       totalCount: 0;
+      sourceUrl: string;
+      message: string;
+    }
+  | {
+      status: "local_fallback";
+      items: PharmacogenomicInfo[];
+      totalCount: number;
       sourceUrl: string;
       message: string;
     };
@@ -80,6 +87,81 @@ function asString(value: unknown): string {
 function asNumber(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const localMedicationAliases: Record<string, string[]> = {
+  "med-amlodipine": ["amlodipine", "norvasc"],
+  "med-celecoxib": ["celecoxib", "celebrex"],
+  "med-atorvastatin": ["atorvastatin", "lipitor"],
+};
+
+const localMedicationEnglishNames: Record<string, string> = {
+  "med-amlodipine": "Amlodipine",
+  "med-celecoxib": "Celecoxib",
+  "med-atorvastatin": "Atorvastatin",
+};
+
+const localMedicationCatalog = [
+  {
+    id: "med-amlodipine",
+    productName: "노바스크정 5mg",
+    ingredientName: "암로디핀",
+    descriptionPlain: "혈관을 편안하게 넓혀 심장과 혈관의 부담을 덜어주는 데 사용되는 약이에요.",
+    doseAmount: "한 번에 1정",
+    frequency: "하루 1회",
+    timing: "아침 식사 후",
+  },
+  {
+    id: "med-celecoxib",
+    productName: "쎄레브렉스캡슐 100mg",
+    ingredientName: "세레콕시브",
+    descriptionPlain: "아프고 붓는 반응을 줄여 움직일 때의 불편함을 덜어주는 약이에요.",
+    doseAmount: "한 번에 1캡슐",
+    frequency: "하루 2회",
+    timing: "아침·저녁 식사 후",
+  },
+  {
+    id: "med-atorvastatin",
+    productName: "리피토정 10mg",
+    ingredientName: "아토르바스타틴",
+    descriptionPlain: "혈관 건강을 위해 혈액 속 기름 성분이 쌓이지 않도록 돕는 약이에요.",
+    doseAmount: "한 번에 1정",
+    frequency: "하루 1회",
+    timing: "저녁 식사 후",
+  },
+] as const;
+
+function normalizeSearchValue(value: string) {
+  return value.toLocaleLowerCase("ko-KR").replace(/[\s_-]/g, "");
+}
+
+function searchLocalMedicationInfo(query: string): PharmacogenomicInfo[] {
+  const normalizedQuery = normalizeSearchValue(query);
+  if (!normalizedQuery) return [];
+
+  return localMedicationCatalog.flatMap((medication) => {
+    const candidates = [
+      medication.productName,
+      medication.ingredientName,
+      ...(localMedicationAliases[medication.id] ?? []),
+    ].map(normalizeSearchValue);
+    if (!candidates.some((candidate) => candidate.includes(normalizedQuery))) return [];
+
+    return [
+      {
+        koreanName: medication.ingredientName,
+        englishName: localMedicationEnglishNames[medication.id] ?? "",
+        pharmacogenomicInfo: "",
+        generalInfo: medication.descriptionPlain,
+        productInfo: [
+          medication.productName,
+          medication.doseAmount,
+          medication.frequency,
+          medication.timing,
+        ].join(" · "),
+      },
+    ];
+  });
 }
 
 function parsePayload(payload: string, format: DataFormat): unknown {
@@ -151,12 +233,13 @@ export async function searchPharmacogenomicInfo(
 ): Promise<PharmacogenomicLookupResult> {
   const apiKey = options.apiKey ?? process.env.MFDS_PARMGEN_API_KEY;
   if (!apiKey) {
+    const items = searchLocalMedicationInfo(medicationName);
     return {
-      status: "not_configured",
-      items: [],
-      totalCount: 0,
+      status: "local_fallback",
+      items,
+      totalCount: items.length,
       sourceUrl: SOURCE_URL,
-      message: "공식 약물 정보 API 키가 설정되지 않았어요.",
+      message: "공식 API 키가 없어 현재 등록된 복용약의 데모 정보에서 검색했어요.",
     };
   }
 
