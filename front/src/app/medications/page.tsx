@@ -110,11 +110,10 @@ export default async function MedicationsPage({
         ))}
       </div>
 
-      <Card tone="soft" className="safety-strip">
-        <strong>꼭 기억해주세요.</strong>
+      <Card tone="warning" className="safety-strip">
         <p>
-          이 설명은 공식 정보의 이해를 돕기 위한 일반적인 안내예요. 약을 임의로 끊거나 양과
-          횟수를 바꾸지 말고, 궁금한 점은 의사나 약사에게 확인해주세요.
+          <strong>꼭 기억해주세요.</strong> 일반 안내이므로 약을 임의로 끊거나 양·횟수를
+          바꾸지 말고, 의사나 약사에게 확인해주세요.
         </p>
       </Card>
     </>
