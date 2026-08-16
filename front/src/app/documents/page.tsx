@@ -3,7 +3,6 @@ import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot } from "@care-atlas/backend";
 import { formatDate } from "@/lib/presentation";
@@ -18,7 +17,6 @@ export default async function DocumentsPage() {
         eyebrow="문서 등록"
         title="처방전과 진단서를 쉬운 말로 확인해요"
         description="문서를 첨부하면 중요한 내용을 정리하고, 진단서는 공식 질병 API를 우선 조회한 뒤 필요할 때 OpenAI 웹 검색으로 보완해요."
-        action={<ConnectionStatus source={snapshot.dataSource} />}
       />
 
       <div className="document-layout">

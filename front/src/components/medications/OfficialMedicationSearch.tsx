@@ -1,4 +1,4 @@
-import { Database, ExternalLink, Search, ShieldCheck } from "lucide-react";
+import { Database, Search, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -26,15 +26,6 @@ export function OfficialMedicationSearch({
             <p>약물의 한글명 또는 영문명으로 공식 등록 정보를 확인하세요.</p>
           </div>
         </div>
-        <a
-          className="official-drug-card__source"
-          href={result?.sourceUrl ?? "https://www.data.go.kr/data/15102548/openapi.do"}
-          target="_blank"
-          rel="noreferrer"
-        >
-          공공데이터포털
-          <ExternalLink size={14} aria-hidden="true" />
-        </a>
       </div>
 
       <form className="official-drug-search" role="search" method="get">

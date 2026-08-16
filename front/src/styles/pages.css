@@ -662,7 +662,6 @@
 .official-drug-card__header,
 .official-drug-card__title,
 .official-drug-search__controls,
-.official-drug-card__source,
 .official-drug-card__guide {
   display: flex;
   align-items: center;
@@ -697,20 +696,6 @@
   border-radius: var(--radius-md);
   background: var(--color-primary-700);
   color: white;
-}
-
-.official-drug-card__source {
-  min-height: 2.75rem;
-  flex: 0 0 auto;
-  gap: var(--space-1);
-  color: var(--color-primary-700);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.official-drug-card__source:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.2rem;
 }
 
 .official-drug-search__controls {
@@ -1109,6 +1094,10 @@
   font-size: 0.8rem;
 }
 
+.dose-question {
+  container-type: inline-size;
+}
+
 .dose-question__meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1140,7 +1129,37 @@
 .dose-choice-grid .choice-card {
   min-height: 4rem;
   justify-content: center;
+  overflow-wrap: normal;
   text-align: center;
+  word-break: keep-all;
+}
+
+@container (max-width: 46rem) {
+  .dose-choice-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .dose-choice-grid .choice-card:nth-child(-n + 3) {
+    grid-column: span 2;
+  }
+
+  .dose-choice-grid .choice-card:nth-child(n + 4) {
+    grid-column: span 3;
+  }
+}
+
+@container (max-width: 30rem) {
+  .dose-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dose-choice-grid .choice-card:nth-child(n) {
+    grid-column: span 1;
+  }
+
+  .dose-choice-grid .choice-card:last-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .checkin-aside {
@@ -1387,24 +1406,37 @@
 }
 
 .safety-strip {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
+  border-left: 4px solid var(--color-warning);
   margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: none;
 }
 
 .safety-strip strong {
-  flex: 0 0 auto;
-  color: var(--color-primary-900);
+  margin-right: var(--space-2);
+  color: var(--color-warning);
+  font-weight: 800;
 }
 
-.safety-strip p,
 .completion-panel p,
 .aside-note p,
 .profile-aside p,
 .report-limit p {
   margin-bottom: 0;
   color: var(--color-text-secondary);
+}
+
+.safety-strip p {
+  margin-bottom: 0;
+  color: var(--color-warning);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+@media (min-width: 1121px) {
+  .safety-strip p {
+    white-space: nowrap;
+  }
 }
 
 .completion-panel {
@@ -1971,10 +2003,6 @@
   .medication-detail-page__side {
     position: static;
   }
-
-  .dose-choice-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 720px) {
@@ -2009,10 +2037,6 @@
     justify-self: start;
   }
 
-  .dose-choice-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .dose-question__meta {
     grid-template-columns: 1fr;
   }
@@ -2030,11 +2054,6 @@
   .official-drug-search__controls {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .official-drug-card__source {
-    min-height: auto;
-    align-self: flex-start;
   }
 
   .official-drug-results li {
@@ -2090,7 +2109,6 @@
     gap: 0;
   }
 
-  .safety-strip,
   .report-medication-list li {
     align-items: flex-start;
     flex-direction: column;

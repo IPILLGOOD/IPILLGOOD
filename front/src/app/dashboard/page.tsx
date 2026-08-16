@@ -12,7 +12,6 @@ import { CareTimeline } from "@/components/dashboard/CareTimeline";
 import { MedicationSummaryList } from "@/components/dashboard/MedicationSummaryList";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot } from "@care-atlas/backend";
 import {
@@ -35,7 +34,6 @@ export default async function DashboardPage() {
         eyebrow="돌봄 대시보드"
         title={`${snapshot.recipient.displayName}의 최근 돌봄 기록`}
         description="현재 복용약, 최근 몸 상태와 다음 상담에서 물어볼 내용을 한눈에 확인하세요."
-        action={<ConnectionStatus source={snapshot.dataSource} />}
       />
 
       <div className="dashboard-grid">

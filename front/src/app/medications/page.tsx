@@ -3,7 +3,6 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { OfficialMedicationSearch } from "@/components/medications/OfficialMedicationSearch";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot, searchPharmacogenomicInfo } from "@care-atlas/backend";
@@ -30,7 +29,6 @@ export default async function MedicationsPage({
         eyebrow="현재 복용약"
         title="약 설명을 쉬운 말로 확인하세요"
         description="처방 목적을 추측하지 않고, 문서에서 확인된 복용법과 약의 일반적인 쓰임을 구분해 보여드려요."
-        action={<ConnectionStatus source={snapshot.dataSource} />}
       />
 
       <OfficialMedicationSearch query={query} result={officialMedicationResult} />
@@ -112,11 +110,10 @@ export default async function MedicationsPage({
         ))}
       </div>
 
-      <Card tone="soft" className="safety-strip">
-        <strong>꼭 기억해주세요.</strong>
+      <Card tone="warning" className="safety-strip">
         <p>
-          이 설명은 공식 정보의 이해를 돕기 위한 일반적인 안내예요. 약을 임의로 끊거나 양과
-          횟수를 바꾸지 말고, 궁금한 점은 의사나 약사에게 확인해주세요.
+          <strong>꼭 기억해주세요.</strong> 일반 안내이므로 약을 임의로 끊거나 양·횟수를
+          바꾸지 말고, 의사나 약사에게 확인해주세요.
         </p>
       </Card>
     </>
