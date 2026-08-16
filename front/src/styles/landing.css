@@ -28,6 +28,7 @@
 .landing-brand {
   display: inline-flex;
   width: max-content;
+  min-height: 2.75rem;
   align-items: center;
   gap: var(--space-3);
   border-radius: var(--radius-sm);
@@ -61,13 +62,19 @@
   transition: color 180ms ease, background-color 180ms ease;
 }
 
+.landing-nav a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+}
+
 .landing-nav a:hover {
   color: var(--color-primary-800);
 }
 
 .landing-header__cta {
   display: inline-flex;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   justify-self: end;
@@ -845,6 +852,7 @@
   z-index: 1;
   display: inline-flex;
   width: max-content;
+  min-height: 2.75rem;
   align-items: center;
   gap: var(--space-2);
   border-radius: var(--radius-sm);
