@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE_NAME = "care_atlas_session";
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   if (request.cookies.has(SESSION_COOKIE_NAME)) return NextResponse.next();
 
   const loginUrl = new URL("/login", request.url);
