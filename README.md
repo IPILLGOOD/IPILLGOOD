@@ -63,7 +63,7 @@ MFDS_PARMGEN_API_URL=https://apis.data.go.kr/1471000/ParmgenService
 MFDS_PARMGEN_API_KEY=공공데이터포털_일반_인증키
 ```
 
-진단서 분석과 질병 정보 조회를 활성화하려면 같은 파일에 다음 서버 전용 값을 설정합니다.
+문서 분석, 질병 정보 조회, 식약처 약물 정보의 쉬운 설명을 활성화하려면 같은 파일에 다음 서버 전용 값을 설정합니다.
 
 ```bash
 OPENAI_API_KEY=OpenAI_API_키
@@ -87,7 +87,7 @@ npm run firebase:deploy
 
 ## AI 연결 지점
 
-`front/.env.local`에 `AI_ANALYSIS_ENDPOINT`와 `AI_API_KEY`를 추가하면 [medication-analyzer.ts](backend/src/ai/medication-analyzer.ts)의 제공자 독립 인터페이스가 외부 분석 API를 호출합니다. 외부 분석 API가 없고 `OPENAI_API_KEY`가 있으면 OpenAI Responses API가 이미지/PDF를 분석합니다. 진단서는 건강보험심사평가원 질병정보 API를 먼저 확인하며, 공식 정보가 없을 때만 OpenAI 웹 검색으로 전환합니다. 키가 없을 때는 비식별 샘플로 전체 화면 흐름을 확인할 수 있습니다.
+`front/.env.local`에 `AI_ANALYSIS_ENDPOINT`와 `AI_API_KEY`를 추가하면 [medication-analyzer.ts](backend/src/ai/medication-analyzer.ts)의 제공자 독립 인터페이스가 외부 분석 API를 호출합니다. 외부 분석 API가 없고 `OPENAI_API_KEY`가 있으면 OpenAI Responses API가 이미지/PDF를 분석합니다. 진단서는 건강보험심사평가원 질병정보 API를 먼저 확인하며, 공식 정보가 없을 때만 OpenAI 웹 검색으로 전환합니다. 약 검색은 식약처 원문을 먼저 조회한 뒤 원문 내용만 GPT에 전달해 보호자용 쉬운 설명을 만듭니다. 키가 없거나 GPT 호출이 실패해도 식약처 원문은 유지됩니다.
 
 AI를 연결하더라도 다음 경계는 유지합니다.
 
