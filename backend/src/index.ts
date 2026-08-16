@@ -1,6 +1,7 @@
 export {
   DEMO_RECIPIENT_ID,
   getCareSnapshot,
+  getTodayDailyCheckIn,
   registerDocument,
   saveDailyCheckIn,
   updateRecipientProfile,
@@ -22,6 +23,7 @@ export type {
   ClinicalDocument,
   ClinicalDocumentType,
   ClinicianQuestion,
+  DailyCheckIn,
   DocumentAnalysis,
   DoseEvent,
   DoseResponse,

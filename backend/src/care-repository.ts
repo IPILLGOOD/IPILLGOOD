@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import demoSeed from "./data/demo-seed.json";
 import type {
@@ -7,6 +7,7 @@ import type {
   ClinicalDocument,
   ClinicalDocumentType,
   ClinicianQuestion,
+  DailyCheckIn,
   DoseEvent,
   MedicationPlan,
   SymptomEvent,
@@ -19,6 +20,15 @@ export const DEMO_RECIPIENT_ID = "demo-kim-yeonghui";
 type DemoSeed = Omit<CareSnapshot, "dataSource">;
 
 const seed = demoSeed as DemoSeed;
+
+function dateKeyInSeoul(value: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
 
 function byDateDescending<T>(field: keyof T) {
   return (a: T, b: T) =>
@@ -100,6 +110,23 @@ export async function updateRecipientProfile(recipient: CareRecipient) {
     .set(recipient, { merge: true });
 }
 
+export async function getTodayDailyCheckIn(): Promise<DailyCheckIn | null> {
+  try {
+    await ensureDemoData();
+    const dateKey = dateKeyInSeoul(new Date());
+    const document = await firestore
+      .collection("careRecipients")
+      .doc(DEMO_RECIPIENT_ID)
+      .collection("dailyCheckIns")
+      .doc(dateKey)
+      .get();
+    return document.exists ? (document.data() as DailyCheckIn) : null;
+  } catch (error) {
+    console.error("Daily check-in unavailable", error);
+    return null;
+  }
+}
+
 export async function saveDailyCheckIn(input: {
   doseResponses: Array<Pick<DoseEvent, "medicationPlanId" | "response" | "scheduledAt">>;
   symptoms: string[];
@@ -109,16 +136,16 @@ export async function saveDailyCheckIn(input: {
 }) {
   const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
   const now = new Date().toISOString();
-  const dateKey = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  const dateKey = dateKeyInSeoul(new Date());
+  const currentSymptomEvents = await recipientRef.collection("symptomEvents").get();
   const batch = firestore.batch();
 
   for (const response of input.doseResponses) {
-    const eventRef = recipientRef.collection("doseEvents").doc(randomUUID());
+    const medicationKey = response.medicationPlanId.replace(/[^a-zA-Z0-9_-]/g, "-");
+    const timeKey = response.scheduledAt.slice(11, 16).replace(":", "");
+    const eventRef = recipientRef
+      .collection("doseEvents")
+      .doc(`${dateKey}-${medicationKey}-${timeKey}`);
     batch.set(eventRef, {
       id: eventRef.id,
       medicationPlanId: response.medicationPlanId,
@@ -126,11 +153,21 @@ export async function saveDailyCheckIn(input: {
       response: response.response,
       answeredBy: input.answeredBy,
       answeredAt: now,
-    } satisfies DoseEvent);
+    } satisfies DoseEvent, { merge: true });
+  }
+
+  for (const document of currentSymptomEvents.docs) {
+    const event = document.data() as SymptomEvent;
+    if (dateKeyInSeoul(new Date(event.occurredAt)) === dateKey) {
+      batch.delete(document.ref);
+    }
   }
 
   for (const symptom of input.symptoms) {
-    const symptomRef = recipientRef.collection("symptomEvents").doc(randomUUID());
+    const symptomKey = createHash("sha256").update(symptom).digest("hex").slice(0, 12);
+    const symptomRef = recipientRef
+      .collection("symptomEvents")
+      .doc(`${dateKey}-${symptomKey}`);
     batch.set(symptomRef, {
       id: symptomRef.id,
       symptomType: symptom,
@@ -151,8 +188,9 @@ export async function saveDailyCheckIn(input: {
     completedBy: input.answeredBy,
     medicationResponses: input.doseResponses,
     symptoms: input.symptoms,
+    severity: input.severity,
     note: input.note,
-  });
+  } satisfies DailyCheckIn);
   await batch.commit();
 }
 

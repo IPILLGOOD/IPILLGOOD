@@ -116,15 +116,18 @@ export function createMedicationSchedule(
         (event) =>
           event.medicationPlanId === medication.id && event.scheduledAt.slice(0, 10) === dateKey,
       )
-      .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+      .sort((a, b) =>
+        String(b.answeredAt ?? b.scheduledAt).localeCompare(
+          String(a.answeredAt ?? a.scheduledAt),
+        ),
+      );
 
     slots.forEach((slotLabel, index) => {
       const timeLabel = timeForSlot(slotLabel, index, rule.count);
       const scheduledAt = `${dateKey}T${timeLabel}:00+09:00`;
       const exactEvent = eventsForMedication.find(
-        (event) => event.scheduledAt.slice(11, 13) === timeLabel.slice(0, 2),
+        (event) => event.scheduledAt.slice(11, 16) === timeLabel,
       );
-      const event = exactEvent ?? eventsForMedication[index];
 
       tasks.push({
         id: `${medication.id}__${index}`,
@@ -136,7 +139,7 @@ export function createMedicationSchedule(
         slotLabel,
         timeLabel,
         scheduledAt,
-        response: event?.response ?? "not_yet",
+        response: exactEvent?.response ?? "not_yet",
       });
     });
   }
