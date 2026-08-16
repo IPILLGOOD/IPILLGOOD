@@ -1,6 +1,7 @@
 import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
 
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
+import { DeleteDocumentButton } from "@/components/documents/DeleteDocumentButton";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -61,6 +62,10 @@ export default async function DocumentsPage() {
                       <Badge tone={confirmed ? "success" : "warning"}>
                         {confirmed ? "분석 완료" : "분석 대기"}
                       </Badge>
+                      <DeleteDocumentButton
+                        documentId={document.id}
+                        fileName={document.fileName}
+                      />
                       {document.analysis ? (
                         <details className="saved-analysis">
                           <summary>분석 결과 보기</summary>

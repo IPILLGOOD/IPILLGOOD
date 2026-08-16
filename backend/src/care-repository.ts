@@ -394,3 +394,30 @@ export async function registerDocument(scope: CareDataScope, input: {
   await batch.commit();
   return document;
 }
+
+export async function deleteDocument(
+  scope: CareDataScope,
+  documentId: string,
+  currentSnapshot?: CareSnapshot,
+) {
+  assertValidScope(scope);
+  const firestore = await getAdminFirestore();
+  const snapshot =
+    currentSnapshot ??
+    fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  const document = snapshot.documents.find((item) => item.id === documentId);
+  if (!document) throw new Error("삭제할 문서를 찾지 못했어요.");
+
+  const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
+  const nextSnapshot: CareSnapshot = {
+    ...snapshot,
+    documents: snapshot.documents.filter((item) => item.id !== documentId),
+  };
+  const batch = firestore.batch();
+  batch.delete(recipientRef.collection("clinicalDocuments").doc(document.id));
+  batch.set(
+    readModelRef(firestore, scope.recipientId),
+    toStoredReadModel(nextSnapshot),
+  );
+  await batch.commit();
+}

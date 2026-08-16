@@ -1392,11 +1392,48 @@
 
 .document-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-3);
   border-top: 1px solid var(--color-border);
   padding-top: var(--space-4);
+}
+
+.document-delete-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.document-delete-error {
+  color: var(--color-danger);
+  font-size: 0.75rem;
+}
+
+.document-delete-button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-danger);
+  padding: var(--space-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.document-delete-button:hover {
+  background: var(--color-danger-bg);
+}
+
+.document-delete-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .document-item:first-child {
@@ -2237,6 +2274,11 @@
   }
 
   .document-item .badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .document-delete-form {
     grid-column: 2;
     justify-self: start;
   }

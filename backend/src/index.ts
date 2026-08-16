@@ -1,5 +1,6 @@
 export {
   DEMO_RECIPIENT_ID,
+  deleteDocument,
   getCareSnapshot,
   getPatientQuestionSet,
   getTodayDailyCheckIn,
