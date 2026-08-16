@@ -68,6 +68,8 @@ Care Atlas는 노인이 병원이나 약국에서 받은 처방전·복약안내
 
 노인은 여러 약을 동시에 복용하는 경우가 많고, 나이에 따른 신체 변화가 약물의 작용과 배출에 영향을 줄 수 있다. FDA와 미국 국립노화연구소도 고령자의 다약제 복용, 상호작용, 부작용, 최신 약 목록 관리의 중요성을 안내한다. [FDA 고령자 복약 안전 안내](https://www.fda.gov/consumers/consumer-updates/5-medication-safety-tips-older-adults), [NIA 고령자 복약관리 안내](https://www.nia.nih.gov/health/medicines-and-medication-management/taking-medicines-safely-you-age)
 
+국내 고령화, 가족 돌봄, 장기 복약, 건강정보 이해, 낙상 및 공식 의약품 안전정보에 관한 통계와 출처는 [Care Atlas 문제 정의 및 필요성 근거 자료](Care_Atlas_근거자료.md)에 정리했다.
+
 ---
 
 ## 3. 핵심 사용자
