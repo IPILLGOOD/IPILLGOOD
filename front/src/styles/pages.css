@@ -542,6 +542,200 @@
   gap: var(--space-4);
 }
 
+.official-drug-card {
+  display: grid;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.official-drug-card__header,
+.official-drug-card__title,
+.official-drug-search__controls,
+.official-drug-card__source,
+.official-drug-card__guide {
+  display: flex;
+  align-items: center;
+}
+
+.official-drug-card__header {
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.official-drug-card__title {
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.official-drug-card__title h2 {
+  margin-bottom: 0;
+}
+
+.official-drug-card__title p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.official-drug-card__icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-700);
+  color: white;
+}
+
+.official-drug-card__source {
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  color: var(--color-primary-700);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.official-drug-card__source:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+.official-drug-search__controls {
+  align-items: stretch;
+  gap: var(--space-3);
+}
+
+.official-drug-search__controls input {
+  min-width: 0;
+}
+
+.official-drug-search__controls .button {
+  flex: 0 0 auto;
+}
+
+.official-drug-card__guide {
+  align-items: flex-start;
+  gap: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-sage-50);
+  color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-4);
+}
+
+.official-drug-card__guide svg {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+  color: var(--color-primary-700);
+}
+
+.official-drug-card__guide p,
+.official-drug-message p,
+.official-drug-results__notice {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.official-drug-message {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  color: var(--color-text-secondary);
+  padding: var(--space-4);
+}
+
+.official-drug-message strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--color-primary-900);
+}
+
+.official-drug-message--warning {
+  border-color: #ead7a8;
+  background: var(--color-warning-bg);
+}
+
+.official-drug-message--error {
+  border-color: #ecc8c2;
+  background: var(--color-danger-bg);
+}
+
+.official-drug-results {
+  display: grid;
+  gap: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-5);
+}
+
+.official-drug-results__count {
+  margin: 0;
+  color: var(--color-primary-900);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.official-drug-results ul {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.official-drug-results li {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.35fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.official-drug-result__name h3 {
+  margin-bottom: var(--space-1);
+}
+
+.official-drug-result__name p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.official-drug-result__details {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+}
+
+.official-drug-result__details details {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+.official-drug-result__details details:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.official-drug-result__details summary {
+  color: var(--color-primary-800);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.official-drug-result__details p {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  white-space: pre-line;
+}
+
+.official-drug-results__notice {
+  color: var(--color-text-muted);
+}
+
 .medication-detail {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(16rem, 0.8fr);
@@ -1546,6 +1740,22 @@
 
   .dose-question__meta {
     grid-template-columns: 1fr;
+  }
+
+  .official-drug-card__header,
+  .official-drug-search__controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .official-drug-card__source {
+    min-height: auto;
+    align-self: flex-start;
+  }
+
+  .official-drug-results li {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
   }
 
   .medication-row {
