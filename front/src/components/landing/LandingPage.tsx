@@ -4,9 +4,11 @@ import {
   Check,
   FileHeart,
   FileSearch,
+  HeartPulse,
   ListChecks,
   LockKeyhole,
   MessageCircleQuestion,
+  Pill,
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
@@ -29,10 +31,10 @@ export function LandingPage() {
         <section className="landing-hero">
           <div className="landing-container landing-hero__grid">
             <div className="landing-hero__copy">
-              <p className="landing-kicker"><ShieldCheck size={16} aria-hidden="true" /> 보호자를 위한 복약·돌봄 기록</p>
-              <h1>약을 챙기는 일을,<br /><span>돌봄을 이어가는 기록으로.</span></h1>
+              <p className="landing-kicker"><ShieldCheck size={16} aria-hidden="true" /> 보호자 중심 복약·웰니스 컨설턴트</p>
+              <h1>처방전 한 장을,<br /><span>오늘의 돌봄으로.</span></h1>
               <p className="landing-hero__lead">
-                처방전 한 장을 오늘의 복약 대시보드로 바꾸고, 매일의 짧은 답변을 다음 진료에 가져갈 기록으로 쌓아보세요.
+                어려운 약 정보는 이해하기 쉽게, 매일의 복약과 몸 상태는 놓치지 않게. 다음 진료에 가져갈 기록까지 하나의 흐름으로 연결합니다.
               </p>
               <div className="landing-hero__actions">
                 <Link className="landing-button landing-button--primary" href="/login">
@@ -52,6 +54,14 @@ export function LandingPage() {
               <span className="landing-hero__visual-label">처방 이후의 하루를 한눈에</span>
               <CareDashboardPreview />
             </div>
+          </div>
+        </section>
+
+        <section className="landing-proof" aria-label="제품 핵심 원칙">
+          <div className="landing-container landing-proof__items">
+            <div><strong>약 1분</strong><span>오늘의 복약·안부 확인</span></div>
+            <div><strong>원본 미저장</strong><span>업로드 문서는 처리 후 폐기</span></div>
+            <div><strong>인과 비단정</strong><span>기록은 상담 준비에만 활용</span></div>
           </div>
         </section>
 
@@ -85,6 +95,34 @@ export function LandingPage() {
                 </li>
               ))}
             </ol>
+          </div>
+        </section>
+
+        <section className="landing-features" aria-labelledby="features-title">
+          <div className="landing-container landing-features__grid">
+            <div className="landing-features__lead">
+              <p className="landing-section-label">실제 돌봄을 위한 설계</p>
+              <h2 id="features-title">보호자가 필요한 것만 한곳에</h2>
+              <p>현재 복용약, 오늘 일정, 최근 변화, 상담 질문이 서로 끊기지 않도록 설계했습니다.</p>
+              <form action="/api/auth/demo" method="post">
+                <button className="landing-feature-link" type="submit">돌봄 대시보드 체험 <ArrowRight size={17} aria-hidden="true" /></button>
+              </form>
+            </div>
+            <article className="landing-feature landing-feature--wide">
+              <Pill size={23} aria-hidden="true" /><span>복약 계획</span>
+              <h3>복용량·횟수·시점을 분리해 명확하게</h3>
+              <p>약의 일반적인 쓰임과 처방 문서에서 확인된 정보를 구분해 과도한 해석을 줄입니다.</p>
+            </article>
+            <article className="landing-feature">
+              <HeartPulse size={23} aria-hidden="true" /><span>Care Report</span>
+              <h3>기억 대신 기록으로 상담하기</h3>
+              <p>최근 7일의 복약 응답과 몸 상태를 한눈에 정리해요.</p>
+            </article>
+            <article className="landing-feature landing-feature--accent">
+              <ShieldCheck size={23} aria-hidden="true" /><span>공식 정보</span>
+              <h3>생성형 설명과 공식 근거를 분리</h3>
+              <p>식약처 정보 조회와 AI 설명의 역할을 명확히 나눴어요.</p>
+            </article>
           </div>
         </section>
 
