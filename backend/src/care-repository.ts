@@ -213,6 +213,8 @@ export async function registerDocument(input: {
     sourceLabel:
       input.analysis?.source === "api"
         ? "API 분석 완료 · 보호자 확인 필요"
+        : input.analysis?.source === "openai"
+          ? "OpenAI 분석 완료 · 보호자 확인 필요"
         : "비식별 데모 분석 · 원본과 확인 필요",
     size: input.size,
     analysis: input.analysis,
