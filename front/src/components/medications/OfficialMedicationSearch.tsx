@@ -2,6 +2,7 @@ import { Database, Search, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { MedicationResultExplanation } from "@/components/medications/MedicationResultExplanation";
 import type { PharmacogenomicLookupResult } from "@care-atlas/backend";
 
 export function OfficialMedicationSearch({
@@ -21,7 +22,7 @@ export function OfficialMedicationSearch({
           <div>
             <div className="medication-row__name">
               <h2 id="official-drug-title">식약처 공식 약물 유전 정보</h2>
-              <Badge tone="success">공공 API 연동</Badge>
+              <Badge tone="success">공공 API + GPT 설명</Badge>
             </div>
             <p>약물의 한글명 또는 영문명으로 공식 등록 정보를 확인하세요.</p>
           </div>
@@ -47,7 +48,7 @@ export function OfficialMedicationSearch({
             </button>
           </div>
           <p className="field-hint">
-            검색어와 API 인증키는 서버에서만 식품의약품안전처 API로 전달됩니다.
+            식약처 공식 결과만 서버에서 GPT에 전달하며, 어르신의 개인정보는 보내지 않아요.
           </p>
         </div>
       </form>
@@ -73,6 +74,24 @@ export function OfficialMedicationSearch({
         </div>
       ) : null}
 
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      result.plainLanguageStatus === "not_configured" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>쉬운 설명 연결 설정이 필요해요.</strong>
+          <p>OpenAI API 키가 없어 식약처 공식 원문을 그대로 보여드려요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      result.plainLanguageStatus === "unavailable" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>쉬운 설명을 잠시 만들지 못했어요.</strong>
+          <p>식약처 공식 원문은 정상적으로 불러왔어요. 잠시 후 다시 검색해주세요.</p>
+        </div>
+      ) : null}
+
       {query && result?.status === "connected" && result.items.length === 0 ? (
         <div className="official-drug-message" role="status">
           <strong>“{query}” 검색 결과가 없어요.</strong>
@@ -92,32 +111,16 @@ export function OfficialMedicationSearch({
                   <h3>{item.koreanName || item.englishName}</h3>
                   {item.koreanName && item.englishName ? <p>{item.englishName}</p> : null}
                 </div>
-                <div className="official-drug-result__details">
-                  {item.generalInfo ? (
-                    <details>
-                      <summary>일반 약물 정보</summary>
-                      <p>{item.generalInfo}</p>
-                    </details>
-                  ) : null}
-                  {item.pharmacogenomicInfo ? (
-                    <details>
-                      <summary>약물 유전 정보</summary>
-                      <p>{item.pharmacogenomicInfo}</p>
-                    </details>
-                  ) : null}
-                  {item.productInfo ? (
-                    <details>
-                      <summary>제품 정보</summary>
-                      <p>{item.productInfo}</p>
-                    </details>
-                  ) : null}
-                </div>
+                <MedicationResultExplanation
+                  item={item}
+                  resultId={`official-drug-${index}`}
+                />
               </li>
             ))}
           </ul>
           <p className="official-drug-results__notice">
-            식품의약품안전처 제공 정보이며, 개인의 유전자 검사 결과나 진료 판단을 대신하지
-            않아요.
+            식품의약품안전처 원문을 GPT가 쉬운 말로 정리한 설명이에요. 진단이나 복용 변경을
+            대신하지 않으며, 원문도 함께 확인할 수 있어요.
           </p>
         </div>
       ) : null}

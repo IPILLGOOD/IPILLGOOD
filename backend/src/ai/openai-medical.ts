@@ -5,6 +5,10 @@ import type {
 } from "openai/resources/responses/responses";
 
 import type { DiseaseInformation, DiseaseReference, DocumentAnalysis } from "../types";
+import type {
+  PharmacogenomicInfo,
+  PlainMedicationExplanation,
+} from "../official-medication-api";
 
 interface DocumentInput {
   documentType: "처방전" | "진단서";
@@ -19,6 +23,10 @@ interface DiseaseSearchPayload {
   overview: string;
   practicalPoints: string[];
   warningSigns: string[];
+}
+
+interface PlainMedicationPayload {
+  items: Array<PlainMedicationExplanation & { index: number }>;
 }
 
 const documentAnalysisSchema = {
@@ -77,16 +85,39 @@ const diseaseSearchSchema = {
   required: ["matchedName", "code", "overview", "practicalPoints", "warningSigns"],
 } as const;
 
-function getClient(): OpenAI {
+const plainMedicationSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          index: { type: "integer" },
+          overview: { type: "string" },
+          geneInfo: { type: "string" },
+          productInfo: { type: "string" },
+          caregiverNote: { type: "string" },
+        },
+        required: ["index", "overview", "geneInfo", "productInfo", "caregiverNote"],
+      },
+    },
+  },
+  required: ["items"],
+} as const;
+
+function getClient(apiKey = process.env.OPENAI_API_KEY): OpenAI {
   return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+    apiKey,
     timeout: 30_000,
     maxRetries: 1,
   });
 }
 
-function modelName(): string {
-  return process.env.OPENAI_MODEL ?? "gpt-5.6-terra";
+function modelName(model = process.env.OPENAI_MODEL): string {
+  return model ?? "gpt-5.6-terra";
 }
 
 function parseJson<T>(value: string, label: string): T {
@@ -272,4 +303,78 @@ export async function searchDiseaseWithOpenAI(
     sourceLabel: "OpenAI 웹 검색 · 의료기관/공공기관 출처",
     references,
   };
+}
+
+export async function simplifyMedicationInformationWithOpenAI(
+  items: PharmacogenomicInfo[],
+  options: { apiKey?: string; model?: string } = {},
+): Promise<PharmacogenomicInfo[]> {
+  if (items.length === 0) return items;
+
+  const sourceItems = items.slice(0, 10).map((item, index) => ({
+    index,
+    koreanName: item.koreanName,
+    englishName: item.englishName,
+    generalInfo: item.generalInfo.slice(0, 4_000),
+    pharmacogenomicInfo: item.pharmacogenomicInfo.slice(0, 4_000),
+    productInfo: item.productInfo.slice(0, 4_000),
+  }));
+  const response = await getClient(options.apiKey).responses.create({
+    model: modelName(options.model),
+    store: false,
+    reasoning: { effort: "low" },
+    instructions: [
+      "식약처 공식 약물 정보를 노인 보호자가 이해하기 쉬운 한국어로 바꾸는 설명자입니다.",
+      "제공된 원문 안의 사실만 사용하고 새로운 효능, 부작용, 복용법을 만들지 마세요.",
+      "중학생이 한 번에 이해할 수 있는 일상 표현만 사용하세요.",
+      "질병명, 의학 전문 용어, 유전자 기호, 검사 약어를 원문 그대로 나열하지 마세요.",
+      "전문명이 꼭 필요하면 쉬운 뜻을 먼저 쓰고 전문명은 괄호 안에 한 번만 적으세요.",
+      "예: 정맥혈전증은 '피가 굳어 혈관을 막는 문제', PT/INR은 '피가 굳는 데 걸리는 시간을 보는 혈액검사'로 설명하세요.",
+      "CYP2C9, VKORC1 같은 유전자 이름은 쓰지 말고 '몸이 약을 처리하는 타고난 차이'라고 설명하세요.",
+      "제품명과 성분명은 사용자가 확인해야 하므로 원문 이름을 유지해도 됩니다.",
+      "productInfo에는 제품명 목록이나 함량 숫자를 길게 나열하지 말고, 같은 성분의 여러 제품과 함량이 있다는 의미만 요약하세요.",
+      "caregiverNote에는 원문 속 권장 용량 숫자를 반복하지 말고 처방전에 적힌 양을 따르며 의료진에게 확인하라고 안내하세요.",
+      "유전자 정보가 원문에 없으면 geneInfo는 빈 문자열로 반환하세요.",
+      "약을 끊거나 양을 바꾸라는 지시는 하지 말고, 판단이 필요한 내용은 의사나 약사에게 확인하도록 안내하세요.",
+      "각 설명은 짧은 문장 2~3개 이내로 작성하세요.",
+    ].join("\n"),
+    input: JSON.stringify(sourceItems),
+    text: {
+      verbosity: "low",
+      format: {
+        type: "json_schema",
+        name: "plain_medication_information",
+        strict: true,
+        schema: plainMedicationSchema,
+      },
+    },
+  });
+
+  const parsed = parseJson<PlainMedicationPayload>(response.output_text, "약물 쉬운 설명");
+  const explanations = new Map(
+    parsed.items
+      .filter(
+        (item) =>
+          Number.isInteger(item.index) && item.index >= 0 && item.index < sourceItems.length,
+      )
+      .map((item) => [item.index, item]),
+  );
+
+  const enrichedItems = items.map((item, index) => {
+    const explanation = explanations.get(index);
+    if (!explanation) return item;
+    return {
+      ...item,
+      plainExplanation: {
+        overview: explanation.overview.trim(),
+        geneInfo: explanation.geneInfo.trim(),
+        productInfo: explanation.productInfo.trim(),
+        caregiverNote: explanation.caregiverNote.trim(),
+      },
+    };
+  });
+  if (enrichedItems.slice(0, sourceItems.length).some((item) => !item.plainExplanation)) {
+    throw new Error("약물 쉬운 설명 일부가 누락됐습니다.");
+  }
+  return enrichedItems;
 }

@@ -15,6 +15,7 @@ export {
   searchPharmacogenomicInfo,
   type PharmacogenomicInfo,
   type PharmacogenomicLookupResult,
+  type PlainMedicationExplanation,
 } from "./official-medication-api";
 export {
   searchOfficialDiseaseInfo,
