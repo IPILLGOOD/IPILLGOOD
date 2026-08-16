@@ -35,4 +35,4 @@ for (const [collectionName, documents] of collections) {
 }
 
 await batch.commit();
-console.log(`Seeded Care Atlas demo data to ${projectId}.`);
+console.log(`Seeded IPILLGOOD demo data to ${projectId}.`);

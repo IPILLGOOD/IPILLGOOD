@@ -8,7 +8,7 @@ const medicationTasks = [
 
 export function CareDashboardPreview() {
   return (
-    <div className="landing-preview" aria-label="Care Atlas 오늘의 돌봄 화면 예시">
+    <div className="landing-preview" aria-label="IPILLGOOD 오늘의 돌봄 화면 예시">
       <div className="landing-preview__topbar">
         <span className="landing-preview__dots" aria-hidden="true"><i /><i /><i /></span>
         <span>오늘의 돌봄</span>

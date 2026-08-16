@@ -5,9 +5,9 @@ export function LandingHeader() {
   return (
     <header className="landing-header">
       <div className="landing-container landing-header__inner">
-        <Link className="landing-brand" href="/" aria-label="Care Atlas 홈">
+        <Link className="landing-brand" href="/" aria-label="IPILLGOOD 홈">
           <span className="landing-brand__mark" aria-hidden="true"><HeartPulse size={20} strokeWidth={2.2} /></span>
-          <strong>Care Atlas</strong>
+          <strong>IPILLGOOD</strong>
         </Link>
         <nav className="landing-nav" aria-label="랜딩 페이지 메뉴">
           <a href="#how-it-works">이용 방법</a>

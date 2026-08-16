@@ -6,7 +6,7 @@ import { getSession } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
   title: "로그인",
-  description: "Google 계정 또는 비식별 데모로 Care Atlas를 시작하세요.",
+  description: "Google 계정 또는 비식별 데모로 IPILLGOOD를 시작하세요.",
 };
 
 const errorMessages: Record<string, string> = {

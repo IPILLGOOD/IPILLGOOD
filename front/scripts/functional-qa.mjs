@@ -1,13 +1,13 @@
 import { pathToFileURL } from "node:url";
 
-const playwrightEntry = process.env.CARE_ATLAS_PLAYWRIGHT;
-if (!playwrightEntry) throw new Error("CARE_ATLAS_PLAYWRIGHT is required");
-const baseUrl = process.env.CARE_ATLAS_BASE_URL ?? "http://127.0.0.1:3000";
+const playwrightEntry = process.env.IPILLGOOD_PLAYWRIGHT;
+if (!playwrightEntry) throw new Error("IPILLGOOD_PLAYWRIGHT is required");
+const baseUrl = process.env.IPILLGOOD_BASE_URL ?? "http://127.0.0.1:3000";
 const { chromium } = await import(pathToFileURL(playwrightEntry).href);
 const browser = await chromium.launch({
   headless: true,
   executablePath:
-    process.env.CARE_ATLAS_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    process.env.IPILLGOOD_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 });
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 

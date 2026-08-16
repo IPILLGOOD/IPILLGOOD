@@ -324,7 +324,7 @@ export async function simplifyMedicationInformationWithOpenAI(
     store: false,
     reasoning: { effort: "low" },
     instructions: [
-      "식약처 공식 약물 정보를 노인 보호자가 이해하기 쉬운 한국어로 바꾸는 설명자입니다.",
+      "식약처 공식 약물 정보를 고령자 보호자가 이해하기 쉬운 한국어로 바꾸는 설명자입니다.",
       "제공된 원문 안의 사실만 사용하고 새로운 효능, 부작용, 복용법을 만들지 마세요.",
       "중학생이 한 번에 이해할 수 있는 일상 표현만 사용하세요.",
       "질병명, 의학 전문 용어, 유전자 기호, 검사 약어를 원문 그대로 나열하지 마세요.",

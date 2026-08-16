@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     return Response.json({ message: "로그인이 필요해요." }, { status: 401 });
   }
 
-  if (process.env.CARE_ATLAS_DEMO_MODE !== "true") {
+  if (process.env.IPILLGOOD_DEMO_MODE !== "true") {
     return Response.json(
       { message: "현재는 읽기 전용 모드예요. 인증 연결 후 분석을 활성화해주세요." },
       { status: 403 },
