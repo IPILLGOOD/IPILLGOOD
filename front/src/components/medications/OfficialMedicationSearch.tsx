@@ -21,7 +21,9 @@ export function OfficialMedicationSearch({
           <div>
             <div className="medication-row__name">
               <h2 id="official-drug-title">식약처 공식 약물 유전 정보</h2>
-              <Badge tone="success">공공 API 연동</Badge>
+              <Badge tone={result?.status === "local_fallback" ? "neutral" : "success"}>
+                {result?.status === "local_fallback" ? "데모 복용약 검색" : "공공 API 연동"}
+              </Badge>
             </div>
             <p>약물의 한글명 또는 영문명으로 공식 등록 정보를 확인하세요.</p>
           </div>
@@ -38,7 +40,7 @@ export function OfficialMedicationSearch({
               type="search"
               maxLength={100}
               defaultValue={query}
-              placeholder="예: 와파린 또는 Warfarin"
+              placeholder="예: 암로디핀, 노바스크 또는 Amlodipine"
               autoComplete="off"
             />
             <button className="button button--primary" type="submit">
@@ -59,10 +61,10 @@ export function OfficialMedicationSearch({
         </div>
       ) : null}
 
-      {query && result?.status === "not_configured" ? (
+      {query && result?.status === "local_fallback" ? (
         <div className="official-drug-message official-drug-message--warning" role="status">
-          <strong>API 연결 설정이 필요해요.</strong>
-          <p>{result.message} 서버 환경변수 설정을 확인해주세요.</p>
+          <strong>현재 복용약 데모 정보에서 찾았어요.</strong>
+          <p>{result.message} 약물 유전 정보는 공식 API 연결 후 제공됩니다.</p>
         </div>
       ) : null}
 
@@ -73,14 +75,21 @@ export function OfficialMedicationSearch({
         </div>
       ) : null}
 
-      {query && result?.status === "connected" && result.items.length === 0 ? (
+      {query &&
+      (result?.status === "connected" || result?.status === "local_fallback") &&
+      result.items.length === 0 ? (
         <div className="official-drug-message" role="status">
           <strong>“{query}” 검색 결과가 없어요.</strong>
-          <p>제품명이 아닌 성분명이나 영문 약물명으로 다시 검색해보세요.</p>
+          <p>
+            {result.status === "local_fallback"
+              ? "현재 등록된 복용약의 제품명이나 성분명으로 다시 검색해보세요."
+              : "제품명이 아닌 성분명이나 영문 약물명으로 다시 검색해보세요."}
+          </p>
         </div>
       ) : null}
 
-      {result?.status === "connected" && result.items.length > 0 ? (
+      {(result?.status === "connected" || result?.status === "local_fallback") &&
+      result.items.length > 0 ? (
         <div className="official-drug-results" aria-live="polite">
           <p className="official-drug-results__count">
             “{query}” 검색 결과 {result.totalCount.toLocaleString("ko-KR")}건
@@ -116,8 +125,9 @@ export function OfficialMedicationSearch({
             ))}
           </ul>
           <p className="official-drug-results__notice">
-            식품의약품안전처 제공 정보이며, 개인의 유전자 검사 결과나 진료 판단을 대신하지
-            않아요.
+            {result.status === "connected"
+              ? "식품의약품안전처 제공 정보이며, 개인의 유전자 검사 결과나 진료 판단을 대신하지 않아요."
+              : "현재 등록된 데모 복약 정보이며, 식약처 공식 약물 유전 정보가 아니에요."}
           </p>
         </div>
       ) : null}
