@@ -14,6 +14,7 @@ interface ApiEnvelope {
 export interface PharmacogenomicInfo {
   koreanName: string;
   englishName: string;
+  categoryPlain?: string;
   pharmacogenomicInfo: string;
   generalInfo: string;
   productInfo: string;
@@ -21,6 +22,7 @@ export interface PharmacogenomicInfo {
 }
 
 export interface PlainMedicationExplanation {
+  categoryPlain: string;
   overview: string;
   geneInfo: string;
   productInfo: string;
@@ -106,6 +108,7 @@ const localMedicationCatalog = [
     id: "med-amlodipine",
     productName: "노바스크정 5mg",
     ingredientName: "암로디핀",
+    categoryPlain: "혈압약",
     descriptionPlain: "혈관을 편안하게 넓혀 심장과 혈관의 부담을 덜어주는 데 사용되는 약이에요.",
     doseAmount: "한 번에 1정",
     frequency: "하루 1회",
@@ -115,6 +118,7 @@ const localMedicationCatalog = [
     id: "med-celecoxib",
     productName: "쎄레브렉스캡슐 100mg",
     ingredientName: "세레콕시브",
+    categoryPlain: "진통·소염제",
     descriptionPlain: "아프고 붓는 반응을 줄여 움직일 때의 불편함을 덜어주는 약이에요.",
     doseAmount: "한 번에 1캡슐",
     frequency: "하루 2회",
@@ -124,6 +128,7 @@ const localMedicationCatalog = [
     id: "med-atorvastatin",
     productName: "리피토정 10mg",
     ingredientName: "아토르바스타틴",
+    categoryPlain: "고지혈증약",
     descriptionPlain: "혈관 건강을 위해 혈액 속 기름 성분이 쌓이지 않도록 돕는 약이에요.",
     doseAmount: "한 번에 1정",
     frequency: "하루 1회",
@@ -151,6 +156,7 @@ function searchLocalMedicationInfo(query: string): PharmacogenomicInfo[] {
       {
         koreanName: medication.ingredientName,
         englishName: localMedicationEnglishNames[medication.id] ?? "",
+        categoryPlain: medication.categoryPlain,
         pharmacogenomicInfo: "",
         generalInfo: medication.descriptionPlain,
         productInfo: [

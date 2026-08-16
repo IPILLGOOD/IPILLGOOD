@@ -11,6 +11,7 @@ export function MedicationResultExplanation({
   resultId: string;
 }) {
   const explanation = item.plainExplanation;
+  const category = explanation?.categoryPlain || item.categoryPlain || "분류 확인 필요";
 
   return (
     <div className="official-drug-result__details">
@@ -19,6 +20,7 @@ export function MedicationResultExplanation({
           <div className="plain-drug-explanation__heading">
             <Sparkles size={18} aria-hidden="true" />
             <h4 id={`${resultId}-plain-title`}>보호자가 이해하기 쉽게</h4>
+            <Badge tone="success">대분류 · {category}</Badge>
             <Badge tone="info">GPT 쉬운 설명</Badge>
           </div>
           <div className="plain-drug-explanation__content">
@@ -45,6 +47,13 @@ export function MedicationResultExplanation({
             <p className="plain-drug-explanation__note">{explanation.caregiverNote}</p>
           ) : null}
         </section>
+      ) : null}
+
+      {!explanation ? (
+        <div className="official-drug-result__category">
+          <span>약 대분류</span>
+          <Badge tone={item.categoryPlain ? "success" : "neutral"}>{category}</Badge>
+        </div>
       ) : null}
 
       <details className="official-drug-result__original" open={!explanation}>

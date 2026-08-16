@@ -69,6 +69,7 @@ test("키가 없으면 네트워크를 호출하지 않고 로컬 복용약을 �
   assert.equal(called, false);
   assert.equal(result.status, "local_fallback");
   assert.equal(result.items[0]?.englishName, "Amlodipine");
+  assert.equal(result.items[0]?.categoryPlain, "혈압약");
   assert.equal(result.items[0]?.pharmacogenomicInfo, "");
 });
 
@@ -131,6 +132,7 @@ test("공식 검색 결과를 쉬운 설명 생성기에 전달한다", async ()
       return items.map((item) => ({
         ...item,
         plainExplanation: {
+          categoryPlain: "항응고제",
           overview: "피가 굳는 속도를 조절하는 데 쓰이는 약의 정보예요.",
           geneInfo: "사람마다 약에 반응하는 정도가 다를 수 있다는 뜻이에요.",
           productInfo: "와파린 성분이 든 제품 목록이에요.",
@@ -144,6 +146,7 @@ test("공식 검색 결과를 쉬운 설명 생성기에 전달한다", async ()
   assert.equal(result.status, "connected");
   if (result.status !== "connected") return;
   assert.equal(result.plainLanguageStatus, "complete");
+  assert.equal(result.items[0]?.plainExplanation?.categoryPlain, "항응고제");
   assert.match(result.items[0]?.plainExplanation?.overview ?? "", /굳는 속도/);
 });
 
