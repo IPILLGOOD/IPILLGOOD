@@ -15,9 +15,9 @@ import type {
   PatientQuestionResponse,
   PatientQuestionSet,
   SymptomEvent,
-} from "./types";
+} from "./types.ts";
 
-import { getAdminFirestore } from "./firebase-admin";
+import { getAdminFirestore } from "./firebase-admin.ts";
 import {
   applyDailyCheckInToSnapshot,
   byDateDescending,
@@ -27,9 +27,15 @@ import {
   MAX_DOSE_EVENTS,
   MAX_SYMPTOM_EVENTS,
   type DailyCheckInInput,
-} from "./care-read-model";
+} from "./care-read-model.ts";
 
 export const DEMO_RECIPIENT_ID = "demo-kim-yeonghui";
+
+export type CareDataScope = {
+  recipientId: string;
+  initialDisplayName?: string;
+  useDemoData?: boolean;
+};
 
 const READ_MODEL_COLLECTION = "careReadModels";
 
@@ -59,14 +65,53 @@ function toStoredReadModel(snapshot: CareSnapshot): StoredCareReadModel {
   };
 }
 
-function fromStoredReadModel(model: StoredCareReadModel): CareSnapshot {
+function assertValidScope(scope: CareDataScope) {
+  if (!/^[^/]{1,256}$/.test(scope.recipientId)) {
+    throw new Error("올바르지 않은 돌봄 데이터 소유자 ID입니다.");
+  }
+}
+
+export function createInitialCareSnapshot(scope: CareDataScope): CareSnapshot {
+  assertValidScope(scope);
+  const now = new Date().toISOString();
   return {
-    recipient: model.recipient ?? seed.recipient,
-    medications: model.medications ?? seed.medications,
-    doseEvents: model.doseEvents ?? seed.doseEvents,
-    symptomEvents: model.symptomEvents ?? seed.symptomEvents,
-    documents: model.documents ?? seed.documents,
-    clinicianQuestions: model.clinicianQuestions ?? seed.clinicianQuestions,
+    recipient: {
+      id: scope.recipientId,
+      displayName: scope.initialDisplayName?.trim() || "돌봄 대상자",
+      ageBand: "65–69세",
+      allergies: [],
+      conditions: [],
+      mobilityNote: "",
+      accessibilityPreferences: [],
+      caregiverNote: "",
+      consentConfirmed: false,
+      lastConfirmedAt: now,
+    },
+    medications: [],
+    doseEvents: [],
+    symptomEvents: [],
+    documents: [],
+    clinicianQuestions: [],
+    todayCheckIn: null,
+    dataSource: "firestore",
+  };
+}
+
+function fallbackSnapshot(scope: CareDataScope) {
+  return scope.useDemoData
+    ? { ...seed, todayCheckIn: null, dataSource: "local-fallback" as const }
+    : { ...createInitialCareSnapshot(scope), dataSource: "local-fallback" as const };
+}
+
+function fromStoredReadModel(model: StoredCareReadModel, scope: CareDataScope): CareSnapshot {
+  const fallback = scope.useDemoData ? seed : createInitialCareSnapshot(scope);
+  return {
+    recipient: model.recipient ?? fallback.recipient,
+    medications: model.medications ?? fallback.medications,
+    doseEvents: model.doseEvents ?? fallback.doseEvents,
+    symptomEvents: model.symptomEvents ?? fallback.symptomEvents,
+    documents: model.documents ?? fallback.documents,
+    clinicianQuestions: model.clinicianQuestions ?? fallback.clinicianQuestions,
     todayCheckIn: currentDailyCheckIn(model.todayCheckIn),
     dataSource: "firestore",
   };
@@ -80,8 +125,11 @@ function seedSnapshot(): CareSnapshot {
   };
 }
 
-function readModelRef(firestore: Awaited<ReturnType<typeof getAdminFirestore>>) {
-  return firestore.collection(READ_MODEL_COLLECTION).doc(DEMO_RECIPIENT_ID);
+function readModelRef(
+  firestore: Awaited<ReturnType<typeof getAdminFirestore>>,
+  recipientId: string,
+) {
+  return firestore.collection(READ_MODEL_COLLECTION).doc(recipientId);
 }
 
 async function seedDemoData(firestore: Awaited<ReturnType<typeof getAdminFirestore>>) {
@@ -145,45 +193,61 @@ async function buildLegacyReadModel(
 
 async function getOrCreateReadModel(
   firestore: Awaited<ReturnType<typeof getAdminFirestore>>,
+  scope: CareDataScope,
 ) {
-  const ref = readModelRef(firestore);
+  assertValidScope(scope);
+  const ref = readModelRef(firestore, scope.recipientId);
   const existing = await ref.get();
   if (existing.exists) return existing.data() as StoredCareReadModel;
 
-  const model = await buildLegacyReadModel(firestore);
-  await ref.set(model);
+  if (scope.useDemoData && scope.recipientId === DEMO_RECIPIENT_ID) {
+    const model = await buildLegacyReadModel(firestore);
+    await ref.set(model);
+    return model;
+  }
+
+  const snapshot = createInitialCareSnapshot(scope);
+  const model = toStoredReadModel(snapshot);
+  const batch = firestore.batch();
+  batch.set(firestore.collection("careRecipients").doc(scope.recipientId), snapshot.recipient);
+  batch.set(ref, model);
+  await batch.commit();
   return model;
 }
 
-export async function getCareSnapshot(): Promise<CareSnapshot> {
+export async function getCareSnapshot(scope: CareDataScope): Promise<CareSnapshot> {
+  assertValidScope(scope);
   try {
     const firestore = await getAdminFirestore();
-    return fromStoredReadModel(await getOrCreateReadModel(firestore));
+    return fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
   } catch (error) {
     if (globalThis.navigator?.userAgent !== "Cloudflare-Workers") {
       console.error("Firestore unavailable; using demo fallback", error);
     }
-    return { ...seed, todayCheckIn: null, dataSource: "local-fallback" };
+    return fallbackSnapshot(scope);
   }
 }
 
 export async function updateRecipientProfile(
+  scope: CareDataScope,
   recipient: CareRecipient,
   currentSnapshot?: CareSnapshot,
 ) {
+  assertValidScope(scope);
+  if (recipient.id !== scope.recipientId) throw new Error("프로필 소유자가 일치하지 않습니다.");
   const firestore = await getAdminFirestore();
-  const snapshot = currentSnapshot ?? fromStoredReadModel(await getOrCreateReadModel(firestore));
-  const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
+  const snapshot = currentSnapshot ?? fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
   const batch = firestore.batch();
   batch.set(recipientRef, recipient);
-  batch.set(readModelRef(firestore), toStoredReadModel({ ...snapshot, recipient }));
+  batch.set(readModelRef(firestore, scope.recipientId), toStoredReadModel({ ...snapshot, recipient }));
   await batch.commit();
 }
 
-export async function getTodayDailyCheckIn(): Promise<DailyCheckIn | null> {
+export async function getTodayDailyCheckIn(scope: CareDataScope): Promise<DailyCheckIn | null> {
   try {
     const firestore = await getAdminFirestore();
-    const model = await getOrCreateReadModel(firestore);
+    const model = await getOrCreateReadModel(firestore, scope);
     return currentDailyCheckIn(model.todayCheckIn);
   } catch (error) {
     if (globalThis.navigator?.userAgent !== "Cloudflare-Workers") {
@@ -194,25 +258,31 @@ export async function getTodayDailyCheckIn(): Promise<DailyCheckIn | null> {
 }
 
 export async function getPatientQuestionSet(
+  scope: CareDataScope,
   questionSetId: string,
 ): Promise<PatientQuestionSet | null> {
+  assertValidScope(scope);
   const firestore = await getAdminFirestore();
   const document = await firestore
     .collection("careRecipients")
-    .doc(DEMO_RECIPIENT_ID)
+    .doc(scope.recipientId)
     .collection("questionSets")
     .doc(questionSetId)
     .get();
   return document.exists ? (document.data() as PatientQuestionSet) : null;
 }
 
-export async function saveQuestionSetGeneration(input: {
+export async function saveQuestionSetGeneration(scope: CareDataScope, input: {
   questionSet: PatientQuestionSet;
   analysis: CareAgentOutput;
   run: AgentRunRecord;
 }) {
+  assertValidScope(scope);
+  if (input.questionSet.subject_ref !== scope.recipientId) {
+    throw new Error("질문 세트 소유자가 일치하지 않습니다.");
+  }
   const firestore = await getAdminFirestore();
-  const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
+  const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
   const batch = firestore.batch();
   batch.set(
     recipientRef.collection("questionSets").doc(input.questionSet.question_set_id),
@@ -231,12 +301,17 @@ export async function saveQuestionSetGeneration(input: {
 }
 
 export async function saveDailyCheckIn(
+  scope: CareDataScope,
   input: DailyCheckInInput & { questionResponse: PatientQuestionResponse },
   currentSnapshot?: CareSnapshot,
 ) {
+  assertValidScope(scope);
+  if (input.questionResponse.subject_ref !== scope.recipientId) {
+    throw new Error("체크인 소유자가 일치하지 않습니다.");
+  }
   const firestore = await getAdminFirestore();
-  const snapshot = currentSnapshot ?? fromStoredReadModel(await getOrCreateReadModel(firestore));
-  const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
+  const snapshot = currentSnapshot ?? fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
   const update = applyDailyCheckInToSnapshot(snapshot, input);
   const batch = firestore.batch();
 
@@ -275,20 +350,21 @@ export async function saveDailyCheckIn(
     } satisfies Pick<PatientQuestionSet, "response_status" | "answered_at">,
     { merge: true },
   );
-  batch.set(readModelRef(firestore), toStoredReadModel(nextSnapshot));
+  batch.set(readModelRef(firestore, scope.recipientId), toStoredReadModel(nextSnapshot));
   await batch.commit();
 }
 
-export async function registerDocument(input: {
+export async function registerDocument(scope: CareDataScope, input: {
   fileName: string;
   documentType: ClinicalDocumentType;
   size: number;
   isSample: boolean;
   analysis: ClinicalDocument["analysis"];
 }) {
+  assertValidScope(scope);
   const firestore = await getAdminFirestore();
-  const snapshot = fromStoredReadModel(await getOrCreateReadModel(firestore));
-  const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
+  const snapshot = fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
   const documentRef = recipientRef.collection("clinicalDocuments").doc(randomUUID());
   const document: ClinicalDocument & { size: number } = {
     id: documentRef.id,
@@ -314,7 +390,7 @@ export async function registerDocument(input: {
   };
   const batch = firestore.batch();
   batch.set(documentRef, document);
-  batch.set(readModelRef(firestore), toStoredReadModel(nextSnapshot));
+  batch.set(readModelRef(firestore, scope.recipientId), toStoredReadModel(nextSnapshot));
   await batch.commit();
   return document;
 }

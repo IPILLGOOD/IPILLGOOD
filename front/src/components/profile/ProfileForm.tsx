@@ -101,7 +101,12 @@ export function ProfileForm({ recipient }: { recipient: CareRecipient }) {
       </div>
 
       <label className="consent-row">
-        <input name="consentConfirmed" type="checkbox" defaultChecked required />
+        <input
+          name="consentConfirmed"
+          type="checkbox"
+          defaultChecked={recipient.consentConfirmed}
+          required
+        />
         <span>
           어르신의 동의 또는 적법한 대리 권한이 있으며, 건강정보 저장에 동의합니다.
         </span>

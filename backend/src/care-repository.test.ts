@@ -6,6 +6,7 @@ import {
   applyDailyCheckInToSnapshot,
   currentDailyCheckIn,
 } from "./care-read-model.ts";
+import { createInitialCareSnapshot } from "./care-repository.ts";
 import type { CareSnapshot } from "./types.ts";
 
 const snapshot = {
@@ -13,6 +14,20 @@ const snapshot = {
   todayCheckIn: null,
   dataSource: "firestore",
 } as CareSnapshot;
+
+test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복사하지 않는다", () => {
+  const first = createInitialCareSnapshot({ recipientId: "google-account-a" });
+  const second = createInitialCareSnapshot({ recipientId: "google-account-b" });
+
+  assert.equal(first.recipient.id, "google-account-a");
+  assert.equal(second.recipient.id, "google-account-b");
+  assert.equal(first.recipient.consentConfirmed, false);
+  assert.deepEqual(first.medications, []);
+  assert.deepEqual(first.doseEvents, []);
+  assert.deepEqual(first.symptomEvents, []);
+  assert.deepEqual(first.documents, []);
+  assert.notEqual(first.recipient.id, second.recipient.id);
+});
 
 test("당일 체크인은 read model에서 같은 날짜 기록을 교체하고 과거 기록을 보존한다", () => {
   const update = applyDailyCheckInToSnapshot(

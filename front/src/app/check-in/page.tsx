@@ -4,18 +4,19 @@ import { CheckInForm } from "@/components/check-in/CheckInForm";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
-  DEMO_RECIPIENT_ID,
   getCareSnapshot,
   getOrCreateQuestionSet,
 } from "@care-atlas/backend";
 import { createMedicationSchedule } from "@/lib/presentation";
+import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
 
 export default async function CheckInPage() {
-  const snapshot = await getCareSnapshot();
+  const scope = await requireCareScope();
+  const snapshot = await getCareSnapshot(scope);
   const questionSet = await getOrCreateQuestionSet({
-    recipientId: DEMO_RECIPIENT_ID,
+    scope,
     answerer: "caregiver",
     snapshot,
   });

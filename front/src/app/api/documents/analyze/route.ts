@@ -6,6 +6,7 @@ import {
 } from "@care-atlas/backend";
 
 import { getSession } from "@/lib/auth/session";
+import { careScopeFor } from "@/lib/auth/care-scope";
 
 const allowedDocumentTypes = new Set<ClinicalDocumentType>(["처방전", "진단서"]);
 const maxFileSize = 5 * 1024 * 1024;
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     return Response.json({ message: "로그인이 필요해요." }, { status: 401 });
   }
 
-  if (process.env.IPILLGOOD_DEMO_MODE !== "true") {
+  if (session.provider === "demo" && process.env.IPILLGOOD_DEMO_MODE !== "true") {
     return Response.json(
       { message: "현재는 읽기 전용 모드예요. 인증 연결 후 분석을 활성화해주세요." },
       { status: 403 },
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
       contentType,
       contentBase64,
     });
-    const document = await registerDocument({
+    const document = await registerDocument(careScopeFor(session), {
       fileName,
       documentType: typedDocumentType,
       size: file instanceof File ? file.size : 284_000,

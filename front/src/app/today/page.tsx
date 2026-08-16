@@ -13,11 +13,11 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { createMedicationSchedule } from "@/lib/presentation";
 import {
-  DEMO_RECIPIENT_ID,
   getCareSnapshot,
   getOrCreateQuestionSet,
 } from "@care-atlas/backend";
 import type { DailyCheckIn } from "@care-atlas/backend";
+import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +34,12 @@ const seoulDateFormatter = new Intl.DateTimeFormat("en-CA", {
 });
 
 export default async function TodayPage() {
-  const snapshot = await getCareSnapshot();
+  const scope = await requireCareScope();
+  const snapshot = await getCareSnapshot(scope);
   const todayCheckIn = snapshot.todayCheckIn ?? null;
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
   const questionSet = await getOrCreateQuestionSet({
-    recipientId: DEMO_RECIPIENT_ID,
+    scope,
     answerer: "caregiver",
     snapshot,
   });

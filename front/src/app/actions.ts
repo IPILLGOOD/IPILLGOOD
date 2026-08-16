@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  DEMO_RECIPIENT_ID,
   buildPatientQuestionResponse,
   dateKeyInSeoul,
   getCareSnapshot,
@@ -15,6 +14,7 @@ import {
 
 import { createMedicationSchedule } from "@/lib/presentation";
 import { getSession } from "@/lib/auth/session";
+import { careScopeFor } from "@/lib/auth/care-scope";
 import {
   buildRecipientProfile,
   collectCompleteDoseResponses,
@@ -29,7 +29,7 @@ async function demoWriteGuard(): Promise<ActionState | null> {
       message: "로그인 정보가 만료되었어요. 다시 로그인해주세요.",
     };
   }
-  if (process.env.IPILLGOOD_DEMO_MODE === "true") return null;
+  if (session.provider === "google" || process.env.IPILLGOOD_DEMO_MODE === "true") return null;
   return {
     status: "error",
     message: "현재는 읽기 전용 모드예요. 인증을 연결한 뒤 저장 기능을 활성화해주세요.",
@@ -52,11 +52,15 @@ export async function saveProfileAction(
   }
 
   try {
-    const current = await getCareSnapshot();
+    const session = await getSession();
+    if (!session) return { status: "error", message: "로그인 정보가 만료되었어요." };
+    const scope = careScopeFor(session);
+    const current = await getCareSnapshot(scope);
     await updateRecipientProfile(
+      scope,
       {
         ...buildRecipientProfile(current.recipient, result.data),
-        id: DEMO_RECIPIENT_ID,
+        id: scope.recipientId,
       },
       current,
     );
@@ -84,7 +88,10 @@ export async function saveCheckInAction(
     return { status: "error", message: "누가 답했는지 선택해주세요." };
   }
 
-  const snapshot = await getCareSnapshot();
+  const session = await getSession();
+  if (!session) return { status: "error", message: "로그인 정보가 만료되었어요." };
+  const scope = careScopeFor(session);
+  const snapshot = await getCareSnapshot(scope);
   const schedule = new Map(
     createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [
       task.id,
@@ -108,10 +115,10 @@ export async function saveCheckInAction(
   }
 
   try {
-    const questionSet = await getPatientQuestionSet(questionSetId);
+    const questionSet = await getPatientQuestionSet(scope, questionSetId);
     if (
       !questionSet ||
-      questionSet.subject_ref !== DEMO_RECIPIENT_ID ||
+      questionSet.subject_ref !== scope.recipientId ||
       questionSet.target_date !== dateKeyInSeoul()
     ) {
       return { status: "error", message: "오늘의 맞춤 질문이 변경됐어요. 새로고침해주세요." };
@@ -127,6 +134,7 @@ export async function saveCheckInAction(
       ),
     });
     await saveDailyCheckIn(
+      scope,
       {
         doseResponses: responses,
         symptoms,

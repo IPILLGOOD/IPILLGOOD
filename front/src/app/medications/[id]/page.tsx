@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { createMedicationSchedule, formatDate } from "@/lib/presentation";
 import { getCareSnapshot } from "@care-atlas/backend";
+import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,8 @@ export default async function MedicationDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const snapshot = await getCareSnapshot();
+  const scope = await requireCareScope();
+  const snapshot = await getCareSnapshot(scope);
   const medication = snapshot.medications.find((item) => item.id === id);
   if (!medication) notFound();
 

@@ -6,6 +6,7 @@ export {
   registerDocument,
   saveDailyCheckIn,
   updateRecipientProfile,
+  type CareDataScope,
 } from "./care-repository";
 export { dateKeyInSeoul, getOrCreateQuestionSet } from "./care-orchestration-service";
 export { buildPatientQuestionResponse } from "./ai/questions/apply-question-response";

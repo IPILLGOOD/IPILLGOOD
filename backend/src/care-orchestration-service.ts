@@ -11,6 +11,7 @@ import {
   saveQuestionSetGeneration,
 } from "./care-repository";
 import type { CareSnapshot, PatientQuestionSet } from "./types";
+import type { CareDataScope } from "./care-repository";
 
 export function dateKeyInSeoul(value = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -22,26 +23,26 @@ export function dateKeyInSeoul(value = new Date()) {
 }
 
 export async function getOrCreateQuestionSet(input: {
-  recipientId: string;
+  scope: CareDataScope;
   targetDate?: string;
   answerer: "caregiver" | "recipient";
   snapshot?: CareSnapshot;
 }): Promise<PatientQuestionSet> {
   const targetDate = input.targetDate ?? dateKeyInSeoul();
-  const snapshot = input.snapshot ?? (await getCareSnapshot());
-  if (snapshot.recipient.id !== input.recipientId) {
+  const snapshot = input.snapshot ?? (await getCareSnapshot(input.scope));
+  if (snapshot.recipient.id !== input.scope.recipientId) {
     throw new Error("질문 대상자와 현재 돌봄 대상자가 일치하지 않습니다.");
   }
   const inputRevision = careInputRevision(snapshot, targetDate);
   const questionSetId = questionSetIdFor({
-    recipientId: input.recipientId,
+    recipientId: input.scope.recipientId,
     targetDate,
     answerer: input.answerer,
     inputRevision,
   });
 
   try {
-    const existing = await getPatientQuestionSet(questionSetId);
+    const existing = await getPatientQuestionSet(input.scope, questionSetId);
     if (existing) return existing;
   } catch (error) {
     console.error("Stored question set unavailable", error);
@@ -70,7 +71,7 @@ export async function getOrCreateQuestionSet(input: {
     source: agentResult.source,
   });
   try {
-    await saveQuestionSetGeneration({
+    await saveQuestionSetGeneration(input.scope, {
       questionSet,
       analysis: agentResult.output,
       run: agentResult.run,

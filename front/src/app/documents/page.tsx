@@ -6,11 +6,13 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot } from "@care-atlas/backend";
 import { formatDate } from "@/lib/presentation";
+import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentsPage() {
-  const snapshot = await getCareSnapshot();
+  const scope = await requireCareScope();
+  const snapshot = await getCareSnapshot(scope);
   return (
     <>
       <PageHeader

@@ -4,11 +4,13 @@ import { ProfileForm } from "@/components/profile/ProfileForm";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot } from "@care-atlas/backend";
+import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const snapshot = await getCareSnapshot();
+  const scope = await requireCareScope();
+  const snapshot = await getCareSnapshot(scope);
   return (
     <>
       <PageHeader
@@ -34,7 +36,11 @@ export default async function ProfilePage() {
           <Card tone="soft">
             <History size={22} aria-hidden="true" />
             <h2>마지막 확인</h2>
-            <p>{new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeStyle: "short" }).format(new Date(snapshot.recipient.lastConfirmedAt))}</p>
+            <p>
+              {snapshot.recipient.consentConfirmed
+                ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeStyle: "short" }).format(new Date(snapshot.recipient.lastConfirmedAt))
+                : "아직 프로필을 확인하지 않았어요."}
+            </p>
           </Card>
         </aside>
       </div>

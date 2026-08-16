@@ -11,11 +11,13 @@ import {
   adherenceSummary,
   uniqueSymptomDays,
 } from "@/lib/presentation";
+import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportPage() {
-  const snapshot = await getCareSnapshot();
+  const scope = await requireCareScope();
+  const snapshot = await getCareSnapshot(scope);
   const medications = activeMedications(snapshot.medications);
   const adherence = adherenceSummary(snapshot.doseEvents);
   const symptomDays = uniqueSymptomDays(snapshot.symptomEvents);
