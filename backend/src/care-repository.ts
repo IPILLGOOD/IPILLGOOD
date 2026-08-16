@@ -111,7 +111,7 @@ export async function updateRecipientProfile(recipient: CareRecipient) {
   await firestore
     .collection("careRecipients")
     .doc(DEMO_RECIPIENT_ID)
-    .set(recipient, { merge: true });
+    .set(recipient);
 }
 
 export async function getTodayDailyCheckIn(): Promise<DailyCheckIn | null> {
