@@ -4,10 +4,17 @@ import {
   type ClinicalDocumentType,
 } from "@care-atlas/backend";
 
+import { getSession } from "@/lib/auth/session";
+
 const allowedDocumentTypes = new Set<ClinicalDocumentType>(["처방전", "진단서"]);
 const maxFileSize = 5 * 1024 * 1024;
 
 export async function POST(request: Request) {
+  const session = await getSession();
+  if (!session) {
+    return Response.json({ message: "로그인이 필요해요." }, { status: 401 });
+  }
+
   if (process.env.CARE_ATLAS_DEMO_MODE !== "true") {
     return Response.json(
       { message: "현재는 읽기 전용 모드예요. 인증 연결 후 분석을 활성화해주세요." },
