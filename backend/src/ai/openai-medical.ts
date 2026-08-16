@@ -96,12 +96,20 @@ const plainMedicationSchema = {
         additionalProperties: false,
         properties: {
           index: { type: "integer" },
+          categoryPlain: { type: "string" },
           overview: { type: "string" },
           geneInfo: { type: "string" },
           productInfo: { type: "string" },
           caregiverNote: { type: "string" },
         },
-        required: ["index", "overview", "geneInfo", "productInfo", "caregiverNote"],
+        required: [
+          "index",
+          "categoryPlain",
+          "overview",
+          "geneInfo",
+          "productInfo",
+          "caregiverNote",
+        ],
       },
     },
   },
@@ -332,6 +340,7 @@ export async function simplifyMedicationInformationWithOpenAI(
       "예: 정맥혈전증은 '피가 굳어 혈관을 막는 문제', PT/INR은 '피가 굳는 데 걸리는 시간을 보는 혈액검사'로 설명하세요.",
       "CYP2C9, VKORC1 같은 유전자 이름은 쓰지 말고 '몸이 약을 처리하는 타고난 차이'라고 설명하세요.",
       "제품명과 성분명은 사용자가 확인해야 하므로 원문 이름을 유지해도 됩니다.",
+      "categoryPlain에는 이 약의 대표적인 대분류를 '감기약', '혈압약', '소화제', '진통제', '항응고제'처럼 짧고 쉬운 말 하나로 적으세요. 원문만으로 판단할 수 없으면 '분류 확인 필요'라고 적으세요.",
       "productInfo에는 제품명 목록이나 함량 숫자를 길게 나열하지 말고, 같은 성분의 여러 제품과 함량이 있다는 의미만 요약하세요.",
       "caregiverNote에는 원문 속 권장 용량 숫자를 반복하지 말고 처방전에 적힌 양을 따르며 의료진에게 확인하라고 안내하세요.",
       "유전자 정보가 원문에 없으면 geneInfo는 빈 문자열로 반환하세요.",
@@ -366,6 +375,7 @@ export async function simplifyMedicationInformationWithOpenAI(
     return {
       ...item,
       plainExplanation: {
+        categoryPlain: explanation.categoryPlain.trim(),
         overview: explanation.overview.trim(),
         geneInfo: explanation.geneInfo.trim(),
         productInfo: explanation.productInfo.trim(),

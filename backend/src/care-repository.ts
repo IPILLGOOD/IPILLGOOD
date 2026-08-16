@@ -105,9 +105,18 @@ function fallbackSnapshot(scope: CareDataScope) {
 
 function fromStoredReadModel(model: StoredCareReadModel, scope: CareDataScope): CareSnapshot {
   const fallback = scope.useDemoData ? seed : createInitialCareSnapshot(scope);
+  const medications = model.medications ?? fallback.medications;
   return {
     recipient: model.recipient ?? fallback.recipient,
-    medications: model.medications ?? fallback.medications,
+    medications: scope.useDemoData
+      ? medications.map((medication) => ({
+          ...medication,
+          categoryPlain:
+            medication.categoryPlain ??
+            seed.medications.find((item) => item.id === medication.id)?.categoryPlain ??
+            "분류 확인 필요",
+        }))
+      : medications,
     doseEvents: model.doseEvents ?? fallback.doseEvents,
     symptomEvents: model.symptomEvents ?? fallback.symptomEvents,
     documents: model.documents ?? fallback.documents,

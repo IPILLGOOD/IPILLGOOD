@@ -24,6 +24,7 @@ export interface MedicationPlan {
   id: string;
   productName: string;
   ingredientName: string;
+  categoryPlain: string;
   purposePlain: string;
   descriptionPlain: string;
   doseAmount: string;

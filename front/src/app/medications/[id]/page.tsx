@@ -42,7 +42,12 @@ export default async function MedicationDetailPage({
         eyebrow="약 상세 정보"
         title={medication.productName}
         description={`${medication.ingredientName} · ${medication.purposePlain}`}
-        action={medication.isNew ? <Badge tone="info">최근 시작한 약</Badge> : undefined}
+        action={
+          <div className="medication-category-badges" aria-label="약 분류 및 상태">
+            <Badge tone="success">{medication.categoryPlain ?? "분류 확인 필요"}</Badge>
+            {medication.isNew ? <Badge tone="info">최근 시작한 약</Badge> : null}
+          </div>
+        }
       />
 
       <div className="medication-detail-page">

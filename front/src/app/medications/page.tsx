@@ -51,6 +51,7 @@ export default async function MedicationsPage({
                   <div>
                     <div className="medication-row__name">
                       <h2>{medication.productName}</h2>
+                      <Badge tone="success">{medication.categoryPlain ?? "분류 확인 필요"}</Badge>
                       {medication.isNew ? <Badge tone="info">새로 시작</Badge> : null}
                     </div>
                     <p>성분명: {medication.ingredientName}</p>
