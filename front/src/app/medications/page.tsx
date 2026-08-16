@@ -33,7 +33,11 @@ export default async function MedicationsPage({
         description="처방 목적을 추측하지 않고, 문서에서 확인된 복용법과 약의 일반적인 쓰임을 구분해 보여드려요."
       />
 
-      <OfficialMedicationSearch query={query} result={officialMedicationResult} />
+      <OfficialMedicationSearch
+        query={query}
+        result={officialMedicationResult}
+        officialApiConfigured={Boolean(process.env.MFDS_PARMGEN_API_KEY)}
+      />
 
       <div className="medication-cards">
         {medications.map((medication) => (
