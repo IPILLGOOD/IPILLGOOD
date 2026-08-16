@@ -94,7 +94,7 @@ care-atlas/
 ## 기술 구성
 
 - Next.js 16 App Router, React 19, TypeScript
-- Firebase 프로젝트: `care-atlas-seoul-2026`
+- Firebase 프로젝트: `care-atlas-seoul-2026-v2`
 - Cloud Firestore: 서울 `asia-northeast3`
 - Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
 - Google OAuth 2.0, `jose` 기반 서명 세션, Next.js Route Proxy
@@ -131,12 +131,10 @@ npm run dev
 | `/profile` | 돌봄 대상자 최소 프로필 관리 |
 | `/report` | 출력 가능한 최근 7일 Care Report |
 
-Google 로그인을 사용하려면 `front/.env.local`에 세션 비밀키와 Google OAuth 웹 클라이언트 정보를 설정합니다. Google Cloud Console의 승인된 리디렉션 URI에는 로컬 개발 기준 `http://localhost:3000/api/auth/google/callback`을 등록하세요. 설정하지 않아도 데모 로그인은 동작합니다.
+Google 로그인은 `care-atlas-seoul-2026-v2` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키만 `front/.env.local`에 설정합니다. 설정하지 않아도 데모 로그인은 동작합니다.
 
 ```bash
 SESSION_SECRET=openssl_rand_base64_32로_생성한_값
-GOOGLE_CLIENT_ID=Google_OAuth_클라이언트_ID
-GOOGLE_CLIENT_SECRET=Google_OAuth_클라이언트_보안_비밀번호
 ```
 
 식약처 공식 약물 정보를 검색하려면 `front/.env.local`에 공공데이터포털 인증키를 설정합니다. 이 값은 서버에서만 사용되며 `.env*`는 `.gitignore`로 커밋 대상에서 제외됩니다.
