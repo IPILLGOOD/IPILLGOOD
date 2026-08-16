@@ -8,7 +8,7 @@ import {
 } from "../src/lib/form-validation.ts";
 
 const validProfileForm = {
-  displayName: "김영희 어르신",
+  displayName: "코덱스",
   ageBand: "77",
   heightCm: "",
   weightKg: "",
