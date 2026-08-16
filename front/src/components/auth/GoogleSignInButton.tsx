@@ -4,6 +4,11 @@ import { ArrowRight, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import {
+  getGoogleAuthErrorMessage,
+  googleAuthServerError,
+} from "@/lib/auth/google-error";
+
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyD6wyT0r7lg3Et1qMqgrYabJfHXoN7kcaI",
   authDomain: "care-atlas-seoul-2026-v2.firebaseapp.com",
@@ -12,23 +17,6 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "419676584381",
   appId: "1:419676584381:web:fe8f784da39fabd5aa7ad4",
 } as const;
-
-const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  "auth/popup-closed-by-user": "Google 로그인 창이 닫혔어요. 다시 시도해주세요.",
-  "auth/cancelled-popup-request": "이미 Google 로그인 창이 열려 있어요.",
-  "auth/popup-blocked": "팝업이 차단됐어요. 브라우저에서 팝업을 허용해주세요.",
-  "auth/network-request-failed": "네트워크 연결을 확인하고 다시 시도해주세요.",
-  "auth/unauthorized-domain": "현재 접속 주소가 Google 로그인에 등록되지 않았어요.",
-  "auth/operation-not-allowed": "Google 로그인이 아직 활성화되지 않았어요.",
-};
-
-function getAuthErrorMessage(error: unknown) {
-  if (typeof error === "object" && error && "code" in error) {
-    const code = String(error.code);
-    return AUTH_ERROR_MESSAGES[code] ?? "Google 로그인을 완료하지 못했어요. 다시 시도해주세요.";
-  }
-  return "Google 로그인을 완료하지 못했어요. 다시 시도해주세요.";
-}
 
 export function GoogleSignInButton() {
   const router = useRouter();
@@ -62,14 +50,15 @@ export function GoogleSignInButton() {
       });
 
       if (!response.ok) {
-        throw new Error("server_session_failed");
+        const result = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw googleAuthServerError(result?.error ?? "google_login_failed");
       }
 
       await authModule.signOut(auth).catch(() => undefined);
       router.replace("/today");
       router.refresh();
     } catch (error) {
-      setErrorMessage(getAuthErrorMessage(error));
+      setErrorMessage(getGoogleAuthErrorMessage(error));
       setIsLoading(false);
     }
   }
