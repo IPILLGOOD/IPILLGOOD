@@ -15,6 +15,7 @@ Care Atlas는 처방전의 어려운 표현을 보호자가 이해할 수 있는
 5. **어르신 프로필** — 연령대, 신체 정보, 알레르기, 확인받은 건강 상태와 보호자 메모 관리
 6. **Care Report** — 약 변경과 증상을 인과관계로 단정하지 않고 시간순 기록과 상담 질문으로 정리
 7. **식약처 공식 정보 검색** — 약물명을 검색해 식약처 약물 유전 정보 Open API의 일반·유전·제품 정보를 확인
+8. **진단서 질병 정보 보강** — 진단명·KCD/ICD 코드를 추출해 건강보험심사평가원 질병정보 API를 우선 조회하고, 미설정·장애·불일치일 때 OpenAI 웹 검색으로 공신력 있는 출처를 보강
 
 비식별 샘플 데이터로 로그인 없이 핵심 흐름을 바로 체험할 수 있습니다. 실제 환자 정보는 사용하지 않습니다.
 
@@ -62,6 +63,14 @@ MFDS_PARMGEN_API_URL=https://apis.data.go.kr/1471000/ParmgenService
 MFDS_PARMGEN_API_KEY=공공데이터포털_일반_인증키
 ```
 
+진단서 분석과 질병 정보 조회를 활성화하려면 같은 파일에 다음 서버 전용 값을 설정합니다.
+
+```bash
+OPENAI_API_KEY=OpenAI_API_키
+OPENAI_MODEL=gpt-5.6-terra
+HIRA_DISEASE_API_KEY=공공데이터포털_일반_인증키
+```
+
 검증 명령:
 
 ```bash
@@ -78,7 +87,7 @@ npm run firebase:deploy
 
 ## AI 연결 지점
 
-`front/.env.local`에 `AI_ANALYSIS_ENDPOINT`와 `AI_API_KEY`를 추가하면 [medication-analyzer.ts](backend/src/ai/medication-analyzer.ts)의 제공자 독립 인터페이스가 외부 분석 API를 호출합니다. 키가 없을 때는 비식별 데모 분석 결과로 전체 흐름을 확인할 수 있습니다.
+`front/.env.local`에 `AI_ANALYSIS_ENDPOINT`와 `AI_API_KEY`를 추가하면 [medication-analyzer.ts](backend/src/ai/medication-analyzer.ts)의 제공자 독립 인터페이스가 외부 분석 API를 호출합니다. 외부 분석 API가 없고 `OPENAI_API_KEY`가 있으면 OpenAI Responses API가 이미지/PDF를 분석합니다. 진단서는 건강보험심사평가원 질병정보 API를 먼저 확인하며, 공식 정보가 없을 때만 OpenAI 웹 검색으로 전환합니다. 키가 없을 때는 비식별 샘플로 전체 화면 흐름을 확인할 수 있습니다.
 
 AI를 연결하더라도 다음 경계는 유지합니다.
 
@@ -107,6 +116,6 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 ## 알려진 한계
 
 - 해커톤용 비식별 단일 돌봄 대상자 데모이며 실제 사용자 인증은 미구현
-- 처방전 OCR, HIRA 데이터 조회, AI 쉬운 말 변환은 연결 전
+- 실제 서비스 수준의 OCR 신뢰도 표시와 사용자 원문 대조·확정 단계는 미구현
 - 문서 원본은 개인정보 보호를 위해 저장하지 않고 메타데이터만 기록
 - 의료·약학·개인정보·의료기기 관련 전문가 검토 전 실제 건강 의사결정에 사용할 수 없음

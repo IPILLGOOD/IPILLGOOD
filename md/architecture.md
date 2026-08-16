@@ -13,7 +13,11 @@
 Browser
   ├─ Server Component ── Firestore repository ── Firebase Admin ── Firestore
   ├─ Form ── Server Action ── Zod validation ── repository ── Firestore
-  └─ Document Form ── /api/documents/analyze ── analyzer ── external AI API
+  └─ Document Form ── /api/documents/analyze ── analyzer ─┬─ external AI API
+                                                          └─ OpenAI vision
+
+Diagnosis enrichment ── HIRA disease API ── exact match ── official code/name
+                                    └─ unavailable/no match ── OpenAI web search
 
 Document analysis ── Firestore metadata/result
                   └─ uploaded source file is discarded after the request
@@ -66,6 +70,8 @@ careRecipients/{recipientId}
       findings[]
       carePoints[]
       questionsForProfessional[]
+      diagnoses[]
+      diseaseInformation[] / diseaseLookup
       disclaimer / source
 
   clinicianQuestions/{questionId}
@@ -105,7 +111,17 @@ AI_API_KEY=
 }
 ```
 
-키가 없으면 비식별 데모 분석을 반환하므로 업로드부터 결과 확인까지의 화면 흐름은 그대로 체험할 수 있습니다.
+외부 분석 API가 없으면 `OPENAI_API_KEY`로 OpenAI 이미지/PDF 분석을 사용합니다. 진단서 분석 응답에는 가능하면 다음 필드를 함께 반환합니다.
+
+```json
+{
+  "diagnoses": [{ "name": "본태성 고혈압", "code": "I10" }]
+}
+```
+
+진단명 또는 코드가 추출되면 `HIRA_DISEASE_API_KEY`로 건강보험심사평가원 질병정보서비스를 먼저 조회합니다. 정확한 코드·질병명 매칭이 없거나 API가 설정되지 않았거나 일시적으로 실패한 경우에만 OpenAI Responses API의 `web_search` 도구를 호출합니다. 웹 검색은 공공기관·대학병원·국제 보건기관 도메인으로 제한하고, 사용한 URL을 결과에 저장해 화면에서 클릭 가능한 출처로 표시합니다. OpenAI 요청은 `store: false`로 전송합니다.
+
+모든 분석 키가 없으면 비식별 데모 분석을 반환하므로 업로드부터 결과 확인까지의 화면 흐름은 그대로 체험할 수 있습니다.
 
 ## AI 안전 고도화 계획
 
