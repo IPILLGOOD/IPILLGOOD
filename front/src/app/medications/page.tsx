@@ -4,14 +4,24 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
+import { OfficialMedicationSearch } from "@/components/medications/OfficialMedicationSearch";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareSnapshot } from "@care-atlas/backend";
+import { getCareSnapshot, searchPharmacogenomicInfo } from "@care-atlas/backend";
 import { activeMedications, daysSince, formatDate } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
 
-export default async function MedicationsPage() {
-  const snapshot = await getCareSnapshot();
+export default async function MedicationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string | string[] }>;
+}) {
+  const rawQuery = (await searchParams).q;
+  const query = (Array.isArray(rawQuery) ? rawQuery[0] : rawQuery)?.trim().slice(0, 100) ?? "";
+  const [snapshot, officialMedicationResult] = await Promise.all([
+    getCareSnapshot(),
+    query ? searchPharmacogenomicInfo(query) : Promise.resolve(null),
+  ]);
   const medications = activeMedications(snapshot.medications);
 
   return (
@@ -22,6 +32,8 @@ export default async function MedicationsPage() {
         description="처방 목적을 추측하지 않고, 문서에서 확인된 복용법과 약의 일반적인 쓰임을 구분해 보여드려요."
         action={<ConnectionStatus source={snapshot.dataSource} />}
       />
+
+      <OfficialMedicationSearch query={query} result={officialMedicationResult} />
 
       <div className="medication-cards">
         {medications.map((medication) => (

@@ -10,6 +10,11 @@ export {
   type MedicationAnalyzerInput,
   type MedicationAnalyzerResult,
 } from "./ai/medication-analyzer";
+export {
+  searchPharmacogenomicInfo,
+  type PharmacogenomicInfo,
+  type PharmacogenomicLookupResult,
+} from "./official-medication-api";
 export type {
   ActionState,
   CareRecipient,
