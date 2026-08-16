@@ -36,6 +36,10 @@ export interface MedicationPlan {
   sourceLabel: string;
   watchFor: string[];
   clinicianQuestion?: string;
+  howItWorksPlain?: string;
+  commonEffects?: string[];
+  precautions?: string[];
+  storagePlain?: string;
 }
 
 export interface DoseEvent {
@@ -66,6 +70,22 @@ export interface ClinicalDocument {
   status: "confirmed" | "awaiting_ai" | "needs_review";
   redacted: boolean;
   sourceLabel: string;
+  analysis?: DocumentAnalysis;
+}
+
+export type ClinicalDocumentType = "처방전" | "진단서";
+
+export interface DocumentAnalysis {
+  documentType: ClinicalDocumentType;
+  summary: string;
+  findings: Array<{
+    label: string;
+    value: string;
+  }>;
+  carePoints: string[];
+  questionsForProfessional: string[];
+  disclaimer: string;
+  source: "demo" | "api";
 }
 
 export interface ClinicianQuestion {

@@ -7,6 +7,7 @@ export {
 } from "./care-repository";
 export {
   analyzeMedicationDocument,
+  type MedicationAnalyzerInput,
   type MedicationAnalyzerResult,
 } from "./ai/medication-analyzer";
 export type {
@@ -14,7 +15,9 @@ export type {
   CareRecipient,
   CareSnapshot,
   ClinicalDocument,
+  ClinicalDocumentType,
   ClinicianQuestion,
+  DocumentAnalysis,
   DoseEvent,
   DoseResponse,
   MedicationPlan,

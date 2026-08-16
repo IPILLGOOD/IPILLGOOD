@@ -6,7 +6,8 @@ import Link from "next/link";
 import { saveCheckInAction } from "@/app/actions";
 import { FormMessage } from "@/components/ui/FormMessage";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import type { ActionState, MedicationPlan } from "@care-atlas/backend";
+import type { MedicationScheduleTask } from "@/lib/presentation";
+import type { ActionState } from "@care-atlas/backend";
 
 const initialState: ActionState = { status: "idle", message: "" };
 const doseOptions = [
@@ -18,7 +19,7 @@ const doseOptions = [
 ];
 const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청거림"];
 
-export function CheckInForm({ medications }: { medications: MedicationPlan[] }) {
+export function CheckInForm({ tasks }: { tasks: MedicationScheduleTask[] }) {
   const [state, formAction] = useActionState(saveCheckInAction, initialState);
 
   if (state.status === "success") {
@@ -62,22 +63,24 @@ export function CheckInForm({ medications }: { medications: MedicationPlan[] }) 
         </div>
       </fieldset>
 
-      {medications.map((medication, index) => (
-        <fieldset className="question-block" key={medication.id}>
+      {tasks.map((task, index) => (
+        <fieldset className="question-block dose-question" key={task.id}>
           <legend>
-            {index + 2}. {medication.timing}에 먹는 {medication.productName}은 챙기셨나요?
+            {index + 2}. {task.slotLabel}의 {task.productName}은 챙기셨나요?
           </legend>
-          <p className="question-block__helper">
-            {medication.doseAmount} · {medication.frequency}
-          </p>
-          <div className="choice-grid">
+          <div className="dose-question__meta">
+            <span>{task.timeLabel}</span>
+            <span>{task.doseAmount}</span>
+            <span>{task.frequency}</span>
+          </div>
+          <div className="dose-choice-grid">
             {doseOptions.map((option) => (
               <label className="choice-card" key={option.value}>
                 <input
-                  name={`dose_${medication.id}`}
+                  name={`dose_${task.id}`}
                   type="radio"
                   value={option.value}
-                  defaultChecked={option.value === "completed"}
+                  defaultChecked={option.value === task.response}
                 />
                 {option.label}
               </label>
@@ -87,7 +90,7 @@ export function CheckInForm({ medications }: { medications: MedicationPlan[] }) 
       ))}
 
       <fieldset className="question-block">
-        <legend>{medications.length + 2}. 오늘 평소와 다른 몸 상태가 있었나요?</legend>
+        <legend>{tasks.length + 2}. 오늘 평소와 다른 몸 상태가 있었나요?</legend>
         <p className="question-block__helper">없으면 선택하지 않아도 괜찮아요.</p>
         <div className="choice-grid">
           {symptoms.map((symptom) => (

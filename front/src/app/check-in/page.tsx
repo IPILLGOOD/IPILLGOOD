@@ -4,13 +4,13 @@ import { CheckInForm } from "@/components/check-in/CheckInForm";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot } from "@care-atlas/backend";
-import { activeMedications } from "@/lib/presentation";
+import { createMedicationSchedule } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
 
 export default async function CheckInPage() {
   const snapshot = await getCareSnapshot();
-  const medications = activeMedications(snapshot.medications);
+  const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
 
   return (
     <>
@@ -21,7 +21,7 @@ export default async function CheckInPage() {
       />
       <div className="checkin-layout">
         <Card>
-          <CheckInForm medications={medications} />
+          <CheckInForm tasks={tasks} />
         </Card>
         <aside className="checkin-aside">
           <Card tone="accent">

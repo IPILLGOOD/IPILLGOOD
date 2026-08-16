@@ -5,6 +5,7 @@ import type {
   CareRecipient,
   CareSnapshot,
   ClinicalDocument,
+  ClinicalDocumentType,
   ClinicianQuestion,
   DoseEvent,
   MedicationPlan,
@@ -67,7 +68,11 @@ export async function getCareSnapshot(): Promise<CareSnapshot> {
 
     return {
       recipient: recipientDoc.data() as CareRecipient,
-      medications: medications.docs.map((doc) => doc.data() as MedicationPlan),
+      medications: medications.docs.map((doc) => {
+        const stored = doc.data() as MedicationPlan;
+        const demo = seed.medications.find((medication) => medication.id === stored.id);
+        return { ...demo, ...stored } as MedicationPlan;
+      }),
       doseEvents: doseEvents.docs
         .map((doc) => doc.data() as DoseEvent)
         .sort(byDateDescending<DoseEvent>("scheduledAt")),
@@ -96,7 +101,7 @@ export async function updateRecipientProfile(recipient: CareRecipient) {
 }
 
 export async function saveDailyCheckIn(input: {
-  doseResponses: Array<Pick<DoseEvent, "medicationPlanId" | "response">>;
+  doseResponses: Array<Pick<DoseEvent, "medicationPlanId" | "response" | "scheduledAt">>;
   symptoms: string[];
   severity: number;
   note: string;
@@ -104,7 +109,12 @@ export async function saveDailyCheckIn(input: {
 }) {
   const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
   const now = new Date().toISOString();
-  const dateKey = now.slice(0, 10);
+  const dateKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
   const batch = firestore.batch();
 
   for (const response of input.doseResponses) {
@@ -112,7 +122,7 @@ export async function saveDailyCheckIn(input: {
     batch.set(eventRef, {
       id: eventRef.id,
       medicationPlanId: response.medicationPlanId,
-      scheduledAt: now,
+      scheduledAt: response.scheduledAt,
       response: response.response,
       answeredBy: input.answeredBy,
       answeredAt: now,
@@ -148,9 +158,10 @@ export async function saveDailyCheckIn(input: {
 
 export async function registerDocument(input: {
   fileName: string;
-  documentType: string;
+  documentType: ClinicalDocumentType;
   size: number;
   isSample: boolean;
+  analysis: ClinicalDocument["analysis"];
 }) {
   const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
   const documentRef = recipientRef.collection("clinicalDocuments").doc(randomUUID());
@@ -159,12 +170,14 @@ export async function registerDocument(input: {
     fileName: input.fileName,
     documentType: input.documentType,
     uploadedAt: new Date().toISOString(),
-    status: input.isSample ? "confirmed" : "awaiting_ai",
+    status: "confirmed",
     redacted: input.isSample,
-    sourceLabel: input.isSample
-      ? "비식별 샘플 · 데모 분석 완료"
-      : "원본 이미지는 저장하지 않음 · AI 연결 대기",
+    sourceLabel:
+      input.analysis?.source === "api"
+        ? "API 분석 완료 · 보호자 확인 필요"
+        : "비식별 데모 분석 · 원본과 확인 필요",
     size: input.size,
+    analysis: input.analysis,
   };
   await documentRef.set(document);
   return document;

@@ -4,15 +4,15 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import {
-  analyzeMedicationDocument,
   DEMO_RECIPIENT_ID,
   getCareSnapshot,
-  registerDocument,
   saveDailyCheckIn,
   updateRecipientProfile,
   type ActionState,
   type DoseResponse,
 } from "@care-atlas/backend";
+
+import { createMedicationSchedule } from "@/lib/presentation";
 
 function demoWriteGuard(): ActionState | null {
   if (process.env.CARE_ATLAS_DEMO_MODE === "true") return null;
@@ -81,6 +81,7 @@ export async function saveProfileAction(
       lastConfirmedAt: new Date().toISOString(),
     });
     revalidatePath("/");
+    revalidatePath("/dashboard");
     revalidatePath("/profile");
     return { status: "success", message: "어르신 프로필을 업데이트했어요." };
   } catch (error) {
@@ -114,14 +115,26 @@ export async function saveCheckInAction(
   const responses: Array<{
     medicationPlanId: string;
     response: DoseResponse;
+    scheduledAt: string;
   }> = [];
+
+  const snapshot = await getCareSnapshot();
+  const schedule = new Map(
+    createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [
+      task.id,
+      task,
+    ]),
+  );
 
   for (const [key, value] of formData.entries()) {
     if (!key.startsWith("dose_") || typeof value !== "string") continue;
     if (!doseResponses.has(value as DoseResponse)) continue;
+    const task = schedule.get(key.replace("dose_", ""));
+    if (!task) continue;
     responses.push({
-      medicationPlanId: key.replace("dose_", ""),
+      medicationPlanId: task.medicationPlanId,
       response: value as DoseResponse,
+      scheduledAt: task.scheduledAt,
     });
   }
 
@@ -144,6 +157,7 @@ export async function saveCheckInAction(
       answeredBy,
     });
     revalidatePath("/");
+    revalidatePath("/dashboard");
     revalidatePath("/check-in");
     revalidatePath("/report");
     return {
@@ -156,69 +170,5 @@ export async function saveCheckInAction(
       status: "error",
       message: "기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.",
     };
-  }
-}
-
-export async function registerDocumentAction(
-  _previousState: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const guard = demoWriteGuard();
-  if (guard) return guard;
-  const file = formData.get("document");
-  const documentType = String(formData.get("documentType") ?? "처방전");
-
-  if (!(file instanceof File) || file.size === 0) {
-    return { status: "error", message: "등록할 문서 사진이나 PDF를 선택해주세요." };
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    return { status: "error", message: "문서는 5MB 이하로 올려주세요." };
-  }
-  if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
-    return { status: "error", message: "이미지 또는 PDF 파일만 등록할 수 있어요." };
-  }
-
-  try {
-    await registerDocument({
-      fileName: file.name,
-      documentType,
-      size: file.size,
-      isSample: false,
-    });
-    const analysis = await analyzeMedicationDocument();
-    revalidatePath("/documents");
-    return { status: "success", message: analysis.message };
-  } catch (error) {
-    console.error(error);
-    return {
-      status: "error",
-      message: "문서 정보를 등록하지 못했어요. 다시 시도해주세요.",
-    };
-  }
-}
-
-export async function registerSampleDocumentAction(
-  previousState: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  void previousState;
-  void formData;
-  const guard = demoWriteGuard();
-  if (guard) return guard;
-  try {
-    await registerDocument({
-      fileName: "비식별_샘플_처방전.jpg",
-      documentType: "처방전",
-      size: 284_000,
-      isSample: true,
-    });
-    revalidatePath("/documents");
-    return {
-      status: "success",
-      message: "샘플 처방전을 확인했어요. 대시보드의 복약 정보와 연결됐습니다.",
-    };
-  } catch (error) {
-    console.error(error);
-    return { status: "error", message: "샘플을 불러오지 못했어요." };
   }
 }

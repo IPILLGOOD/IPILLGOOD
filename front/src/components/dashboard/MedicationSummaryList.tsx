@@ -1,4 +1,5 @@
-import { Pill } from "lucide-react";
+import { ChevronRight, Pill } from "lucide-react";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/Badge";
 import { daysSince } from "@/lib/presentation";
@@ -22,7 +23,14 @@ export function MedicationSummaryList({ medications }: { medications: Medication
               {medication.doseAmount} · {medication.frequency} · 복용 {daysSince(medication.startDate)}일째
             </small>
           </div>
-          <span className="medication-row__time">{medication.timing}</span>
+          <Link
+            className="medication-row__detail"
+            href={`/medications/${medication.id}`}
+            aria-label={`${medication.productName} 상세 정보 보기`}
+          >
+            <span>{medication.timing}</span>
+            <ChevronRight size={17} aria-hidden="true" />
+          </Link>
         </li>
       ))}
     </ul>

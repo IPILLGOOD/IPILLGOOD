@@ -16,8 +16,8 @@ export default async function DocumentsPage() {
     <>
       <PageHeader
         eyebrow="문서 등록"
-        title="처방전의 어려운 내용을 쉽게 정리해요"
-        description="문서를 올린 뒤 보호자가 추출 결과를 원본과 확인하는 안전한 흐름을 준비했습니다."
+        title="처방전과 진단서를 쉬운 말로 확인해요"
+        description="문서를 첨부하면 분석 API가 중요한 내용을 정리하고, 보호자가 원본과 비교해 확인할 수 있어요."
         action={<ConnectionStatus source={snapshot.dataSource} />}
       />
 
@@ -26,7 +26,7 @@ export default async function DocumentsPage() {
           <div className="section-heading">
             <div>
               <h2>새 문서 등록</h2>
-              <p>실제 환자 정보 대신 비식별 샘플 사용을 권장해요.</p>
+              <p>처방전 또는 진단서를 선택하고 분석 결과를 바로 확인하세요.</p>
             </div>
           </div>
           <DocumentUploadForm />
@@ -59,8 +59,22 @@ export default async function DocumentsPage() {
                         </small>
                       </div>
                       <Badge tone={confirmed ? "success" : "warning"}>
-                        {confirmed ? "확인 완료" : "AI 연결 대기"}
+                        {confirmed ? "분석 완료" : "분석 대기"}
                       </Badge>
+                      {document.analysis ? (
+                        <details className="saved-analysis">
+                          <summary>분석 결과 보기</summary>
+                          <p>{document.analysis.summary}</p>
+                          <dl>
+                            {document.analysis.findings.map((finding) => (
+                              <div key={`${finding.label}-${finding.value}`}>
+                                <dt>{finding.label}</dt>
+                                <dd>{finding.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </details>
+                      ) : null}
                     </li>
                   );
                 })}
