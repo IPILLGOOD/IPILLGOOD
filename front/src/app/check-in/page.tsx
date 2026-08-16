@@ -26,7 +26,7 @@ export default async function CheckInPage() {
       <PageHeader
         eyebrow="오늘의 안부 확인"
         title="약은 잘 챙기셨나요?"
-        description="약 1분이면 충분해요. 모르거나 확인하지 못한 내용도 그대로 답할 수 있어요."
+        description="하루를 마무리하며 다음의 내용을 기입해주세요. 모르거나 확인하지 못한 내용도 그대로 답할 수 있어요."
       />
       <div className="checkin-layout">
         <Card>
