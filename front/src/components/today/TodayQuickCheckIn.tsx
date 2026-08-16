@@ -17,13 +17,6 @@ import type {
 } from "@care-atlas/backend";
 
 const initialState: ActionState = { status: "idle", message: "" };
-const doseOptions = [
-  { value: "completed", label: "복용 완료" },
-  { value: "partial", label: "일부 복용" },
-  { value: "not_yet", label: "아직 안 먹음" },
-  { value: "skipped", label: "먹지 못함" },
-  { value: "unconfirmed", label: "확인 못함" },
-];
 const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청거림"];
 
 export function TodayQuickCheckIn({
@@ -52,11 +45,21 @@ export function TodayQuickCheckIn({
         <ClipboardCheck size={23} aria-hidden="true" />
         <div>
           <h2>오늘의 안부 확인</h2>
-          <p>이 화면에서 바로 확인하고 수정할 수 있어요.</p>
+          <p>복약 확인은 왼쪽 일정에서, 여기서는 몸 상태를 기록해요.</p>
         </div>
       </div>
 
       <FormMessage state={state} />
+      <input type="hidden" name="checkInScope" value="wellbeing" />
+
+      {tasks.map((task) => (
+        <input
+          key={task.id}
+          type="hidden"
+          name={`dose_${task.id}`}
+          value={task.response}
+        />
+      ))}
 
       <div className="field quick-checkin__reporter">
         <label htmlFor="quick-answered-by">확인한 사람</label>
@@ -70,41 +73,6 @@ export function TodayQuickCheckIn({
           <option value="recipient">어르신 본인</option>
         </select>
       </div>
-
-      <fieldset className="quick-checkin__section">
-        <legend>복약 확인</legend>
-        {tasks.length > 0 ? (
-          <div className="quick-dose-list">
-            {tasks.map((task) => (
-              <div className="quick-dose-row" key={task.id}>
-                <label htmlFor={`quick-dose-${task.id}`}>
-                  <span>
-                    <time>{task.timeLabel}</time>
-                    {task.productName}
-                  </span>
-                  <small>
-                    {task.doseAmount} · {task.slotLabel}
-                  </small>
-                </label>
-                <select
-                  id={`quick-dose-${task.id}`}
-                  name={`dose_${task.id}`}
-                  defaultValue={task.response}
-                  required
-                >
-                  {doseOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="quick-checkin__empty">오늘 예정된 복용 일정이 없어요.</p>
-        )}
-      </fieldset>
 
       <fieldset className="quick-checkin__section">
         <legend>불편한 증상</legend>

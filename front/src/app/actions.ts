@@ -151,7 +151,10 @@ export async function saveCheckInAction(
     revalidatePath("/report");
     return {
       status: "success",
-      message: "오늘의 복약과 몸 상태를 기록했어요.",
+      message:
+        formData.get("checkInScope") === "wellbeing"
+          ? "오늘의 몸 상태를 기록했어요."
+          : "오늘의 복약과 몸 상태를 기록했어요.",
     };
   } catch (error) {
     console.error(error);
