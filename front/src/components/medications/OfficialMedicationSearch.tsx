@@ -8,9 +8,11 @@ import type { PharmacogenomicLookupResult } from "@care-atlas/backend";
 export function OfficialMedicationSearch({
   query,
   result,
+  officialApiConfigured,
 }: {
   query: string;
   result: PharmacogenomicLookupResult | null;
+  officialApiConfigured: boolean;
 }) {
   return (
     <Card className="official-drug-card" aria-labelledby="official-drug-title">
@@ -22,8 +24,8 @@ export function OfficialMedicationSearch({
           <div>
             <div className="medication-row__name">
               <h2 id="official-drug-title">식약처 공식 약물 유전 정보</h2>
-              <Badge tone={result?.status === "local_fallback" ? "neutral" : "success"}>
-                {result?.status === "local_fallback" ? "데모 복용약 검색" : "공공 API + GPT 설명"}
+              <Badge tone={officialApiConfigured ? "success" : "neutral"}>
+                {officialApiConfigured ? "공공 API 연결됨" : "공식 API 설정 필요"}
               </Badge>
             </div>
             <p>약물의 한글명 또는 영문명으로 공식 등록 정보를 확인하세요.</p>
@@ -63,7 +65,11 @@ export function OfficialMedicationSearch({
       {!query ? (
         <div className="official-drug-card__guide">
           <ShieldCheck size={18} aria-hidden="true" />
-          <p>현재 복용약과 별도로 조회되며, 검색 결과가 처방이나 복용법을 바꾸지는 않아요.</p>
+          <p>
+            {officialApiConfigured
+              ? "현재 복용약과 별도로 조회되며, 검색 결과가 처방이나 복용법을 바꾸지는 않아요."
+              : "현재 공식 API 인증키가 없어 등록된 데모 복용약만 검색할 수 있어요. 운영 환경에 MFDS_PARMGEN_API_KEY를 설정해주세요."}
+          </p>
         </div>
       ) : null}
 
