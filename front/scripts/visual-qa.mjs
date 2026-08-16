@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const playwrightEntry = process.env.CARE_ATLAS_PLAYWRIGHT;
 if (!playwrightEntry) throw new Error("CARE_ATLAS_PLAYWRIGHT is required");
+const baseUrl = process.env.CARE_ATLAS_BASE_URL ?? "http://127.0.0.1:3000";
 
 const { chromium } = await import(pathToFileURL(playwrightEntry).href);
 const require = createRequire(import.meta.url);
@@ -16,7 +17,16 @@ const browser = await chromium.launch({
   executablePath:
     process.env.CARE_ATLAS_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 });
-const routes = ["/", "/medications", "/check-in", "/documents", "/profile", "/report"];
+const routes = [
+  "/",
+  "/dashboard",
+  "/medications",
+  "/medications/med-amlodipine",
+  "/check-in",
+  "/documents",
+  "/profile",
+  "/report",
+];
 const viewports = [
   { name: "phone-320", width: 320, height: 780 },
   { name: "tablet-768", width: 768, height: 1024 },
@@ -35,7 +45,7 @@ for (const viewport of viewports) {
   });
 
   for (const route of routes) {
-    const response = await page.goto(`http://127.0.0.1:3000${route}`, {
+    const response = await page.goto(`${baseUrl}${route}`, {
       waitUntil: "networkidle",
     });
     const metrics = await page.locator("body").evaluate((body) => ({
@@ -63,7 +73,7 @@ for (const viewport of viewports) {
 const auditContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const auditPage = await auditContext.newPage();
 for (const route of routes) {
-  await auditPage.goto(`http://127.0.0.1:3000${route}`, { waitUntil: "networkidle" });
+  await auditPage.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
   await auditPage.addScriptTag({ content: axeSource });
   const axe = await auditPage.evaluate(async () =>
     globalThis.axe.run(document, {
@@ -110,7 +120,7 @@ for (const route of routes) {
 const largeTextContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
 const largeTextPage = await largeTextContext.newPage();
 for (const route of routes) {
-  await largeTextPage.goto(`http://127.0.0.1:3000${route}`, { waitUntil: "networkidle" });
+  await largeTextPage.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
   await largeTextPage.addStyleTag({ content: "html { font-size: 125% !important; }" });
   const overflow = await largeTextPage.locator("body").evaluate((body) => ({
     scrollWidth: body.scrollWidth,
@@ -125,16 +135,24 @@ for (const route of routes) {
 await largeTextContext.close();
 
 const screenshots = [
-  { route: "/", name: "dashboard-desktop.png", width: 1440, height: 1000 },
-  { route: "/", name: "dashboard-mobile.png", width: 375, height: 812 },
+  { route: "/", name: "today-desktop.png", width: 1440, height: 1000 },
+  { route: "/", name: "today-mobile.png", width: 375, height: 812 },
+  { route: "/dashboard", name: "dashboard-desktop.png", width: 1440, height: 1000 },
+  { route: "/dashboard", name: "dashboard-mobile.png", width: 375, height: 812 },
   { route: "/check-in", name: "check-in-mobile.png", width: 375, height: 812 },
   { route: "/medications", name: "medications-desktop.png", width: 1440, height: 1000 },
+  {
+    route: "/medications/med-amlodipine",
+    name: "medication-detail-desktop.png",
+    width: 1440,
+    height: 1000,
+  },
   { route: "/documents", name: "documents-desktop.png", width: 1440, height: 1000 },
   { route: "/report", name: "report-desktop.png", width: 1440, height: 1000 },
 ];
 for (const shot of screenshots) {
   await auditPage.setViewportSize({ width: shot.width, height: shot.height });
-  await auditPage.goto(`http://127.0.0.1:3000${shot.route}`, { waitUntil: "networkidle" });
+  await auditPage.goto(`${baseUrl}${shot.route}`, { waitUntil: "networkidle" });
   await auditPage.screenshot({
     path: fileURLToPath(new URL(shot.name, artifacts)),
     fullPage: true,
