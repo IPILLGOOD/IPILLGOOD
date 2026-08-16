@@ -804,6 +804,70 @@
   gap: var(--space-2);
 }
 
+.plain-drug-explanation {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid var(--color-sage-200);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-50);
+  padding: var(--space-4);
+}
+
+.plain-drug-explanation__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.plain-drug-explanation__heading > svg {
+  color: var(--color-primary-700);
+}
+
+.plain-drug-explanation__heading h4 {
+  margin: 0 auto 0 0;
+  color: var(--color-primary-900);
+  font-size: 0.9rem;
+}
+
+.plain-drug-explanation__content {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.plain-drug-explanation__content strong,
+.official-drug-result__original strong {
+  color: var(--color-primary-900);
+  font-size: 0.8rem;
+}
+
+.official-drug-result__details .plain-drug-explanation__content p,
+.official-drug-result__details .plain-drug-explanation__note {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  white-space: pre-line;
+}
+
+.plain-drug-explanation__note {
+  border-top: 1px solid var(--color-sage-200);
+  margin: 0;
+  color: var(--color-primary-800);
+  padding-top: var(--space-3);
+  font-weight: 700;
+}
+
+.official-drug-result__original > div {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.official-drug-result__original section + section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+
 .official-drug-result__details details {
   border-bottom: 1px solid var(--color-border);
   padding-bottom: var(--space-2);

@@ -17,6 +17,14 @@ export interface PharmacogenomicInfo {
   pharmacogenomicInfo: string;
   generalInfo: string;
   productInfo: string;
+  plainExplanation?: PlainMedicationExplanation;
+}
+
+export interface PlainMedicationExplanation {
+  overview: string;
+  geneInfo: string;
+  productInfo: string;
+  caregiverNote: string;
 }
 
 export type PharmacogenomicLookupResult =
@@ -25,6 +33,7 @@ export type PharmacogenomicLookupResult =
       items: PharmacogenomicInfo[];
       totalCount: number;
       sourceUrl: string;
+      plainLanguageStatus: "complete" | "not_configured" | "unavailable";
     }
   | {
       status: "unavailable";
@@ -46,6 +55,23 @@ interface SearchOptions {
   apiUrl?: string;
   fetcher?: Fetcher;
   format?: DataFormat;
+  openAiApiKey?: string;
+  simplifier?: MedicationSimplifier;
+}
+
+type MedicationSimplifier = (
+  items: PharmacogenomicInfo[],
+  options?: { apiKey?: string; model?: string },
+) => Promise<PharmacogenomicInfo[]>;
+
+async function defaultMedicationSimplifier(
+  items: PharmacogenomicInfo[],
+  options?: { apiKey?: string; model?: string },
+) {
+  const { simplifyMedicationInformationWithOpenAI } = await import(
+    "./ai/openai-medical"
+  );
+  return simplifyMedicationInformationWithOpenAI(items, options);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -157,7 +183,10 @@ function parsePayload(payload: string, format: DataFormat): unknown {
 export function parsePharmacogenomicResponse(
   payload: string,
   format: DataFormat,
-): Omit<Extract<PharmacogenomicLookupResult, { status: "connected" }>, "sourceUrl"> {
+): Omit<
+  Extract<PharmacogenomicLookupResult, { status: "connected" }>,
+  "sourceUrl" | "plainLanguageStatus"
+> {
   const parsed = asRecord(parsePayload(payload, format));
   const response = asRecord(parsed?.response) ?? parsed;
   const envelope = (response ?? {}) as ApiEnvelope;
@@ -221,6 +250,7 @@ export async function searchPharmacogenomicInfo(
       items: [],
       totalCount: 0,
       sourceUrl: SOURCE_URL,
+      plainLanguageStatus: process.env.OPENAI_API_KEY ? "complete" : "not_configured",
     };
   }
 
@@ -231,7 +261,7 @@ export async function searchPharmacogenomicInfo(
     const endpoint = new URL(`${apiUrl.replace(/\/$/, "")}/getParmgen`);
     endpoint.searchParams.set("serviceKey", apiKey);
     endpoint.searchParams.set("pageNo", "1");
-    endpoint.searchParams.set("numOfRows", "20");
+    endpoint.searchParams.set("numOfRows", "10");
     endpoint.searchParams.set("type", format);
     endpoint.searchParams.set(
       /[가-힣]/.test(query) ? "DRFSTF_KOR_NM" : "DRFSTF_ENG_NM",
@@ -251,7 +281,26 @@ export async function searchPharmacogenomicInfo(
     }
 
     const parsed = parsePharmacogenomicResponse(await response.text(), format);
-    return { ...parsed, sourceUrl: SOURCE_URL };
+    const openAiApiKey = options.openAiApiKey ?? process.env.OPENAI_API_KEY;
+    if (!openAiApiKey || parsed.items.length === 0) {
+      return {
+        ...parsed,
+        sourceUrl: SOURCE_URL,
+        plainLanguageStatus: openAiApiKey ? "complete" : "not_configured",
+      };
+    }
+
+    try {
+      const items = await (options.simplifier ?? defaultMedicationSimplifier)(
+        parsed.items,
+        { apiKey: openAiApiKey },
+      );
+      return { ...parsed, items, sourceUrl: SOURCE_URL, plainLanguageStatus: "complete" };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "알 수 없는 오류";
+      console.error("OpenAI medication simplification unavailable", message);
+      return { ...parsed, sourceUrl: SOURCE_URL, plainLanguageStatus: "unavailable" };
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     console.error("MFDS pharmacogenomic API unavailable", message);

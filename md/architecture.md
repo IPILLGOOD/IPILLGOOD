@@ -123,6 +123,8 @@ AI_API_KEY=
 
 모든 분석 키가 없으면 비식별 데모 분석을 반환하므로 업로드부터 결과 확인까지의 화면 흐름은 그대로 체험할 수 있습니다.
 
+약물 검색은 `MFDS_PARMGEN_API_KEY`로 식약처 약물 유전 정보 원문을 먼저 가져옵니다. 결과가 있으면 환자 정보 없이 공개된 식약처 원문만 OpenAI Responses API에 전달하고, JSON Schema로 `overview`, `geneInfo`, `productInfo`, `caregiverNote`를 생성합니다. OpenAI 요청은 `store: false`이며, 생성 실패 시 쉬운 설명만 생략하고 식약처 원문은 그대로 표시합니다.
+
 ## AI 안전 고도화 계획
 
 후속 구현 순서:
