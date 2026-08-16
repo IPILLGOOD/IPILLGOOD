@@ -33,6 +33,8 @@ Google 계정으로 로그인하면 계정별로 분리된 빈 돌봄 공간을 
 
 IPILLGOOD는 인증과 데이터 접근을 서버 경계 안에 두는 Next.js 기반 모노레포입니다. 공개 랜딩·로그인 외 앱 경로는 서명된 세션 쿠키를 확인하며, 브라우저는 Firestore와 외부 API에 직접 접근하지 않습니다.
 
+![IPILLGOOD Care Framework](design/generated/ipillgood-care-framework-16x9.png)
+
 ```mermaid
 flowchart LR
   U["보호자 · 어르신"] --> B["Browser"]
