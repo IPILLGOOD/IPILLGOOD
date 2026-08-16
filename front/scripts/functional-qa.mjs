@@ -11,7 +11,9 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 
-await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
+await page.goto(`${baseUrl}/login`, { waitUntil: "networkidle" });
+await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+await page.waitForURL("**/today");
 const quickCheckIn = page.getByRole("form", { name: "오늘의 안부 바로 기록" });
 await quickCheckIn.getByLabel("어지러움", { exact: true }).check();
 await quickCheckIn
@@ -30,7 +32,7 @@ await page.getByRole("button", { name: "비식별 샘플 처방전으로 체험"
 await page.getByText("비식별 데모 분석을 마쳤어요.").waitFor();
 await page.getByRole("heading", { name: "처방전 분석 결과" }).waitFor();
 
-await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
+await page.goto(`${baseUrl}/today`, { waitUntil: "networkidle" });
 const firestoreStatus = await page.getByText("안전하게 저장 중").isVisible();
 if (!firestoreStatus) throw new Error("Firestore connection status was not visible");
 

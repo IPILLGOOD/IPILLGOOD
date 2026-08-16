@@ -36,7 +36,7 @@ export function CheckInForm({ tasks }: { tasks: MedicationScheduleTask[] }) {
             <Link className="button button--secondary" href="/report">
               상담용 기록 보기
             </Link>
-            <Link className="button button--primary" href="/">
+            <Link className="button button--primary" href="/today">
               오늘 화면으로 돌아가기
             </Link>
           </div>
@@ -127,7 +127,7 @@ export function CheckInForm({ tasks }: { tasks: MedicationScheduleTask[] }) {
       </div>
 
       <div className="form-actions">
-        <Link className="button button--quiet" href="/">
+        <Link className="button button--quiet" href="/today">
           나중에 하기
         </Link>
         <SubmitButton pendingText="기록하는 중…">오늘의 답변 저장</SubmitButton>

@@ -19,6 +19,8 @@ const browser = await chromium.launch({
 });
 const routes = [
   "/",
+  "/login",
+  "/today",
   "/dashboard",
   "/medications",
   "/medications/med-amlodipine",
@@ -45,6 +47,9 @@ for (const viewport of viewports) {
   });
 
   for (const route of routes) {
+    if (route === "/today") {
+      await context.request.post(`${baseUrl}/api/auth/demo`);
+    }
     const response = await page.goto(`${baseUrl}${route}`, {
       waitUntil: "networkidle",
     });
@@ -73,6 +78,9 @@ for (const viewport of viewports) {
 const auditContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const auditPage = await auditContext.newPage();
 for (const route of routes) {
+  if (route === "/today") {
+    await auditContext.request.post(`${baseUrl}/api/auth/demo`);
+  }
   await auditPage.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
   await auditPage.addScriptTag({ content: axeSource });
   const axe = await auditPage.evaluate(async () =>
@@ -120,6 +128,9 @@ for (const route of routes) {
 const largeTextContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
 const largeTextPage = await largeTextContext.newPage();
 for (const route of routes) {
+  if (route === "/today") {
+    await largeTextContext.request.post(`${baseUrl}/api/auth/demo`);
+  }
   await largeTextPage.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
   await largeTextPage.addStyleTag({ content: "html { font-size: 125% !important; }" });
   const overflow = await largeTextPage.locator("body").evaluate((body) => ({
@@ -134,9 +145,15 @@ for (const route of routes) {
 }
 await largeTextContext.close();
 
+const screenshotContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const screenshotPage = await screenshotContext.newPage();
 const screenshots = [
-  { route: "/", name: "today-desktop.png", width: 1440, height: 1000 },
-  { route: "/", name: "today-mobile.png", width: 375, height: 812 },
+  { route: "/", name: "landing-desktop.png", width: 1440, height: 1000 },
+  { route: "/", name: "landing-mobile.png", width: 375, height: 812 },
+  { route: "/login", name: "login-desktop.png", width: 1440, height: 1000 },
+  { route: "/login", name: "login-mobile.png", width: 375, height: 812 },
+  { route: "/today", name: "today-desktop.png", width: 1440, height: 1000 },
+  { route: "/today", name: "today-mobile.png", width: 375, height: 812 },
   { route: "/dashboard", name: "dashboard-desktop.png", width: 1440, height: 1000 },
   { route: "/dashboard", name: "dashboard-mobile.png", width: 375, height: 812 },
   { route: "/check-in", name: "check-in-mobile.png", width: 375, height: 812 },
@@ -151,14 +168,18 @@ const screenshots = [
   { route: "/report", name: "report-desktop.png", width: 1440, height: 1000 },
 ];
 for (const shot of screenshots) {
-  await auditPage.setViewportSize({ width: shot.width, height: shot.height });
-  await auditPage.goto(`${baseUrl}${shot.route}`, { waitUntil: "networkidle" });
-  await auditPage.screenshot({
+  if (shot.route === "/today") {
+    await screenshotContext.request.post(`${baseUrl}/api/auth/demo`);
+  }
+  await screenshotPage.setViewportSize({ width: shot.width, height: shot.height });
+  await screenshotPage.goto(`${baseUrl}${shot.route}`, { waitUntil: "networkidle" });
+  await screenshotPage.screenshot({
     path: fileURLToPath(new URL(shot.name, artifacts)),
     fullPage: true,
   });
 }
 
+await screenshotContext.close();
 await auditContext.close();
 await browser.close();
 

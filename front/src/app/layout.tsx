@@ -2,11 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { Noto_Sans_KR } from "next/font/google";
 
 import { AppShell } from "@/components/navigation/AppShell";
+import { getSession } from "@/lib/auth/session";
 
 import "@/styles/tokens.css";
 import "@/styles/globals.css";
 import "@/styles/components.css";
 import "@/styles/pages.css";
+import "@/styles/landing.css";
 
 const notoSans = Noto_Sans_KR({
   variable: "--font-noto-sans",
@@ -30,11 +32,13 @@ export const viewport: Viewport = {
   themeColor: "#F6F8F4",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const session = await getSession();
+
   return (
     <html lang="ko" className={notoSans.variable}>
       <body suppressHydrationWarning>
-        <AppShell>{children}</AppShell>
+        <AppShell user={session}>{children}</AppShell>
       </body>
     </html>
   );

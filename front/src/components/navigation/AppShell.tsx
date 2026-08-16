@@ -6,14 +6,17 @@ import {
   FileText,
   HeartPulse,
   LayoutDashboard,
+  LogOut,
   Pill,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import type { SessionUser } from "@/lib/auth/session";
+
 const navigation = [
-  { href: "/", label: "오늘 할 일", icon: CalendarCheck2, mobile: true },
+  { href: "/today", label: "오늘 할 일", icon: CalendarCheck2, mobile: true },
   { href: "/dashboard", label: "대시보드", icon: LayoutDashboard, mobile: true },
   { href: "/medications", label: "복용약", icon: Pill, mobile: true },
   { href: "/check-in", label: "안부 확인", icon: ClipboardCheck, mobile: true },
@@ -23,7 +26,7 @@ const navigation = [
 
 function Brand() {
   return (
-    <Link className="brand" href="/" aria-label="Care Atlas 오늘 할 일 화면으로 이동">
+    <Link className="brand" href="/today" aria-label="Care Atlas 오늘 할 일 화면으로 이동">
       <span className="brand__mark" aria-hidden="true">
         <HeartPulse size={22} strokeWidth={2.2} />
       </span>
@@ -46,7 +49,7 @@ function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
       {navigation
         .filter((item) => !mobile || item.mobile)
         .map(({ href, label, icon: Icon }) => {
-        const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+        const active = pathname.startsWith(href);
         return (
           <Link
             key={href}
@@ -63,7 +66,18 @@ function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  user,
+}: {
+  children: React.ReactNode;
+  user: SessionUser | null;
+}) {
+  const pathname = usePathname();
+  const isPublicPage = pathname === "/" || pathname === "/login";
+
+  if (isPublicPage) return children;
+
   return (
     <>
       <a className="skip-link" href="#main-content">
@@ -73,11 +87,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside className="sidebar">
           <Brand />
           <NavigationLinks />
+          {user ? (
+            <div className="sidebar-user">
+              <span className="sidebar-user__avatar" aria-hidden="true">
+                {user.name.slice(0, 1)}
+              </span>
+              <span className="sidebar-user__copy">
+                <strong>{user.name}</strong>
+                <small>{user.provider === "google" ? "Google 계정" : "데모 모드"}</small>
+              </span>
+              <form action="/api/auth/logout" method="post">
+                <button type="submit" aria-label="로그아웃" title="로그아웃">
+                  <LogOut size={17} aria-hidden="true" />
+                </button>
+              </form>
+            </div>
+          ) : null}
         </aside>
 
         <div className="app-column">
           <header className="mobile-header">
             <Brand />
+            <form action="/api/auth/logout" method="post">
+              <button className="mobile-logout" type="submit" aria-label="로그아웃">
+                <LogOut size={19} aria-hidden="true" />
+              </button>
+            </form>
           </header>
           <main id="main-content" className="main-content" tabIndex={-1}>
             {children}
