@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-const projectId = process.env.FIREBASE_PROJECT_ID ?? "care-atlas-seoul-2026";
+const projectId = process.env.FIREBASE_PROJECT_ID ?? "care-atlas-seoul-2026-v2";
 const seedUrl = new URL("../src/data/demo-seed.json", import.meta.url);
 const seed = JSON.parse(await readFile(seedUrl, "utf8"));
 
