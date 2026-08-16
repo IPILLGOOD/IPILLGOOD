@@ -34,6 +34,19 @@ test("외부 문서 분석 API의 구조화 응답을 실제 분석 결과로 �
           questionsForProfessional: ["복용 시간을 확인해주세요."],
           disclaimer: "의료진 확인이 필요합니다.",
           diagnoses: [],
+          medications: [
+            {
+              productName: "테스트정 5mg",
+              ingredientName: "테스트 성분",
+              doseAmount: "한 번에 1정",
+              frequency: "하루 1회",
+              timing: "아침 식사 후",
+              startDate: "2026-08-16",
+              endDate: "",
+              purposePlain: "혈압 관리",
+              precautions: [],
+            },
+          ],
         },
       }),
       { status: 200 },
@@ -49,6 +62,7 @@ test("외부 문서 분석 API의 구조화 응답을 실제 분석 결과로 �
 
   assert.equal(result.analysis.source, "api");
   assert.equal(result.analysis.findings[0]?.value, "테스트정 5mg");
+  assert.equal(result.analysis.medications?.[0]?.frequency, "하루 1회");
   assert.equal(receivedAuthorization, "Bearer test-analysis-key");
 });
 

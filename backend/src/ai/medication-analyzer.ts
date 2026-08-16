@@ -92,6 +92,39 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
     disclaimer:
       "이 결과는 비식별 데모 문서를 기준으로 만든 예시이며 처방 변경이나 복용 중단을 안내하지 않아요. 실제 내용은 원본과 의사·약사 설명으로 확인해주세요.",
     source: "demo",
+    medications: [
+      {
+        productName: "노바스크정 5mg",
+        ingredientName: "암로디핀",
+        doseAmount: "한 번에 1정",
+        frequency: "하루 1회",
+        timing: "아침 식사 후",
+        startDate: "2026-08-12",
+        purposePlain: "혈압이 너무 높아지지 않도록 도와줘요.",
+        precautions: ["평소보다 많이 어지러운지 확인해주세요."],
+      },
+      {
+        productName: "쎄레브렉스캡슐 100mg",
+        ingredientName: "세레콕시브",
+        doseAmount: "한 번에 1캡슐",
+        frequency: "하루 2회",
+        timing: "아침·저녁 식사 후",
+        startDate: "2026-08-12",
+        endDate: "2026-08-18",
+        purposePlain: "무릎의 통증과 붓는 느낌을 줄이는 데 사용돼요.",
+        precautions: ["속이 많이 쓰리거나 아픈지 확인해주세요."],
+      },
+      {
+        productName: "리피토정 10mg",
+        ingredientName: "아토르바스타틴",
+        doseAmount: "한 번에 1정",
+        frequency: "하루 1회",
+        timing: "저녁 식사 후",
+        startDate: "2026-08-12",
+        purposePlain: "혈액 속 기름 성분을 관리하는 데 사용돼요.",
+        precautions: ["이유 없이 근육이 많이 아픈지 확인해주세요."],
+      },
+    ],
   };
 }
 
@@ -226,6 +259,23 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
             typeof diagnosis === "object" &&
             typeof diagnosis.name === "string" &&
             (diagnosis.code === undefined || typeof diagnosis.code === "string"),
+        ))) &&
+    (analysis.medications === undefined ||
+      (Array.isArray(analysis.medications) &&
+        analysis.medications.every(
+          (medication) =>
+            medication &&
+            typeof medication === "object" &&
+            typeof medication.productName === "string" &&
+            typeof medication.ingredientName === "string" &&
+            typeof medication.doseAmount === "string" &&
+            typeof medication.frequency === "string" &&
+            typeof medication.timing === "string" &&
+            typeof medication.startDate === "string" &&
+            (medication.endDate === undefined || typeof medication.endDate === "string") &&
+            typeof medication.purposePlain === "string" &&
+            Array.isArray(medication.precautions) &&
+            medication.precautions.every((item) => typeof item === "string"),
         ))) &&
     typeof analysis.disclaimer === "string"
   );

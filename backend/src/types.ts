@@ -35,12 +35,25 @@ export interface MedicationPlan {
   status: "active" | "paused" | "ended";
   isNew: boolean;
   sourceLabel: string;
+  sourceDocumentId?: string;
   watchFor: string[];
   clinicianQuestion?: string;
   howItWorksPlain?: string;
   commonEffects?: string[];
   precautions?: string[];
   storagePlain?: string;
+}
+
+export interface PrescriptionMedication {
+  productName: string;
+  ingredientName: string;
+  doseAmount: string;
+  frequency: string;
+  timing: string;
+  startDate: string;
+  endDate?: string;
+  purposePlain: string;
+  precautions: string[];
 }
 
 export interface DoseEvent {
@@ -260,6 +273,7 @@ export interface DocumentAnalysis {
   questionsForProfessional: string[];
   disclaimer: string;
   source: "demo" | "api" | "openai";
+  medications?: PrescriptionMedication[];
   diagnoses?: Array<{
     name: string;
     code?: string;
