@@ -4,6 +4,13 @@
 
 > 처방전 한 장을, 오늘의 돌봄으로.
 
+## 팀 소개
+
+| <a href="https://github.com/hongjiyeon56"><img src="https://github.com/hongjiyeon56.png?size=120" width="80" height="80" alt="홍지연 GitHub 프로필 사진"></a> | <a href="https://github.com/dkim1112"><img src="https://github.com/dkim1112.png?size=120" width="80" height="80" alt="김동은 GitHub 프로필 사진"></a> | <a href="https://github.com/kanade012"><img src="https://github.com/kanade012.png?size=120" width="80" height="80" alt="장영하 GitHub 프로필 사진"></a> | <a href="https://github.com/stringnine"><img src="https://github.com/stringnine.png?size=120" width="80" height="80" alt="지현구 GitHub 프로필 사진"></a> |
+|:---:|:---:|:---:|:---:|
+| **[홍지연](https://github.com/hongjiyeon56)** | **[김동은](https://github.com/dkim1112)** | **[장영하](https://github.com/kanade012)** | **[지현구](https://github.com/stringnine)** |
+| 팀장 · Insight | Insight | Build | Build |
+
 IPILLGOOD는 처방전의 어려운 표현을 보호자가 이해할 수 있는 말로 정리하고, 매일의 복용 여부와 몸 상태를 다음 진료에 가져갈 기록으로 연결하는 고령자 복약·웰니스 컨설턴트입니다.
 
 ![IPILLGOOD 랜딩페이지](design/screenshots/landing-desktop.png)
