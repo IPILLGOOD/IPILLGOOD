@@ -6,7 +6,7 @@
 
 ## 팀 소개
 
-| <a href="https://github.com/hongjiyeon56"><img src="https://github.com/hongjiyeon56.png?size=120" width="80" height="80" alt="홍지연 GitHub 프로필 사진"></a> | <a href="https://github.com/dkim1112"><img src="https://github.com/dkim1112.png?size=120" width="80" height="80" alt="김동은 GitHub 프로필 사진"></a> | <a href="https://github.com/kanade012"><img src="https://github.com/kanade012.png?size=120" width="80" height="80" alt="장영하 GitHub 프로필 사진"></a> | <a href="https://github.com/stringnine"><img src="https://github.com/stringnine.png?size=120" width="80" height="80" alt="지현구 GitHub 프로필 사진"></a> |
+| <a href="https://github.com/hongjiyeon56"><img src="https://avatars.githubusercontent.com/u/237960924?s=120&v=4" width="80" height="80" alt="홍지연 GitHub 프로필 사진"></a> | <a href="https://github.com/dkim1112"><img src="https://avatars.githubusercontent.com/u/74619981?s=120&v=4" width="80" height="80" alt="김동은 GitHub 프로필 사진"></a> | <a href="https://github.com/kanade012"><img src="https://avatars.githubusercontent.com/u/87456609?s=120&v=4" width="80" height="80" alt="장영하 GitHub 프로필 사진"></a> | <a href="https://github.com/stringnine"><img src="https://avatars.githubusercontent.com/u/179396940?s=120&v=4" width="80" height="80" alt="지현구 GitHub 프로필 사진"></a> |
 |:---:|:---:|:---:|:---:|
 | **[홍지연](https://github.com/hongjiyeon56)** | **[김동은](https://github.com/dkim1112)** | **[장영하](https://github.com/kanade012)** | **[지현구](https://github.com/stringnine)** |
 | 팀장 · Insight | Insight | Build | Build |
