@@ -30,3 +30,14 @@ test("서버 세션 생성 실패와 알 수 없는 오류를 안전하게 구�
     "Google 로그인을 완료하지 못했어요. 다시 시도해주세요.",
   );
 });
+
+test("PWA redirect 결과 누락과 popup timeout을 다시 시도 가능한 오류로 안내한다", () => {
+  assert.equal(
+    getGoogleAuthErrorMessage({ code: "auth/redirect-result-missing" }),
+    "Google 로그인 결과가 앱으로 돌아오지 않았어요. 다시 시도해주세요.",
+  );
+  assert.equal(
+    getGoogleAuthErrorMessage({ code: "auth/popup-timeout" }),
+    "Google 로그인 응답이 늦어지고 있어요. 다시 시도해주세요.",
+  );
+});

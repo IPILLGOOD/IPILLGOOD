@@ -25,6 +25,14 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      {
+        source: "/__/auth/:path*",
+        destination: "/api/firebase-auth/:path*",
+      },
+    ];
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "6mb",

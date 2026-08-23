@@ -1,67 +1,97 @@
 "use client";
 
 import { ArrowRight, LoaderCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
-  getGoogleAuthErrorMessage,
-  googleAuthServerError,
-} from "@/lib/auth/google-error";
-
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyD6wyT0r7lg3Et1qMqgrYabJfHXoN7kcaI",
-  authDomain: "care-atlas-seoul-2026-v2.firebaseapp.com",
-  projectId: "care-atlas-seoul-2026-v2",
-  storageBucket: "care-atlas-seoul-2026-v2.firebasestorage.app",
-  messagingSenderId: "419676584381",
-  appId: "1:419676584381:web:fe8f784da39fabd5aa7ad4",
-} as const;
+  clearGoogleRedirectState,
+  createGoogleServerSession,
+  currentGoogleAuthMode,
+  hasPendingGoogleRedirect,
+  loadFirebaseAuth,
+  markGoogleRedirectPending,
+} from "@/lib/auth/google-auth-browser";
+import { withGoogleAuthTimeout } from "@/lib/auth/google-auth-flow";
+import { getGoogleAuthErrorMessage } from "@/lib/auth/google-error";
+type LoadingState = "idle" | "popup" | "redirect" | "completing";
 
 export function GoogleSignInButton() {
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
+  const redirectCheckStarted = useRef(false);
+  const [loadingState, setLoadingState] = useState<LoadingState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>();
+  const isLoading = loadingState !== "idle";
+
+  useEffect(() => {
+    if (redirectCheckStarted.current || !hasPendingGoogleRedirect()) return;
+    redirectCheckStarted.current = true;
+    let active = true;
+    setLoadingState("completing");
+
+    void (async () => {
+      try {
+        const { auth, authModule } = await loadFirebaseAuth("redirect");
+        const credential = await withGoogleAuthTimeout(
+          authModule.getRedirectResult(auth),
+          30_000,
+          "auth/redirect-timeout",
+        );
+        await auth.authStateReady();
+        const user = credential?.user ?? auth.currentUser;
+        if (!user) {
+          throw Object.assign(new Error("redirect result missing"), {
+            code: "auth/redirect-result-missing",
+          });
+        }
+        await createGoogleServerSession(user, auth, authModule);
+      } catch (error) {
+        clearGoogleRedirectState();
+        if (!active) return;
+        setErrorMessage(getGoogleAuthErrorMessage(error));
+        setLoadingState("idle");
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleSignIn() {
     if (isLoading) return;
-
-    setIsLoading(true);
     setErrorMessage(undefined);
+    const mode = currentGoogleAuthMode();
+    setLoadingState(mode);
 
     try {
-      const [{ getApp, getApps, initializeApp }, authModule] = await Promise.all([
-        import("firebase/app"),
-        import("firebase/auth"),
-      ]);
-      const app = getApps().some(({ name }) => name === "care-atlas-v2")
-        ? getApp("care-atlas-v2")
-        : initializeApp(FIREBASE_CONFIG, "care-atlas-v2");
-      const auth = authModule.getAuth(app);
+      const { auth, authModule } = await loadFirebaseAuth(mode);
       const provider = new authModule.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
 
-      const credential = await authModule.signInWithPopup(auth, provider);
-      const idToken = await credential.user.getIdToken();
-      const response = await fetch("/api/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
-      });
-
-      if (!response.ok) {
-        const result = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw googleAuthServerError(result?.error ?? "google_login_failed");
+      if (mode === "redirect") {
+        markGoogleRedirectPending();
+        await authModule.signInWithRedirect(auth, provider);
+        return;
       }
 
-      await authModule.signOut(auth).catch(() => undefined);
-      router.replace("/today");
-      router.refresh();
+      const credential = await withGoogleAuthTimeout(
+        authModule.signInWithPopup(auth, provider),
+        60_000,
+        "auth/popup-timeout",
+      );
+      await createGoogleServerSession(credential.user, auth, authModule);
     } catch (error) {
+      clearGoogleRedirectState();
       setErrorMessage(getGoogleAuthErrorMessage(error));
-      setIsLoading(false);
+      setLoadingState("idle");
     }
   }
+
+  const loadingLabel =
+    loadingState === "redirect"
+      ? "Google 로그인으로 이동 중"
+      : loadingState === "completing"
+        ? "Google 로그인 마무리 중"
+        : "Google 계정 확인 중";
 
   return (
     <>
@@ -74,7 +104,7 @@ export function GoogleSignInButton() {
       >
         {isLoading ? (
           <>
-            Google 계정 확인 중
+            {loadingLabel}
             <LoaderCircle className="login-button-spinner" size={17} aria-hidden="true" />
           </>
         ) : (
