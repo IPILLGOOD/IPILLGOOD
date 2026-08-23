@@ -9,8 +9,50 @@ export {
   saveDailyCheckIn,
   updateRecipientProfile,
   type CareDataScope,
+  type RegisterDocumentInput,
 } from "./care-repository";
+export {
+  deleteDocumentAndSyncMedicationReminders,
+  registerDocumentAndSyncMedicationReminders,
+} from "./medication-reminder-service";
 export { dateKeyInSeoul, getOrCreateQuestionSet } from "./care-orchestration-service";
+export {
+  MEDICATION_TIME_ZONE,
+  activeMedications,
+  advanceMedicationReminderSchedule,
+  buildMedicationReminderSchedules,
+  createMedicationSchedule,
+  dateKeyInTimeZone,
+  isMedicationDueOnDate,
+  medicationFrequencyRule,
+  medicationTimingSlots,
+  nextMedicationDueAt,
+  timeForMedicationSlot,
+  type MedicationReminderSchedule,
+  type MedicationScheduleTask,
+} from "./medication-schedule";
+export {
+  deactivatePushSubscription,
+  dispatchDueMedicationReminders,
+  getNotificationScheduleStatus,
+  getPushDeliveryReceipt,
+  recordPushDeliveryReceipt,
+  registerPushSubscription,
+  sendTestPushToDevice,
+  syncMedicationReminderSchedules,
+  type DispatchSummary,
+  type NotificationScheduleStatus,
+  type PushSubscriptionRecord,
+  type PushDeliveryReceipt,
+} from "./push-repository";
+export {
+  getVapidConfiguration,
+  sendWebPush,
+  type BrowserPushSubscription,
+  type VapidConfiguration,
+  type WebPushDeliveryResult,
+  type WebPushNotificationPayload,
+} from "./web-push";
 export { buildPatientQuestionResponse } from "./ai/questions/apply-question-response";
 export {
   analyzeMedicationDocument,

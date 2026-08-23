@@ -11,12 +11,16 @@
     "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy -- --keep-vars",
     "cf:upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload -- --keep-vars",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "push:keys": "node scripts/generate-vapid-keys.mjs",
+    "qa:google-pwa": "node scripts/google-auth-pwa-qa.mjs",
+    "qa:push": "node scripts/push-qa.mjs",
     "test": "node --experimental-strip-types --test test/*.test.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@care-atlas/backend": "*",
+    "@mmmike/web-push": "^1.3.0",
     "firebase": "^12.17.1",
     "jose": "^6.2.9",
     "lucide-react": "1.31.0",

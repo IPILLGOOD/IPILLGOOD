@@ -11,6 +11,9 @@ interface SetOptionsLike {
   merge?: boolean;
 }
 
+export type QueryOperator = "==" | "<" | "<=" | ">" | ">=";
+export type QueryDirection = "asc" | "desc";
+
 export interface DocumentSnapshotLike {
   exists: boolean;
   id: string;
@@ -33,11 +36,22 @@ export interface DocumentReferenceLike {
 export interface CollectionReferenceLike {
   path: string;
   doc(id: string): DocumentReferenceLike;
+  where(fieldPath: string, operator: QueryOperator, value: unknown): QueryLike;
+  orderBy(fieldPath: string, direction?: QueryDirection): QueryLike;
+  limit(count: number): QueryLike;
+  get(): Promise<QuerySnapshotLike>;
+}
+
+export interface QueryLike {
+  where(fieldPath: string, operator: QueryOperator, value: unknown): QueryLike;
+  orderBy(fieldPath: string, direction?: QueryDirection): QueryLike;
+  limit(count: number): QueryLike;
   get(): Promise<QuerySnapshotLike>;
 }
 
 export interface WriteBatchLike {
   set(ref: DocumentReferenceLike, data: unknown, options?: SetOptionsLike): WriteBatchLike;
+  create(ref: DocumentReferenceLike, data: unknown): WriteBatchLike;
   delete(ref: DocumentReferenceLike): WriteBatchLike;
   commit(): Promise<void>;
 }
@@ -126,6 +140,37 @@ function encodedResourcePath(path: string) {
     .join("/");
 }
 
+class FirestoreRestError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`Firestore REST request failed: HTTP ${status}`);
+    this.name = "FirestoreRestError";
+    this.status = status;
+  }
+}
+
+type QueryConstraint = {
+  fieldPath: string;
+  operator: QueryOperator;
+  value: unknown;
+};
+
+type QueryOrder = {
+  fieldPath: string;
+  direction: QueryDirection;
+};
+
+function firestoreOperator(operator: QueryOperator) {
+  return {
+    "==": "EQUAL",
+    "<": "LESS_THAN",
+    "<=": "LESS_THAN_OR_EQUAL",
+    ">": "GREATER_THAN",
+    ">=": "GREATER_THAN_OR_EQUAL",
+  }[operator];
+}
+
 class FirestoreRestClient implements FirestoreLike {
   private readonly baseUrl: string;
   private readonly credentials: ServiceAccountCredentials;
@@ -200,13 +245,13 @@ class FirestoreRestClient implements FirestoreLike {
     return this.createAccessToken();
   }
 
-  private async request(relativeUrl: string, init: RequestInit = {}, allowNotFound = false) {
+  private async requestUrl(url: string, init: RequestInit = {}, allowNotFound = false) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const token = await this.getAccessToken();
       const headers = new Headers(init.headers);
       headers.set("Authorization", `Bearer ${token}`);
       if (init.body) headers.set("Content-Type", "application/json");
-      const response = await this.fetcher(`${this.baseUrl}/${relativeUrl}`, {
+      const response = await this.fetcher(url, {
         ...init,
         headers,
       });
@@ -216,11 +261,15 @@ class FirestoreRestClient implements FirestoreLike {
       }
       if (allowNotFound && response.status === 404) return response;
       if (!response.ok) {
-        throw new Error(`Firestore REST request failed: HTTP ${response.status}`);
+        throw new FirestoreRestError(response.status);
       }
       return response;
     }
     throw new Error("Firestore REST authentication failed.");
+  }
+
+  private request(relativeUrl: string, init: RequestInit = {}, allowNotFound = false) {
+    return this.requestUrl(`${this.baseUrl}/${relativeUrl}`, init, allowNotFound);
   }
 
   async getDocument(path: string, ref: DocumentReferenceLike) {
@@ -250,6 +299,16 @@ class FirestoreRestClient implements FirestoreLike {
     });
   }
 
+  async createDocument(path: string, data: unknown) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Firestore documents must be objects.");
+    }
+    await this.request(`${encodedResourcePath(path)}?currentDocument.exists=false`, {
+      method: "PATCH",
+      body: JSON.stringify({ fields: encodeFirestoreFields(data as JsonRecord) }),
+    });
+  }
+
   async deleteDocument(path: string) {
     await this.request(encodedResourcePath(path), { method: "DELETE" }, true);
   }
@@ -273,6 +332,66 @@ class FirestoreRestClient implements FirestoreLike {
       pageToken = result.nextPageToken ?? "";
     } while (pageToken);
     return { docs: documents } satisfies QuerySnapshotLike;
+  }
+
+  async runQuery(
+    path: string,
+    constraints: QueryConstraint[],
+    orders: QueryOrder[],
+    resultLimit?: number,
+  ): Promise<QuerySnapshotLike> {
+    const segments = path.split("/").filter(Boolean);
+    const collectionId = segments.at(-1) ?? "";
+    const parentPath = segments.slice(0, -1).join("/");
+    const queryUrl = parentPath
+      ? `${this.baseUrl}/${encodedResourcePath(parentPath)}:runQuery`
+      : `${this.baseUrl}:runQuery`;
+    const filters = constraints.map((constraint) => ({
+      fieldFilter: {
+        field: { fieldPath: constraint.fieldPath },
+        op: firestoreOperator(constraint.operator),
+        value: encodeFirestoreValue(constraint.value),
+      },
+    }));
+    const where =
+      filters.length === 0
+        ? undefined
+        : filters.length === 1
+          ? filters[0]
+          : { compositeFilter: { op: "AND", filters } };
+    const response = await this.requestUrl(queryUrl, {
+      method: "POST",
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId }],
+          ...(where ? { where } : {}),
+          ...(orders.length
+            ? {
+                orderBy: orders.map((order) => ({
+                  field: { fieldPath: order.fieldPath },
+                  direction: order.direction === "desc" ? "DESCENDING" : "ASCENDING",
+                })),
+              }
+            : {}),
+          ...(resultLimit ? { limit: resultLimit } : {}),
+        },
+      }),
+    });
+    const results = (await response.json()) as Array<{
+      document?: { name: string; fields?: JsonRecord };
+    }>;
+    const docs: DocumentSnapshotLike[] = results.flatMap((result): DocumentSnapshotLike[] => {
+      if (!result.document) return [];
+      const id = decodeURIComponent(result.document.name.split("/").at(-1) ?? "");
+      const ref = new RestDocumentReference(this, `${path}/${id}`);
+      return [
+        new RestDocumentSnapshot(
+          ref,
+          decodeFirestoreFields(result.document.fields ?? {}),
+        ),
+      ];
+    });
+    return { docs } satisfies QuerySnapshotLike;
   }
 }
 
@@ -319,7 +438,7 @@ class RestDocumentReference implements DocumentReferenceLike {
     return new RestCollectionReference(this.client, `${this.path}/${name}`);
   }
 
-  get() {
+  get(): Promise<DocumentSnapshotLike> {
     return this.client.getDocument(this.path, this);
   }
 
@@ -327,30 +446,88 @@ class RestDocumentReference implements DocumentReferenceLike {
     return this.client.setDocument(this.path, data, options);
   }
 
+  create(data: unknown) {
+    return this.client.createDocument(this.path, data);
+  }
+
   delete() {
     return this.client.deleteDocument(this.path);
   }
 }
 
-class RestCollectionReference implements CollectionReferenceLike {
+class RestQuery implements QueryLike {
   readonly path: string;
-  private readonly client: FirestoreRestClient;
+  protected readonly client: FirestoreRestClient;
+  private readonly constraints: QueryConstraint[];
+  private readonly orders: QueryOrder[];
+  private readonly resultLimit?: number;
 
   constructor(
     client: FirestoreRestClient,
     path: string,
+    constraints: QueryConstraint[] = [],
+    orders: QueryOrder[] = [],
+    resultLimit?: number,
   ) {
     this.client = client;
     this.path = path;
+    this.constraints = constraints;
+    this.orders = orders;
+    this.resultLimit = resultLimit;
+  }
+
+  where(fieldPath: string, operator: QueryOperator, value: unknown) {
+    return new RestQuery(
+      this.client,
+      this.path,
+      [...this.constraints, { fieldPath, operator, value }],
+      this.orders,
+      this.resultLimit,
+    );
+  }
+
+  orderBy(fieldPath: string, direction: QueryDirection = "asc") {
+    return new RestQuery(
+      this.client,
+      this.path,
+      this.constraints,
+      [...this.orders, { fieldPath, direction }],
+      this.resultLimit,
+    );
+  }
+
+  limit(count: number) {
+    return new RestQuery(
+      this.client,
+      this.path,
+      this.constraints,
+      this.orders,
+      Math.max(1, Math.min(Math.floor(count), 300)),
+    );
+  }
+
+  get(): Promise<QuerySnapshotLike> {
+    if (!this.constraints.length && !this.orders.length && !this.resultLimit) {
+      return this.client.getCollection(this.path);
+    }
+    return this.client.runQuery(
+      this.path,
+      this.constraints,
+      this.orders,
+      this.resultLimit,
+    );
+  }
+}
+
+class RestCollectionReference extends RestQuery implements CollectionReferenceLike {
+  constructor(client: FirestoreRestClient, path: string) {
+    super(client, path);
   }
 
   doc(id: string) {
     return new RestDocumentReference(this.client, `${this.path}/${id}`);
   }
 
-  get() {
-    return this.client.getCollection(this.path);
-  }
 }
 
 class RestWriteBatch implements WriteBatchLike {
@@ -358,6 +535,16 @@ class RestWriteBatch implements WriteBatchLike {
 
   set(ref: DocumentReferenceLike, data: unknown, options?: SetOptionsLike) {
     this.operations.push(() => ref.set(data, options));
+    return this;
+  }
+
+  create(ref: DocumentReferenceLike, data: unknown) {
+    this.operations.push(() => {
+      if (!(ref instanceof RestDocumentReference)) {
+        throw new Error("Firestore REST batch received an incompatible document reference.");
+      }
+      return ref.create(data);
+    });
     return this;
   }
 

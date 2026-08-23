@@ -363,13 +363,15 @@ export async function saveDailyCheckIn(
   await batch.commit();
 }
 
-export async function registerDocument(scope: CareDataScope, input: {
+export interface RegisterDocumentInput {
   fileName: string;
   documentType: ClinicalDocumentType;
   size: number;
   isSample: boolean;
   analysis: ClinicalDocument["analysis"];
-}) {
+}
+
+export async function registerDocument(scope: CareDataScope, input: RegisterDocumentInput) {
   assertValidScope(scope);
   const firestore = await getAdminFirestore();
   const snapshot = fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
@@ -481,4 +483,5 @@ export async function deleteDocument(
     toStoredReadModel(nextSnapshot),
   );
   await batch.commit();
+  return nextSnapshot;
 }

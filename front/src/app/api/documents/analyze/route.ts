@@ -1,7 +1,7 @@
 import {
   analyzeMedicationDocument,
   DocumentAnalysisNotConfiguredError,
-  registerDocument,
+  registerDocumentAndSyncMedicationReminders,
   type ClinicalDocumentType,
 } from "@care-atlas/backend";
 
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       contentType,
       contentBase64,
     });
-    const document = await registerDocument(careScopeFor(session), {
+    const document = await registerDocumentAndSyncMedicationReminders(careScopeFor(session), {
       fileName,
       documentType: typedDocumentType,
       size: file instanceof File ? file.size : 284_000,

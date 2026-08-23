@@ -16,6 +16,91 @@
   gap: var(--space-5);
 }
 
+.medication-reminder-card {
+  margin-bottom: var(--space-5);
+  border-color: var(--color-sage-200);
+  background: var(--color-surface-subtle);
+}
+
+.medication-reminder-card > section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4) var(--space-6);
+}
+
+.medication-reminder-card__main {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.medication-reminder-card__icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-100);
+  color: var(--color-primary-800);
+}
+
+.medication-reminder-card__copy {
+  min-width: 0;
+}
+
+.medication-reminder-card__copy h2,
+.medication-reminder-card__copy p {
+  margin-bottom: 0;
+}
+
+.medication-reminder-card__copy h2 {
+  color: var(--color-primary-900);
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
+}
+
+.medication-reminder-card__copy p {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+.medication-reminder-card__eyebrow {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--color-primary-700);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.medication-reminder-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.medication-reminder-card__status {
+  grid-column: 1 / -1;
+  min-height: 1.5rem;
+}
+
+.medication-reminder-card__status span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.medication-reminder-card__status span[role="alert"] {
+  color: var(--color-danger);
+}
+
 .today-progress-card {
   border-color: var(--color-sage-200);
   background: var(--color-primary-50);
@@ -2257,6 +2342,27 @@
 }
 
 @media (max-width: 720px) {
+  .medication-reminder-card {
+    padding: var(--space-5);
+  }
+
+  .medication-reminder-card > section {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .medication-reminder-card__actions {
+    justify-content: stretch;
+  }
+
+  .medication-reminder-card__actions .button {
+    width: 100%;
+  }
+
+  .medication-reminder-card__status {
+    grid-column: auto;
+  }
+
   .demo-document-samples__heading {
     align-items: flex-start;
     flex-direction: column;

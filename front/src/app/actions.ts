@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   buildPatientQuestionResponse,
   dateKeyInSeoul,
-  deleteDocument,
+  deleteDocumentAndSyncMedicationReminders,
   getCareSnapshot,
   getPatientQuestionSet,
   saveDailyCheckIn,
@@ -51,7 +51,7 @@ export async function deleteDocumentAction(formData: FormData): Promise<void> {
     if (!session) throw new Error("로그인 정보가 만료되었어요.");
     const scope = careScopeFor(session);
     const snapshot = await getCareSnapshot(scope);
-    await deleteDocument(scope, documentId, snapshot);
+    await deleteDocumentAndSyncMedicationReminders(scope, documentId, snapshot);
     revalidatePath("/documents");
     revalidatePath("/dashboard");
   } catch (error) {
