@@ -33,6 +33,7 @@ IPILLGOOD는 이미 존재하는 처방 정보와 공식 의약품 안전 정보
 6. **Care Report** — 약 변경과 증상을 인과관계로 단정하지 않고 시간순 기록과 상담 질문으로 정리
 7. **식약처 공식 정보 검색** — 약물명을 검색해 식약처 약물 유전 정보 Open API의 일반·유전·제품 정보를 확인
 8. **진단서 질병 정보 보강** — 진단명·KCD/ICD 코드를 추출해 건강보험심사평가원 질병정보 API를 우선 조회하고, 미설정·장애·불일치일 때 OpenAI 웹 검색으로 공신력 있는 출처를 보강
+9. **설치형 PWA 복약 알림** — 로그인 후 현재 기기를 등록하면 Chrome·Safari의 Web Push로 복약 시각을 알리고, 운영자 테스트 발송의 기기 표시 여부까지 확인
 
 Google 계정으로 로그인하면 계정별로 분리된 빈 돌봄 공간을 사용하고, 가입 없이 데모 로그인하면 공용 비식별 샘플로 핵심 흐름을 바로 체험할 수 있습니다. 저장소에 포함된 데모 데이터에는 실제 환자 정보를 사용하지 않습니다.
 
@@ -90,6 +91,7 @@ flowchart LR
 | 문서 분석 | `POST /api/documents/analyze` | 세션·5MB·형식 검증 → 분석 어댑터 → 응답 스키마 확인 | 원본이 아닌 메타데이터와 결과 |
 | 약물 쉬운 설명 | `/medications` | 식약처 원문 조회 → 원문 범위 안에서만 구조화된 쉬운 설명 생성 | 없음 |
 | 진단서 질병 보강 | 문서 분석 후처리 | HIRA 정확 일치 우선 → 실패한 항목만 허용 도메인 웹 검색 | 분석 결과에 출처 URL 저장 |
+| 복약 알림 | `/today`, Cloudflare Cron | 명시적 권한 요청 → 기기별 Push 구독 → 서울 시간 복약 일정 생성 → 매분 도래 일정 조회·중복 방지 발송 | `pushSubscriptions`, `medicationReminderSchedules`, `pushDeliveries` |
 
 ### 보안과 의료 안전 경계
 
@@ -102,6 +104,8 @@ flowchart LR
 - Care Agent 입력은 대상자의 최소 프로필, 활성 약, 목표일 이전 최근 14일 복약·증상 기록으로 제한하며 프로필 메모와 문서 안의 명령문을 실행 지시로 취급하지 않습니다.
 - AI 출력은 JSON Schema와 Zod로 검증하고, 실제 입력에 없는 이벤트 참조는 제거합니다. 질문 문구와 선택지는 코드에 승인된 템플릿으로만 구성합니다.
 - 생성형 AI는 진단, 복용 중단·용량 변경·대체 약 추천, 증상과 약의 인과관계 판정을 수행하지 않습니다.
+- Push endpoint는 FCM·Apple Push·Mozilla Push 호스트만 등록하며, 알림 본문에는 약 이름이나 진단명 대신 일반적인 복약 확인 문구만 표시합니다.
+- 동일한 복약 회차는 결정적 delivery ID로 한 번만 처리하고, 30분보다 오래 지난 일정은 뒤늦게 발송하지 않습니다. 만료된 구독은 Push 서비스의 404·410 응답 시 비활성화합니다.
 
 ## 모노레포 구성
 
@@ -213,6 +217,61 @@ npm run cf:build --workspace @care-atlas/front
 npm run cf:preview --workspace @care-atlas/front
 npm run cf:deploy --workspace @care-atlas/front
 ```
+
+### PWA 복약 알림 설정과 검증
+
+Web Push는 페이지를 닫아도 서비스 워커가 Chrome 또는 Safari의 시스템 알림을 표시합니다. 알림 섹션은 모바일 브라우저와 설치형 PWA에서만 표시하며, iPhone·iPad는 iOS/iPadOS 16.4 이상에서 홈 화면에 설치한 PWA로 실행해야 합니다. 사용자가 `이 기기에서 알림 받기` 버튼을 눌러 브라우저 권한을 허용해야 합니다.
+
+VAPID 키와 Cron 인증값을 한 번 생성합니다. 출력된 값은 저장소에 커밋하지 않습니다.
+
+```bash
+npm run push:keys --workspace @care-atlas/front
+```
+
+로컬에서는 출력값을 `front/.env.local`에 넣습니다.
+
+```bash
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:운영자_이메일
+PUSH_CRON_SECRET=...
+PUSH_OPERATOR_SECRET=...
+```
+
+Cloudflare 운영 환경에는 같은 다섯 값을 secret으로 등록합니다. 기존 Firestore REST 연결을 위한 `FIREBASE_SERVICE_ACCOUNT_JSON`도 설정되어 있어야 합니다.
+
+```bash
+cd front
+npx wrangler secret put VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
+npx wrangler secret put VAPID_SUBJECT
+npx wrangler secret put PUSH_CRON_SECRET
+npx wrangler secret put PUSH_OPERATOR_SECRET
+cd ..
+npm run cf:deploy --workspace @care-atlas/front
+```
+
+`front/wrangler.jsonc`의 Cron은 매분 실행됩니다. 서버는 복약 계획의 시작일·종료일·횟수·복용 시점을 서울 시간으로 계산해 다음 알림만 조회하고, 실제 Push는 해당 회차부터 30분 동안만 유효합니다. 현재 시간 규칙은 아침 08:00, 점심 13:00, 저녁 19:00, 취침 전 21:00이며, 시간 표현이 없는 1~4회 일정은 횟수별 기본 시각을 사용합니다.
+
+처방전 분석으로 복약 계획이 등록되거나 해당 문서가 삭제되면 서버가 최신 복약 목록으로 알림 일정을 즉시 동기화합니다. 일시적인 Firestore 오류는 한 번 재시도하며, 사용자가 알림을 먼저 허용한 경우와 복약 계획을 먼저 등록한 경우 모두 같은 기기·복약 슬롯을 upsert해 중복 일정을 만들지 않습니다.
+
+운영 도착 검증은 로그인 후 `/today`에서 다음 순서로 진행합니다.
+
+1. PWA를 설치하고 `이 기기에서 알림 받기`를 누른 뒤 권한을 허용합니다.
+2. 카드에 다음 복약 시각이 표시되는지 확인합니다.
+3. 앱을 완전히 닫고 다음 복약 시각의 알림이 시스템 알림센터에 표시되는지 확인합니다.
+
+로컬 Chrome 서비스 워커 표시 경로, WCAG 2.1 AA, 320·768·1024·1440px 오버플로를 자동 검증하려면 Playwright 모듈 경로와 실행 중인 앱 주소를 전달합니다.
+
+```bash
+IPILLGOOD_BASE_URL=http://localhost:3000 \
+IPILLGOOD_PLAYWRIGHT=/absolute/path/to/playwright/index.js \
+npm run qa:push --workspace @care-atlas/front
+```
+
+Push 서비스의 HTTP 성공은 브라우저 서비스가 메시지를 접수했다는 뜻이며 기기가 오프라인이거나 OS 알림이 차단된 경우 즉시 표시를 보장하지는 않습니다. IPILLGOOD는 서비스 워커가 `showNotification`을 완료한 뒤 서버에 표시 receipt를 남겨 접수와 실제 표시를 구분합니다.
+
+운영자가 등록된 특정 기기로 직접 테스트할 때는 `PUSH_OPERATOR_SECRET`을 헤더에 넣고 `/api/push/operator-test`에 Firebase UID와 해당 Push 기기 ID를 전달합니다. 응답의 `deliveryId`를 같은 엔드포인트의 GET 요청으로 조회하면 푸시 서비스 접수 상태와 기기 표시 receipt를 분리해 확인할 수 있습니다. 비밀값과 기기 ID는 클라이언트 코드나 로그에 남기지 않습니다.
 
 운영 주소: <https://ipillgood.wkddudgk4869.workers.dev>
 
