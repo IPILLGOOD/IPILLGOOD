@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Noto_Sans_KR } from "next/font/google";
 
 import { AppShell } from "@/components/navigation/AppShell";
+import { PwaInstallPrompt } from "@/components/pwa/PwaInstallPrompt";
 import { getSession } from "@/lib/auth/session";
 
 import "@/styles/tokens.css";
@@ -24,6 +25,15 @@ export const metadata: Metadata = {
   },
   description:
     "처방전의 어려운 말을 쉬운 돌봄 행동으로 바꾸는 고령자 복약·웰니스 컨설턴트",
+  applicationName: "IPILLGOOD",
+  appleWebApp: {
+    capable: true,
+    title: "IPILLGOOD",
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {
@@ -39,6 +49,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang="ko" className={notoSans.variable}>
       <body suppressHydrationWarning>
         <AppShell user={session}>{children}</AppShell>
+        <PwaInstallPrompt />
       </body>
     </html>
   );
