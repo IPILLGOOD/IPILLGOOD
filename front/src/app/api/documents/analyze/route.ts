@@ -7,6 +7,8 @@ import {
 
 import { getSession } from "@/lib/auth/session";
 import { careScopeFor } from "@/lib/auth/care-scope";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { rateLimitResponse } from "@/lib/rate-limit-core";
 
 const allowedDocumentTypes = new Set<ClinicalDocumentType>(["처방전", "진단서"]);
 const maxFileSize = 5 * 1024 * 1024;
@@ -23,6 +25,12 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
+
+  const rateLimit = await enforceRateLimit("documentAnalysis", {
+    request,
+    userId: session.id,
+  });
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
 
   try {
     const formData = await request.formData();

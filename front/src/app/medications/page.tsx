@@ -5,9 +5,14 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { OfficialMedicationSearch } from "@/components/medications/OfficialMedicationSearch";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareSnapshot, searchPharmacogenomicInfo } from "@care-atlas/backend";
+import {
+  getCareSnapshot,
+  searchPharmacogenomicInfo,
+  type PharmacogenomicLookupResult,
+} from "@care-atlas/backend";
 import { activeMedications, daysSince, formatDate } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +24,23 @@ export default async function MedicationsPage({
   const scope = await requireCareScope();
   const rawQuery = (await searchParams).q;
   const query = (Array.isArray(rawQuery) ? rawQuery[0] : rawQuery)?.trim().slice(0, 100) ?? "";
+  const rateLimit = query
+    ? await enforceRateLimit("medicationSearch", { userId: scope.recipientId })
+    : null;
+  const limitedResult: PharmacogenomicLookupResult = {
+    status: "unavailable",
+    items: [],
+    totalCount: 0,
+    sourceUrl: "https://www.data.go.kr/data/15102548/openapi.do",
+    message: `검색 요청이 많아요. ${rateLimit?.retryAfterSeconds ?? 60}초 뒤 다시 시도해주세요.`,
+  };
   const [snapshot, officialMedicationResult] = await Promise.all([
     getCareSnapshot(scope),
-    query ? searchPharmacogenomicInfo(query) : Promise.resolve(null),
+    query
+      ? rateLimit?.allowed
+        ? searchPharmacogenomicInfo(query)
+        : Promise.resolve(limitedResult)
+      : Promise.resolve(null),
   ]);
   const medications = activeMedications(snapshot.medications);
 
