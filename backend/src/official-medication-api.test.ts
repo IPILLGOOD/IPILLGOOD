@@ -93,7 +93,7 @@ test("한글 검색어와 키를 URL 쿼리로 전달하고 키를 결과에 노
           header: { resultCode: "00", resultMsg: "NORMAL SERVICE." },
           body: { totalCount: 0, items: "" },
         }),
-        { status: 200 },
+        { status: 200, headers: { "content-type": "application/json" } },
       );
     },
   });
@@ -113,7 +113,7 @@ test("공식 약물 유전 정보에 없는 암로디핀은 검증된 예시 정
           header: { resultCode: "00", resultMsg: "NORMAL SERVICE." },
           body: { totalCount: 0, items: "" },
         }),
-        { status: 200 },
+        { status: 200, headers: { "content-type": "application/json" } },
       ),
   });
 
@@ -135,7 +135,7 @@ test("공식 정보와 예시 목록에 없는 약은 OpenAI 웹 검색으로 �
           header: { resultCode: "00", resultMsg: "NORMAL SERVICE." },
           body: { totalCount: 0, items: "" },
         }),
-        { status: 200 },
+        { status: 200, headers: { "content-type": "application/json" } },
       ),
     webSearcher: async (query) => {
       searchedQuery = query;
@@ -228,7 +228,7 @@ test("공식 검색 결과를 쉬운 설명 생성기에 전달한다", async ()
             },
           },
         }),
-        { status: 200 },
+        { status: 200, headers: { "content-type": "application/json" } },
       ),
     simplifier: async (items) => {
       simplified = true;
@@ -267,7 +267,7 @@ test("쉬운 설명 생성 실패 시 식약처 원문은 유지한다", async (
             items: { item: { DRFSTF_KOR_NM: "와파린", GNRL_INFO: "공식 원문" } },
           },
         }),
-        { status: 200 },
+        { status: 200, headers: { "content-type": "application/json" } },
       ),
     simplifier: async () => {
       throw new Error("temporary failure");

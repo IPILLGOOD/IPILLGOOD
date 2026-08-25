@@ -1,9 +1,14 @@
-import { XMLParser } from "fast-xml-parser";
+import {
+  parseOfficialXml,
+  readOfficialApiResponse,
+  safeOfficialApiErrorCode,
+  type OfficialApiFormat,
+} from "./official-api-response.ts";
 
 const DEFAULT_API_URL = "https://apis.data.go.kr/1471000/ParmgenService";
 const SOURCE_URL = "https://www.data.go.kr/data/15102548/openapi.do";
 
-type DataFormat = "json" | "xml";
+type DataFormat = OfficialApiFormat;
 type Fetcher = typeof fetch;
 
 interface ApiEnvelope {
@@ -195,11 +200,7 @@ function parsePayload(payload: string, format: DataFormat): unknown {
     }
   }
 
-  return new XMLParser({
-    ignoreAttributes: true,
-    parseTagValue: false,
-    trimValues: true,
-  }).parse(payload) as unknown;
+  return parseOfficialXml(payload);
 }
 
 export function parsePharmacogenomicResponse(
@@ -358,7 +359,8 @@ export async function searchPharmacogenomicInfo(
       throw new Error(`HTTP ${response.status}`);
     }
 
-    const parsed = parsePharmacogenomicResponse(await response.text(), format);
+    const payload = await readOfficialApiResponse(response, format);
+    const parsed = parsePharmacogenomicResponse(payload, format);
     if (parsed.items.length === 0) {
       const fallback = await searchMedicationFallback(query, "no_match", options);
       if (fallback) return fallback;
@@ -384,8 +386,7 @@ export async function searchPharmacogenomicInfo(
       return { ...parsed, sourceUrl: SOURCE_URL, plainLanguageStatus: "unavailable" };
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "알 수 없는 오류";
-    console.error("MFDS pharmacogenomic API unavailable", message);
+    console.error("MFDS pharmacogenomic API unavailable", safeOfficialApiErrorCode(error));
     const fallback = await searchMedicationFallback(query, "unavailable", options);
     if (fallback) return fallback;
     return {
