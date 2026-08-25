@@ -22,12 +22,11 @@ export async function POST(request: Request) {
   }
   const rateLimit = await enforceRateLimit("auth", { request });
   if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
-
   await createSession({
     id: "demo-caregiver",
     name: "데모 보호자",
     provider: "demo",
   });
 
-  return NextResponse.redirect(new URL("/today", request.url), 303);
+  return new NextResponse(null, { status: 303, headers: { Location: "/today" } });
 }

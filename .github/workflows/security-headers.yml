@@ -1,0 +1,29 @@
+name: Security header regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Verify final response headers
+        env:
+          SESSION_SECRET: CI-only-random-session-secret-6PmwK7w4sR2bV9xQ
+          IPILLGOOD_DEMO_MODE: "false"
+        run: |
+          npm run start --workspace @care-atlas/front -- --hostname 127.0.0.1 > /tmp/ipillgood-next.log 2>&1 &
+          npm run qa:security-headers --workspace @care-atlas/front
