@@ -1,8 +1,10 @@
 import {
   analyzeMedicationDocument,
+  DocumentUploadValidationError,
   DocumentAnalysisNotConfiguredError,
   registerDocumentAndSyncMedicationReminders,
   type ClinicalDocumentType,
+  validateClinicalDocumentFile,
 } from "@care-atlas/backend";
 
 import { getSession } from "@/lib/auth/session";
@@ -53,22 +55,17 @@ export async function POST(request: Request) {
       return Response.json({ message: "문서는 5MB 이하로 올려주세요." }, { status: 400 });
     }
 
-    if (
-      file instanceof File &&
-      !file.type.startsWith("image/") &&
-      file.type !== "application/pdf"
-    ) {
-      return Response.json({ message: "이미지 또는 PDF 파일만 분석할 수 있어요." }, { status: 400 });
-    }
-
     const typedDocumentType = documentType as ClinicalDocumentType;
     const fileName =
       file instanceof File ? file.name : `비식별_샘플_${typedDocumentType}.jpg`;
-    const contentType = file instanceof File ? file.type : "image/jpeg";
-    const contentBase64 =
-      file instanceof File
-        ? Buffer.from(await file.arrayBuffer()).toString("base64")
-        : undefined;
+    const fileBytes =
+      file instanceof File ? new Uint8Array(await file.arrayBuffer()) : undefined;
+    const claimedContentType = file instanceof File ? file.type : "";
+    const validatedFile = fileBytes
+      ? await validateClinicalDocumentFile(fileBytes, claimedContentType)
+      : undefined;
+    const contentType = validatedFile?.contentType ?? "image/jpeg";
+    const contentBase64 = fileBytes ? Buffer.from(fileBytes).toString("base64") : undefined;
 
     const result = await analyzeMedicationDocument({
       documentType: typedDocumentType,
@@ -96,13 +93,16 @@ export async function POST(request: Request) {
       addedMedicationCount,
     });
   } catch (error) {
-    console.error("Document analysis failed", error);
+    if (error instanceof DocumentUploadValidationError) {
+      return Response.json({ message: error.userMessage }, { status: 400 });
+    }
     if (error instanceof DocumentAnalysisNotConfiguredError) {
       return Response.json(
         { message: "실제 문서 분석 API가 설정되지 않았어요. 비식별 샘플만 이용할 수 있어요." },
         { status: 503 },
       );
     }
+    console.error("Document analysis failed", error);
     return Response.json(
       { message: "문서를 분석하지 못했어요. 파일을 확인한 뒤 다시 시도해주세요." },
       { status: 500 },
