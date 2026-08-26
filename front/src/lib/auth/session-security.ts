@@ -13,9 +13,11 @@ type SessionSecurityEnvironment = {
 };
 
 type DemoLoginEnvironment = {
+  allowedHosts?: string;
   demoMode?: string;
   hostname: string;
   nodeEnv?: string;
+  publicDemoMode?: string;
 };
 
 function estimatedShannonEntropyBits(value: string) {
@@ -59,10 +61,24 @@ function isLoopbackHostname(hostname: string) {
   return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1";
 }
 
+function allowedPublicDemoHostname(hostname: string, allowedHosts: string | undefined) {
+  const normalized = hostname.toLowerCase();
+  return Boolean(
+    allowedHosts
+      ?.split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+      .includes(normalized),
+  );
+}
+
 export function isDemoLoginAllowed(environment: DemoLoginEnvironment) {
+  if (environment.demoMode !== "true") return false;
+  if (environment.nodeEnv !== "production") {
+    return isLoopbackHostname(environment.hostname);
+  }
   return (
-    environment.demoMode === "true" &&
-    environment.nodeEnv !== "production" &&
-    isLoopbackHostname(environment.hostname)
+    environment.publicDemoMode === "isolated" &&
+    allowedPublicDemoHostname(environment.hostname, environment.allowedHosts)
   );
 }

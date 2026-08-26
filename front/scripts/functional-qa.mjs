@@ -3,7 +3,9 @@ import { pathToFileURL } from "node:url";
 const playwrightEntry = process.env.IPILLGOOD_PLAYWRIGHT;
 if (!playwrightEntry) throw new Error("IPILLGOOD_PLAYWRIGHT is required");
 const baseUrl = process.env.IPILLGOOD_BASE_URL ?? "http://127.0.0.1:3000";
-const { chromium } = await import(pathToFileURL(playwrightEntry).href);
+const playwright = await import(pathToFileURL(playwrightEntry).href);
+const chromium = playwright.chromium ?? playwright.default?.chromium;
+if (!chromium) throw new Error("Chromium was not available from IPILLGOOD_PLAYWRIGHT");
 const browser = await chromium.launch({
   headless: true,
   executablePath:
@@ -64,5 +66,9 @@ if (!(await page.getByLabel("어지러움", { exact: true }).isChecked())) {
   throw new Error("Persisted symptom was not restored from Firestore");
 }
 
-console.log("Functional QA passed: wellbeing check-in, sample document add/delete, dashboard read.");
+await page.getByRole("button", { name: "로그아웃" }).click();
+await page.waitForURL(`${baseUrl}/`);
+console.log(
+  "Functional QA passed: wellbeing check-in, sample document add/delete, dashboard read, logout cleanup.",
+);
 await browser.close();

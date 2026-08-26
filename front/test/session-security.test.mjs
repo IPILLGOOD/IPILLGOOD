@@ -30,7 +30,7 @@ test("충분히 강한 세션 비밀키는 Google과 데모 세션 모두에 사
   );
 });
 
-test("데모 로그인은 명시적으로 켠 비운영 loopback 요청에만 허용한다", () => {
+test("데모 로그인은 비운영 loopback 또는 격리 모드의 운영 허용 호스트에서만 허용한다", () => {
   assert.equal(
     isDemoLoginAllowed({ demoMode: "true", hostname: "localhost", nodeEnv: "development" }),
     true,
@@ -39,11 +39,35 @@ test("데모 로그인은 명시적으로 켠 비운영 loopback 요청에만 �
     isDemoLoginAllowed({ demoMode: "true", hostname: "127.0.0.1", nodeEnv: "test" }),
     true,
   );
+  assert.equal(
+    isDemoLoginAllowed({
+      demoMode: "true",
+      hostname: "demo.example.com",
+      nodeEnv: "production",
+      publicDemoMode: "isolated",
+      allowedHosts: "demo.example.com, preview.example.com",
+    }),
+    true,
+  );
 
   for (const environment of [
     { demoMode: "false", hostname: "localhost", nodeEnv: "development" },
     { demoMode: "true", hostname: "demo.example.com", nodeEnv: "development" },
     { demoMode: "true", hostname: "localhost", nodeEnv: "production" },
+    {
+      demoMode: "true",
+      hostname: "attacker.example.com",
+      nodeEnv: "production",
+      publicDemoMode: "isolated",
+      allowedHosts: "demo.example.com",
+    },
+    {
+      demoMode: "true",
+      hostname: "demo.example.com",
+      nodeEnv: "production",
+      publicDemoMode: "shared",
+      allowedHosts: "demo.example.com",
+    },
   ]) {
     assert.equal(isDemoLoginAllowed(environment), false);
   }

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { getAdminFirestore } from "./firebase-admin.ts";
+import {
+  isEphemeralDemoSessionActive,
+  isEphemeralDemoSessionId,
+} from "./demo-session.ts";
 import type { FirestoreLike } from "./firestore-rest.ts";
 import {
   advanceMedicationReminderSchedule,
@@ -125,6 +129,12 @@ export async function syncMedicationReminderSchedules(input: {
   firestore?: FirestoreLike;
 }) {
   const firestore = input.firestore ?? (await getAdminFirestore());
+  if (
+    isEphemeralDemoSessionId(input.recipientId) &&
+    !(await isEphemeralDemoSessionActive(input.recipientId, { firestore }))
+  ) {
+    throw new Error("데모 세션이 만료되었거나 종료되었습니다.");
+  }
   const now = input.now ?? new Date();
   const nextSchedules = buildMedicationReminderSchedules(
     input.recipientId,

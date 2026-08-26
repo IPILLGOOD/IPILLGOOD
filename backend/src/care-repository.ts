@@ -4,7 +4,6 @@ import type {
   CareSnapshot,
   ClinicalDocument,
   ClinicalDocumentType,
-  ClinicianQuestion,
   DailyCheckIn,
   DoseEvent,
   MedicationPlan,
@@ -16,6 +15,8 @@ import type {
 } from "./types.ts";
 
 import { getAdminFirestore } from "./firebase-admin.ts";
+import { isEphemeralDemoSessionActive } from "./demo-session.ts";
+import type { FirestoreLike } from "./firestore-rest.ts";
 import {
   applyDailyCheckInToSnapshot,
   byDateDescending,
@@ -26,8 +27,6 @@ import {
   MAX_SYMPTOM_EVENTS,
   type DailyCheckInInput,
 } from "./care-read-model.ts";
-
-export const DEMO_RECIPIENT_ID = "demo-kim-yeonghui";
 
 export type CareDataScope = {
   recipientId: string;
@@ -43,6 +42,18 @@ type StoredCareReadModel = Omit<CareSnapshot, "dataSource"> & {
 };
 
 const seed = demoSeed as DemoSeed;
+
+async function assertActiveDemoScope(
+  scope: CareDataScope,
+  firestore: FirestoreLike,
+) {
+  if (
+    scope.useDemoData &&
+    !(await isEphemeralDemoSessionActive(scope.recipientId, { firestore }))
+  ) {
+    throw new Error("데모 세션이 만료되었거나 종료되었습니다.");
+  }
+}
 
 function toStoredReadModel(snapshot: CareSnapshot): StoredCareReadModel {
   return {
@@ -97,7 +108,12 @@ export function createInitialCareSnapshot(scope: CareDataScope): CareSnapshot {
 
 function fallbackSnapshot(scope: CareDataScope) {
   return scope.useDemoData
-    ? { ...seed, todayCheckIn: null, dataSource: "local-fallback" as const }
+    ? {
+        ...seed,
+        recipient: { ...seed.recipient, id: scope.recipientId },
+        todayCheckIn: null,
+        dataSource: "local-fallback" as const,
+      }
     : { ...createInitialCareSnapshot(scope), dataSource: "local-fallback" as const };
 }
 
@@ -124,78 +140,11 @@ function fromStoredReadModel(model: StoredCareReadModel, scope: CareDataScope): 
   };
 }
 
-function seedSnapshot(): CareSnapshot {
-  return {
-    ...seed,
-    todayCheckIn: null,
-    dataSource: "firestore",
-  };
-}
-
 function readModelRef(
   firestore: Awaited<ReturnType<typeof getAdminFirestore>>,
   recipientId: string,
 ) {
   return firestore.collection(READ_MODEL_COLLECTION).doc(recipientId);
-}
-
-async function seedDemoData(firestore: Awaited<ReturnType<typeof getAdminFirestore>>) {
-  const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
-  const batch = firestore.batch();
-  batch.set(recipientRef, seed.recipient);
-
-  for (const medication of seed.medications) {
-    batch.set(recipientRef.collection("medicationPlans").doc(medication.id), medication);
-  }
-  for (const event of seed.doseEvents) {
-    batch.set(recipientRef.collection("doseEvents").doc(event.id), event);
-  }
-  for (const symptom of seed.symptomEvents) {
-    batch.set(recipientRef.collection("symptomEvents").doc(symptom.id), symptom);
-  }
-  for (const document of seed.documents) {
-    batch.set(recipientRef.collection("clinicalDocuments").doc(document.id), document);
-  }
-  for (const question of seed.clinicianQuestions) {
-    batch.set(recipientRef.collection("clinicianQuestions").doc(question.id), question);
-  }
-
-  await batch.commit();
-  return toStoredReadModel(seedSnapshot());
-}
-
-async function buildLegacyReadModel(
-  firestore: Awaited<ReturnType<typeof getAdminFirestore>>,
-) {
-  const recipientRef = firestore.collection("careRecipients").doc(DEMO_RECIPIENT_ID);
-  const recipientDoc = await recipientRef.get();
-  if (!recipientDoc.exists) return seedDemoData(firestore);
-
-  const dateKey = dateKeyInSeoul(new Date());
-  const [medications, doseEvents, symptomEvents, documents, questions, todayCheckIn] =
-    await Promise.all([
-      recipientRef.collection("medicationPlans").get(),
-      recipientRef.collection("doseEvents").get(),
-      recipientRef.collection("symptomEvents").get(),
-      recipientRef.collection("clinicalDocuments").get(),
-      recipientRef.collection("clinicianQuestions").get(),
-      recipientRef.collection("dailyCheckIns").doc(dateKey).get(),
-    ]);
-
-  return toStoredReadModel({
-    recipient: recipientDoc.data() as CareRecipient,
-    medications: medications.docs.map((doc) => {
-      const stored = doc.data() as MedicationPlan;
-      const demo = seed.medications.find((medication) => medication.id === stored.id);
-      return { ...demo, ...stored } as MedicationPlan;
-    }),
-    doseEvents: doseEvents.docs.map((doc) => doc.data() as DoseEvent),
-    symptomEvents: symptomEvents.docs.map((doc) => doc.data() as SymptomEvent),
-    documents: documents.docs.map((doc) => doc.data() as ClinicalDocument),
-    clinicianQuestions: questions.docs.map((doc) => doc.data() as ClinicianQuestion),
-    todayCheckIn: todayCheckIn.exists ? (todayCheckIn.data() as DailyCheckIn) : null,
-    dataSource: "firestore",
-  });
 }
 
 async function getOrCreateReadModel(
@@ -207,10 +156,8 @@ async function getOrCreateReadModel(
   const existing = await ref.get();
   if (existing.exists) return existing.data() as StoredCareReadModel;
 
-  if (scope.useDemoData && scope.recipientId === DEMO_RECIPIENT_ID) {
-    const model = await buildLegacyReadModel(firestore);
-    await ref.set(model);
-    return model;
+  if (scope.useDemoData) {
+    throw new Error("데모 세션 데이터가 만료되었거나 초기화되지 않았습니다.");
   }
 
   const snapshot = createInitialCareSnapshot(scope);
@@ -248,6 +195,7 @@ export async function updateRecipientProfile(
   const batch = firestore.batch();
   batch.set(recipientRef, recipient);
   batch.set(readModelRef(firestore, scope.recipientId), toStoredReadModel({ ...snapshot, recipient }));
+  await assertActiveDemoScope(scope, firestore);
   await batch.commit();
 }
 
@@ -304,6 +252,7 @@ export async function saveQuestionSetGeneration(scope: CareDataScope, input: {
     },
   );
   batch.set(recipientRef.collection("agentRuns").doc(input.run.runId), input.run);
+  await assertActiveDemoScope(scope, firestore);
   await batch.commit();
 }
 
@@ -358,6 +307,7 @@ export async function saveDailyCheckIn(
     { merge: true },
   );
   batch.set(readModelRef(firestore, scope.recipientId), toStoredReadModel(nextSnapshot));
+  await assertActiveDemoScope(scope, firestore);
   await batch.commit();
 }
 
@@ -409,6 +359,7 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
     batch.set(recipientRef.collection("medicationPlans").doc(medication.id), medication);
   }
   batch.set(readModelRef(firestore, scope.recipientId), toStoredReadModel(nextSnapshot));
+  await assertActiveDemoScope(scope, firestore);
   await batch.commit();
   return document;
 }
@@ -484,6 +435,7 @@ export async function deleteDocument(
     readModelRef(firestore, scope.recipientId),
     toStoredReadModel(nextSnapshot),
   );
+  await assertActiveDemoScope(scope, firestore);
   await batch.commit();
   return nextSnapshot;
 }
