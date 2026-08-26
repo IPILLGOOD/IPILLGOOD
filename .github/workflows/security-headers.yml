@@ -20,6 +20,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Verify Cloudflare bundle
+        run: npm run cf:build --workspace @care-atlas/front
       - name: Verify final response headers
         env:
           SESSION_SECRET: CI-only-random-session-secret-6PmwK7w4sR2bV9xQ

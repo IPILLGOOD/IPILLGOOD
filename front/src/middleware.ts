@@ -22,8 +22,10 @@ function isProtectedRoute(pathname: string) {
   );
 }
 
-export function proxy(request: NextRequest) {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+// OpenNext Cloudflare currently bundles the middleware convention for the Edge
+// runtime, while Next.js Proxy is emitted as an unsupported Node.js function.
+export function middleware(request: NextRequest) {
+  const nonce = btoa(crypto.randomUUID());
   const policy = contentSecurityPolicy({
     development: process.env.NODE_ENV === "development",
     nonce,
