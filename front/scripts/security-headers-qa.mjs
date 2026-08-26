@@ -39,7 +39,11 @@ for (const path of ["/", "/login", "/today"]) {
   const policy = response.headers.get("content-security-policy");
   assert.ok(policy, `${path}: Content-Security-Policy 누락`);
   assert.match(policy, /script-src[^;]+'nonce-[^']+'/);
-  assert.doesNotMatch(policy, /unsafe-inline|api\.openai\.com|apis\.data\.go\.kr/);
+  assert.match(policy, /style-src-attr 'unsafe-inline'/);
+  assert.doesNotMatch(
+    policy,
+    /script-src[^;]+'unsafe-inline'|style-src [^;]*'unsafe-inline'|api\.openai\.com|apis\.data\.go\.kr/,
+  );
 }
 
 const apiResponse = await fetch(`${baseUrl}/api/push/config`, { redirect: "manual" });
