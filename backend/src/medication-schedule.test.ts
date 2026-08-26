@@ -56,6 +56,7 @@ test("화면 복약 일정과 알림 일정이 같은 슬롯 시각을 사용한
     reminders.map((reminder) => `${reminder.medicationPlanId}:${reminder.timeLabel}`),
     ["med-twice:08:00", "med-twice:19:00", "med-interval:08:00"],
   );
+  assert.equal("endDate" in reminders[0]!, false);
 });
 
 test("지나간 복약 시각은 다음 유효 복약일로 예약한다", () => {

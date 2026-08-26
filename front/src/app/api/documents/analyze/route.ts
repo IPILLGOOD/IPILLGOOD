@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   analyzeMedicationDocument,
   DocumentUploadValidationError,
@@ -66,6 +68,11 @@ export async function POST(request: Request) {
       : undefined;
     const contentType = validatedFile?.contentType ?? "image/jpeg";
     const contentBase64 = fileBytes ? Buffer.from(fileBytes).toString("base64") : undefined;
+    const contentHash = createHash("sha256")
+      .update(typedDocumentType)
+      .update("\0")
+      .update(fileBytes ?? `sample:${fileName}`)
+      .digest("hex");
 
     const result = await analyzeMedicationDocument({
       documentType: typedDocumentType,
@@ -75,6 +82,7 @@ export async function POST(request: Request) {
     });
     const document = await registerDocumentAndSyncMedicationReminders(careScopeFor(session), {
       fileName,
+      contentHash,
       documentType: typedDocumentType,
       size: file instanceof File ? file.size : 284_000,
       isSample,
