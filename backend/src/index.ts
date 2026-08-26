@@ -56,6 +56,7 @@ export {
 export { buildPatientQuestionResponse } from "./ai/questions/apply-question-response";
 export {
   analyzeMedicationDocument,
+  DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   type MedicationAnalyzerInput,
   type MedicationAnalyzerResult,

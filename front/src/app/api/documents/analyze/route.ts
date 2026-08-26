@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 
 import {
   analyzeMedicationDocument,
-  DocumentUploadValidationError,
+  DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
+  DocumentUploadValidationError,
   registerDocumentAndSyncMedicationReminders,
   type ClinicalDocumentType,
   validateClinicalDocumentFile,
@@ -108,6 +109,12 @@ export async function POST(request: Request) {
       return Response.json(
         { message: "실제 문서 분석 API가 설정되지 않았어요. 비식별 샘플만 이용할 수 있어요." },
         { status: 503 },
+      );
+    }
+    if (error instanceof DocumentAnalysisIncompleteError) {
+      return Response.json(
+        { message: "문서에서 약 또는 진단 정보를 충분히 읽지 못했어요. 더 선명한 파일로 다시 시도해주세요." },
+        { status: 422 },
       );
     }
     console.error("Document analysis failed", error);

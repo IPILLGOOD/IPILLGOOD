@@ -28,6 +28,19 @@ export class DocumentAnalysisNotConfiguredError extends Error {
   }
 }
 
+export class DocumentAnalysisIncompleteError extends Error {
+  readonly code = "DOCUMENT_ANALYSIS_INCOMPLETE";
+
+  constructor(documentType: ClinicalDocumentType) {
+    super(`${documentType}에서 필수 구조화 정보를 찾지 못했습니다.`);
+    this.name = "DocumentAnalysisIncompleteError";
+  }
+}
+
+type MedicationAnalyzerDependencies = {
+  analyzeClinicalDocumentWithOpenAI: typeof analyzeClinicalDocumentWithOpenAI;
+};
+
 function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
   if (documentType === "진단서") {
     return {
@@ -142,6 +155,35 @@ function diagnosisCandidates(
     .map((name) => ({ name: name.replace(/\s*\([A-Z][A-Z0-9.]+\)\s*/i, " ").trim() }))
     .filter((diagnosis) => diagnosis.name.length >= 2 && diagnosis.name.length <= 60)
     .slice(0, 3);
+}
+
+function analysisNeedsRetry(analysis: DocumentAnalysis) {
+  if (analysis.documentType === "처방전") {
+    return !(analysis.medications ?? []).some((medication) => medication.productName.trim());
+  }
+  return diagnosisCandidates(analysis).length === 0;
+}
+
+function withStructuredEvidenceFindings(analysis: DocumentAnalysis): DocumentAnalysis {
+  const evidenceNames = analysis.documentType === "처방전"
+    ? (analysis.medications ?? []).map((medication) => medication.productName.trim())
+    : diagnosisCandidates(analysis).map((diagnosis) => diagnosis.name);
+  const existingText = analysis.findings.map((finding) => finding.value).join(" ");
+  const missingNames = [...new Set(evidenceNames.filter(Boolean))].filter(
+    (name) => !existingText.includes(name),
+  );
+  if (missingNames.length === 0) return analysis;
+
+  return {
+    ...analysis,
+    findings: [
+      ...analysis.findings,
+      {
+        label: analysis.documentType === "처방전" ? "확인된 약 이름" : "확인된 진단명",
+        value: missingNames.join(", "),
+      },
+    ],
+  };
 }
 
 async function enrichDiagnosisAnalysis(analysis: DocumentAnalysis): Promise<DocumentAnalysis> {
@@ -287,6 +329,7 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
  */
 export async function analyzeMedicationDocument(
   input: MedicationAnalyzerInput,
+  dependencies: MedicationAnalyzerDependencies = { analyzeClinicalDocumentWithOpenAI },
 ): Promise<MedicationAnalyzerResult> {
   const endpoint = process.env.AI_ANALYSIS_ENDPOINT;
   const apiKey = process.env.AI_API_KEY;
@@ -319,11 +362,15 @@ export async function analyzeMedicationDocument(
       throw new Error("문서 분석 API 응답 형식이 올바르지 않습니다.");
     }
 
-    const analysis = await enrichDiagnosisAnalysis({
+    const structuredAnalysis = withStructuredEvidenceFindings({
       ...body.analysis,
       documentType: input.documentType,
       source: "api",
     });
+    if (analysisNeedsRetry(structuredAnalysis)) {
+      throw new DocumentAnalysisIncompleteError(input.documentType);
+    }
+    const analysis = await enrichDiagnosisAnalysis(structuredAnalysis);
     return {
       status: "complete",
       message:
@@ -335,11 +382,21 @@ export async function analyzeMedicationDocument(
   }
 
   if (process.env.OPENAI_API_KEY) {
-    const analysis = await enrichDiagnosisAnalysis(
-      await analyzeClinicalDocumentWithOpenAI({
+    let structuredAnalysis = await dependencies.analyzeClinicalDocumentWithOpenAI({
+      ...input,
+      contentBase64: input.contentBase64,
+    });
+    if (analysisNeedsRetry(structuredAnalysis)) {
+      structuredAnalysis = await dependencies.analyzeClinicalDocumentWithOpenAI({
         ...input,
         contentBase64: input.contentBase64,
-      }),
+      });
+    }
+    if (analysisNeedsRetry(structuredAnalysis)) {
+      throw new DocumentAnalysisIncompleteError(input.documentType);
+    }
+    const analysis = await enrichDiagnosisAnalysis(
+      withStructuredEvidenceFindings(structuredAnalysis),
     );
     return {
       status: "complete",
