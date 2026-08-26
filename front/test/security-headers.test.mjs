@@ -45,7 +45,8 @@ test("운영 HTML CSP는 요청 nonce와 필요한 Firebase 브라우저 출처�
 test("개발 CSP만 React 디버깅 예외를 허용하고 style 속성 정책은 분리한다", () => {
   const policy = contentSecurityPolicy({ development: true, nonce: "dev-nonce" });
   assert.match(policy, /'unsafe-eval'/);
-  assert.doesNotMatch(policy, /style-src [^;]*'unsafe-inline'/);
+  assert.match(policy, /style-src 'self' 'unsafe-inline'/);
+  assert.doesNotMatch(policy, /style-src [^;]*nonce-/);
   assert.match(policy, /style-src-attr 'unsafe-inline'/);
   assert.doesNotMatch(policy, /upgrade-insecure-requests/);
 });
