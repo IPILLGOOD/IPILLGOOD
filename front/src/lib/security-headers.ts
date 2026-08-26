@@ -19,7 +19,8 @@ export function contentSecurityPolicy(options: {
   const directives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${options.nonce}' 'strict-dynamic'${options.development ? " 'unsafe-eval'" : ""}`,
-    `style-src 'self' 'nonce-${options.nonce}'${options.development ? " 'unsafe-inline'" : ""}`,
+    `style-src 'self' 'nonce-${options.nonce}'`,
+    "style-src-attr 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
     `connect-src 'self' ${FIREBASE_AUTH_CONNECT_SOURCES.join(" ")}`,

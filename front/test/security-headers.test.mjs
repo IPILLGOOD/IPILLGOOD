@@ -19,6 +19,7 @@ test("운영 HTML CSP는 요청 nonce와 필요한 Firebase 브라우저 출처�
     "default-src",
     "script-src",
     "style-src",
+    "style-src-attr",
     "img-src",
     "font-src",
     "connect-src",
@@ -31,18 +32,21 @@ test("운영 HTML CSP는 요청 nonce와 필요한 Firebase 브라우저 출처�
     assert.match(policy, new RegExp(`(?:^|; )${directive} `));
   }
   assert.match(policy, /script-src[^;]+'nonce-nonce-value'[^;]+'strict-dynamic'/);
+  assert.match(policy, /style-src 'self' 'nonce-nonce-value'/);
+  assert.match(policy, /style-src-attr 'unsafe-inline'/);
   assert.match(policy, /connect-src[^;]+identitytoolkit\.googleapis\.com/);
   assert.match(policy, /connect-src[^;]+securetoken\.googleapis\.com/);
   assert.match(policy, /frame-src[^;]+care-atlas-seoul-2026-v2\.firebaseapp\.com/);
-  assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval|\*/);
+  assert.doesNotMatch(policy, /script-src[^;]+'unsafe-inline'|unsafe-eval|\*/);
   assert.doesNotMatch(policy, /api\.openai\.com|apis\.data\.go\.kr/);
   assert.match(policy, /upgrade-insecure-requests/);
 });
 
-test("개발 CSP만 React 디버깅과 스타일용 임시 예외를 허용한다", () => {
+test("개발 CSP만 React 디버깅 예외를 허용하고 style 속성 정책은 분리한다", () => {
   const policy = contentSecurityPolicy({ development: true, nonce: "dev-nonce" });
   assert.match(policy, /'unsafe-eval'/);
-  assert.match(policy, /style-src[^;]+'unsafe-inline'/);
+  assert.doesNotMatch(policy, /style-src [^;]*'unsafe-inline'/);
+  assert.match(policy, /style-src-attr 'unsafe-inline'/);
   assert.doesNotMatch(policy, /upgrade-insecure-requests/);
 });
 
