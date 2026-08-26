@@ -35,7 +35,7 @@ IPILLGOOD는 이미 존재하는 처방 정보와 공식 의약품 안전 정보
 8. **진단서 질병 정보 보강** — 진단명·KCD/ICD 코드를 추출해 건강보험심사평가원 질병정보 API를 우선 조회하고, 미설정·장애·불일치일 때 OpenAI 웹 검색으로 공신력 있는 출처를 보강
 9. **설치형 PWA 복약 알림** — 로그인 후 현재 기기를 등록하면 Chrome·Safari의 Web Push로 복약 시각을 알리고, 운영자 테스트 발송의 기기 표시 여부까지 확인
 
-Google 계정으로 로그인하면 계정별로 분리된 빈 돌봄 공간을 사용하고, 가입 없이 데모 로그인하면 공용 비식별 샘플로 핵심 흐름을 바로 체험할 수 있습니다. 저장소에 포함된 데모 데이터에는 실제 환자 정보를 사용하지 않습니다.
+Google 계정으로 로그인하면 계정별로 분리된 빈 돌봄 공간을 사용하고, 가입 없이 데모 로그인하면 세션별로 복제된 비식별 샘플로 핵심 흐름을 바로 체험할 수 있습니다. 데모 변경은 다른 방문자에게 보이지 않으며 로그아웃 또는 2시간 만료 후 삭제됩니다. 저장소에 포함된 데모 데이터에는 실제 환자 정보를 사용하지 않습니다.
 
 ## 아키텍처
 
@@ -97,7 +97,7 @@ flowchart LR
 
 - 세션은 `HttpOnly`, `SameSite=Lax`, 프로덕션 `Secure` 쿠키에 7일 만료 JWT로 저장합니다.
 - 앱 경로는 Cloudflare 호환 Edge Middleware가 인증 쿠키를 확인하고, 쓰기 진입점은 서버에서 세션을 다시 검증합니다.
-- Google 로그인은 Firebase 사용자 ID에서 `google-{uid}` 범위를 만들고 모든 저장소 호출에서 대상 ID 일치를 검사합니다. 데모 로그인만 고정된 비식별 대상을 공유합니다.
+- Google 로그인은 Firebase 사용자 ID에서 `google-{uid}` 범위를 만들고 모든 저장소 호출에서 대상 ID 일치를 검사합니다. 데모 로그인은 서버가 만든 임시 UUID 범위와 만료 레코드를 함께 검증합니다.
 - Firestore 보안 규칙은 브라우저의 직접 읽기·쓰기를 차단합니다.
 - 업로드 문서 원본은 영구 저장하지 않고 요청 처리 후 폐기합니다.
 - 복약 계획과 실제 응답, 본인 응답과 보호자 관찰을 별도 필드로 보존합니다.
@@ -138,12 +138,12 @@ care-atlas/
 - Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
 - Google OAuth 2.0, `jose` 기반 서명 세션, Cloudflare 호환 Edge Middleware
 - OpenAI Responses API, 식약처·HIRA Open API
-- Google 로그인은 계정별 `CareDataScope`, 데모 로그인은 고정 비식별 scope로 분리
+- Google 로그인은 계정별 `CareDataScope`, 데모 로그인은 세션별 임시 비식별 scope로 분리
 - 화면 조회는 bounded read model 한 문서로 통합하고 원본 이벤트와 AI 분석·질문·응답·실행 이력은 하위 컬렉션에 보존
 - Zod 입력 검증, Lucide SVG 아이콘
 - Noto Sans KR, 딥그린·세이지 기반 접근성 디자인 시스템
 
-브라우저의 Firestore 직접 접근은 보안 규칙으로 모두 차단했습니다. Google 로그인은 계정별 돌봄 범위에서 바로 읽고 쓸 수 있고, 데모 로그인 쓰기는 `IPILLGOOD_DEMO_MODE=true`일 때만 허용됩니다. 현재 계정 단위 데이터 격리는 구현되어 있으며, 여러 보호자가 한 대상을 함께 돌보는 초대·역할 기반 권한 모델은 실제 배포 전에 추가해야 합니다.
+브라우저의 Firestore 직접 접근은 보안 규칙으로 모두 차단했습니다. Google 로그인은 계정별 돌봄 범위에서 바로 읽고 쓸 수 있습니다. 데모는 `IPILLGOOD_DEMO_MODE=true`일 때 서버가 방문자별 임시 범위를 만들며, 운영에서는 `isolated` 모드와 정확한 허용 호스트가 함께 설정된 경우에만 로그인할 수 있습니다. 여러 보호자가 한 대상을 함께 돌보는 초대·역할 기반 권한 모델은 실제 배포 전에 추가해야 합니다.
 
 ## 빠른 실행
 
@@ -172,7 +172,7 @@ npm run dev
 | `/profile` | 돌봄 대상자 최소 프로필 관리 |
 | `/report` | 출력 가능한 최근 7일 Care Report |
 
-Google 로그인은 `care-atlas-seoul-2026-v2` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키를 `front/.env.local`에 설정합니다. 데모 로그인도 고정 fallback 키를 사용하지 않으므로 `openssl rand -base64 32`처럼 생성한 충분히 강한 `SESSION_SECRET`이 필요하며, 운영 환경이나 loopback 이외의 호스트에서는 차단됩니다.
+Google 로그인은 `care-atlas-seoul-2026-v2` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키를 `front/.env.local`에 설정합니다. 데모 로그인도 고정 fallback 키를 사용하지 않으므로 `openssl rand -base64 32`처럼 생성한 충분히 강한 `SESSION_SECRET`이 필요합니다. 운영 데모는 `IPILLGOOD_PUBLIC_DEMO_MODE=isolated`와 `IPILLGOOD_DEMO_ALLOWED_HOSTS`의 정확한 호스트가 모두 일치해야 합니다.
 
 운영 배포 전에는 Firebase Console에서 Authentication을 초기화하고 Google 공급자를 활성화한 뒤, 실제 서비스 호스트를 **Authentication > 설정 > 승인된 도메인**에 추가해야 합니다. 이 단계가 빠지면 클라이언트에서 `auth/configuration-not-found` 또는 `auth/unauthorized-domain` 오류가 발생합니다.
 
@@ -337,4 +337,4 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 - 식약처 품목·성분 ID 매칭과 HIRA DUR 기반 결정적 안전 규칙
 - 의료·약학·개인정보·의료기기 규제 검토와 운영 모니터링·백업·복구
 
-현재 Google 로그인 사용자의 데이터는 Firebase 사용자 ID에서 파생한 별도 돌봄 범위에 저장되고, 데모 로그인 사용자만 해커톤용 단일 비식별 대상을 공유합니다. 아직 의료 서비스 운영을 위한 권한·동의·감사 체계를 갖춘 상태가 아니므로 실제 건강정보를 입력하거나 건강 의사결정에 사용해서는 안 됩니다.
+현재 Google 로그인 사용자의 데이터는 Firebase 사용자 ID에서 파생한 별도 돌봄 범위에 저장됩니다. 데모 로그인은 방문자마다 별도 비식별 범위를 사용하고 로그아웃 또는 2시간 만료 후 하위 기록까지 정리합니다. 아직 의료 서비스 운영을 위한 권한·동의·감사 체계를 갖춘 상태가 아니므로 실제 건강정보를 입력하거나 건강 의사결정에 사용해서는 안 됩니다.

@@ -15,6 +15,25 @@ type NextWorkerHandler = {
 
 const handler = nextHandler as NextWorkerHandler;
 
+async function callScheduledRoute(
+  path: string,
+  env: WorkerEnvironment,
+  ctx: WorkerContext,
+) {
+  const response = await handler.fetch(
+    new Request(`https://ipillgood.internal${path}`, {
+      method: "POST",
+      headers: { "x-ipillgood-cron-secret": env.PUSH_CRON_SECRET as string },
+    }),
+    env,
+    ctx,
+  );
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 500);
+    throw new Error(`${path} failed: HTTP ${response.status} ${body}`);
+  }
+}
+
 const worker = {
   fetch: handler.fetch,
 
@@ -22,17 +41,16 @@ const worker = {
     if (!env.PUSH_CRON_SECRET || env.PUSH_CRON_SECRET.length < 32) {
       throw new Error("PUSH_CRON_SECRET is not configured.");
     }
-    const response = await handler.fetch(
-      new Request("https://ipillgood.internal/api/push/dispatch", {
-        method: "POST",
-        headers: { "x-ipillgood-cron-secret": env.PUSH_CRON_SECRET },
-      }),
-      env,
-      ctx,
-    );
-    if (!response.ok) {
-      const body = (await response.text()).slice(0, 500);
-      throw new Error(`Medication reminder dispatch failed: HTTP ${response.status} ${body}`);
+    const failures: unknown[] = [];
+    for (const path of ["/api/demo/cleanup", "/api/push/dispatch"]) {
+      try {
+        await callScheduledRoute(path, env, ctx);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length) {
+      throw new AggregateError(failures, "One or more scheduled jobs failed.");
     }
   },
 };

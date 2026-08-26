@@ -1,4 +1,7 @@
-import { deactivatePushSubscription } from "@care-atlas/backend";
+import {
+  deactivatePushSubscription,
+  deleteEphemeralDemoSession,
+} from "@care-atlas/backend";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -12,6 +15,13 @@ export async function POST() {
       await deactivatePushSubscription({ userId: session.id, deviceId: pushDeviceId });
     } catch (error) {
       console.error("Current device push deactivation failed during logout", error);
+    }
+  }
+  if (session?.provider === "demo") {
+    try {
+      await deleteEphemeralDemoSession({ id: session.id });
+    } catch (error) {
+      console.error("Ephemeral demo data cleanup failed during logout", error);
     }
   }
   await deleteSession();

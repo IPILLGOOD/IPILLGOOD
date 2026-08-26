@@ -1,5 +1,4 @@
 export {
-  DEMO_RECIPIENT_ID,
   deleteDocument,
   getCareSnapshot,
   getPatientQuestionSet,
@@ -11,6 +10,18 @@ export {
   type CareDataScope,
   type RegisterDocumentInput,
 } from "./care-repository";
+export {
+  DEMO_SESSION_DURATION_SECONDS,
+  DEMO_SESSION_CLEANUP_GRACE_SECONDS,
+  cleanupExpiredDemoSessions,
+  createEphemeralDemoSession,
+  createEphemeralDemoSessionId,
+  deleteEphemeralDemoSession,
+  ephemeralDemoSessionExpiresAt,
+  isEphemeralDemoSessionActive,
+  isEphemeralDemoSessionId,
+  type EphemeralDemoSession,
+} from "./demo-session";
 export {
   deleteDocumentAndSyncMedicationReminders,
   registerDocumentAndSyncMedicationReminders,

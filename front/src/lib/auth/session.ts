@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isEphemeralDemoSessionActive } from "@care-atlas/backend";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
@@ -23,7 +24,7 @@ function getSessionSecret() {
   });
 }
 
-async function signSession(user: SessionUser) {
+async function signSession(user: SessionUser, durationSeconds: number) {
   return new SignJWT({
     name: user.name,
     email: user.email,
@@ -33,19 +34,23 @@ async function signSession(user: SessionUser) {
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
     .setIssuedAt()
-    .setExpirationTime(`${SESSION_DURATION_SECONDS}s`)
+    .setExpirationTime(`${durationSeconds}s`)
     .sign(getSessionSecret());
 }
 
-export async function createSession(user: SessionUser) {
-  const token = await signSession(user);
+export async function createSession(
+  user: SessionUser,
+  options: { durationSeconds?: number } = {},
+) {
+  const durationSeconds = options.durationSeconds ?? SESSION_DURATION_SECONDS;
+  const token = await signSession(user, durationSeconds);
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_DURATION_SECONDS,
+    maxAge: durationSeconds,
   });
 }
 
@@ -66,13 +71,20 @@ export async function getSession(): Promise<SessionUser | null> {
       return null;
     }
 
-    return {
+    const user = {
       id: payload.sub,
       name: payload.name,
       email: typeof payload.email === "string" ? payload.email : undefined,
       picture: typeof payload.picture === "string" ? payload.picture : undefined,
       provider: payload.provider,
-    };
+    } satisfies SessionUser;
+    if (
+      user.provider === "demo" &&
+      !(await isEphemeralDemoSessionActive(user.id))
+    ) {
+      return null;
+    }
+    return user;
   } catch {
     return null;
   }

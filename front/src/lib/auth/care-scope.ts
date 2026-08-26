@@ -1,7 +1,7 @@
 import "server-only";
 
 import {
-  DEMO_RECIPIENT_ID,
+  isEphemeralDemoSessionId,
   type CareDataScope,
 } from "@care-atlas/backend";
 import { redirect } from "next/navigation";
@@ -10,7 +10,10 @@ import { getSession, type SessionUser } from "./session";
 
 export function careScopeFor(user: SessionUser): CareDataScope {
   if (user.provider === "demo") {
-    return { recipientId: DEMO_RECIPIENT_ID, useDemoData: true };
+    if (!isEphemeralDemoSessionId(user.id)) {
+      throw new Error("만료되었거나 올바르지 않은 데모 세션입니다.");
+    }
+    return { recipientId: user.id, useDemoData: true };
   }
 
   return {
