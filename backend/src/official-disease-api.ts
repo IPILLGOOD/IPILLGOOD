@@ -1,4 +1,8 @@
-import { XMLParser } from "fast-xml-parser";
+import {
+  parseOfficialXml,
+  readOfficialApiResponse,
+  safeOfficialApiErrorCode,
+} from "./official-api-response.ts";
 
 const DEFAULT_API_URL = "https://apis.data.go.kr/B551182/diseaseInfoService";
 const SOURCE_URL = "https://www.data.go.kr/data/15119055/openapi.do";
@@ -49,11 +53,7 @@ function pick(record: Record<string, unknown>, ...keys: string[]): string {
 
 export function parseOfficialDiseaseResponse(payload: string): OfficialDiseaseItem[] {
   const parsed = asRecord(
-    new XMLParser({
-      ignoreAttributes: true,
-      parseTagValue: false,
-      trimValues: true,
-    }).parse(payload) as unknown,
+    parseOfficialXml(payload),
   );
   const response = asRecord(parsed?.response) ?? parsed;
   const header = asRecord(response?.header);
@@ -167,7 +167,8 @@ export async function searchOfficialDiseaseInfo(
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const items = parseOfficialDiseaseResponse(await response.text());
+    const payload = await readOfficialApiResponse(response, "xml");
+    const items = parseOfficialDiseaseResponse(payload);
     const match = selectOfficialDiseaseMatch(items, trimmedQuery, trimmedCode);
     if (!match) {
       return {
@@ -179,8 +180,7 @@ export async function searchOfficialDiseaseInfo(
 
     return { status: "matched", item: match, sourceUrl: SOURCE_URL };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "알 수 없는 오류";
-    console.error("HIRA disease API unavailable", message);
+    console.error("HIRA disease API unavailable", safeOfficialApiErrorCode(error));
     return {
       status: "unavailable",
       sourceUrl: SOURCE_URL,

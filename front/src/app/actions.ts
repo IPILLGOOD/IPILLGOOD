@@ -16,6 +16,7 @@ import {
 import { createMedicationSchedule } from "@/lib/presentation";
 import { getSession } from "@/lib/auth/session";
 import { careScopeFor } from "@/lib/auth/care-scope";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   buildRecipientProfile,
   collectCompleteDoseResponses,
@@ -114,6 +115,13 @@ export async function saveCheckInAction(
 
   const session = await getSession();
   if (!session) return { status: "error", message: "로그인 정보가 만료되었어요." };
+  const rateLimit = await enforceRateLimit("checkIn", { userId: session.id });
+  if (!rateLimit.allowed) {
+    return {
+      status: "error",
+      message: `요청이 너무 많아요. ${rateLimit.retryAfterSeconds}초 뒤 다시 시도해주세요.`,
+    };
+  }
   const scope = careScopeFor(session);
   const snapshot = await getCareSnapshot(scope);
   const schedule = new Map(

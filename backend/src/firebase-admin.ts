@@ -1,4 +1,4 @@
-import type { Firestore } from "firebase-admin/firestore";
+import type { Firestore } from "@google-cloud/firestore";
 
 import type { FirestoreLike } from "./firestore-rest";
 
@@ -20,17 +20,8 @@ export function getAdminFirestore() {
         createFirestoreRestClient(serviceAccountJson, projectId),
       );
     } else {
-      firestorePromise = Promise.all([
-        import("firebase-admin/app"),
-        import("firebase-admin/firestore"),
-      ]).then(([{ applicationDefault, getApps, initializeApp }, { getFirestore }]) => {
-        const app =
-          getApps()[0] ??
-          initializeApp({
-            credential: applicationDefault(),
-            projectId,
-          });
-        return getFirestore(app) as Firestore as unknown as FirestoreLike;
+      firestorePromise = import("@google-cloud/firestore").then(({ Firestore }) => {
+        return new Firestore({ projectId }) as Firestore as unknown as FirestoreLike;
       });
     }
   }

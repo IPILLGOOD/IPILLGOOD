@@ -63,7 +63,10 @@ test("진단명 검색 파라미터를 전달하고 공식 일치 결과를 반�
     apiKey: "secret-key",
     fetcher: async (input) => {
       requestUrl = String(input);
-      return new Response(successXml, { status: 200 });
+      return new Response(successXml, {
+        status: 200,
+        headers: { "content-type": "application/xml" },
+      });
     },
   });
 

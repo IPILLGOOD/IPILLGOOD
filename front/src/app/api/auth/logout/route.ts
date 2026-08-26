@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { deleteSession, getSession } from "@/lib/auth/session";
 
-export async function POST(request: Request) {
+export async function POST() {
   const [session, cookieStore] = await Promise.all([getSession(), cookies()]);
   const pushDeviceId = cookieStore.get("ipillgood_push_device")?.value;
   if (session && pushDeviceId) {
@@ -16,5 +16,5 @@ export async function POST(request: Request) {
   }
   await deleteSession();
   cookieStore.delete("ipillgood_push_device");
-  return NextResponse.redirect(new URL("/", request.url), 303);
+  return new NextResponse(null, { status: 303, headers: { Location: "/" } });
 }

@@ -3,6 +3,8 @@ import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
+import { sessionSecretBytes } from "./session-security";
+
 export const SESSION_COOKIE_NAME = "care_atlas_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7;
 
@@ -15,16 +17,10 @@ export type SessionUser = {
 };
 
 function getSessionSecret() {
-  const configured = process.env.SESSION_SECRET;
-  if (configured) return new TextEncoder().encode(configured);
-
-  if (process.env.IPILLGOOD_DEMO_MODE === "true") {
-    return new TextEncoder().encode(
-      "care-atlas-local-demo-session-secret-change-before-deploying",
-    );
-  }
-
-  throw new Error("SESSION_SECRET 환경 변수가 설정되지 않았습니다.");
+  return sessionSecretBytes({
+    nodeEnv: process.env.NODE_ENV,
+    sessionSecret: process.env.SESSION_SECRET,
+  });
 }
 
 async function signSession(user: SessionUser) {

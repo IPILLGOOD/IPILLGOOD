@@ -1,12 +1,19 @@
+import { createHash } from "node:crypto";
+
 import {
   analyzeMedicationDocument,
+  DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
+  DocumentUploadValidationError,
   registerDocumentAndSyncMedicationReminders,
   type ClinicalDocumentType,
+  validateClinicalDocumentFile,
 } from "@care-atlas/backend";
 
 import { getSession } from "@/lib/auth/session";
 import { careScopeFor } from "@/lib/auth/care-scope";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { rateLimitResponse } from "@/lib/rate-limit-core";
 
 const allowedDocumentTypes = new Set<ClinicalDocumentType>(["처방전", "진단서"]);
 const maxFileSize = 5 * 1024 * 1024;
@@ -23,6 +30,12 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
+
+  const rateLimit = await enforceRateLimit("documentAnalysis", {
+    request,
+    userId: session.id,
+  });
+  if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
 
   try {
     const formData = await request.formData();
@@ -45,22 +58,22 @@ export async function POST(request: Request) {
       return Response.json({ message: "문서는 5MB 이하로 올려주세요." }, { status: 400 });
     }
 
-    if (
-      file instanceof File &&
-      !file.type.startsWith("image/") &&
-      file.type !== "application/pdf"
-    ) {
-      return Response.json({ message: "이미지 또는 PDF 파일만 분석할 수 있어요." }, { status: 400 });
-    }
-
     const typedDocumentType = documentType as ClinicalDocumentType;
     const fileName =
       file instanceof File ? file.name : `비식별_샘플_${typedDocumentType}.jpg`;
-    const contentType = file instanceof File ? file.type : "image/jpeg";
-    const contentBase64 =
-      file instanceof File
-        ? Buffer.from(await file.arrayBuffer()).toString("base64")
-        : undefined;
+    const fileBytes =
+      file instanceof File ? new Uint8Array(await file.arrayBuffer()) : undefined;
+    const claimedContentType = file instanceof File ? file.type : "";
+    const validatedFile = fileBytes
+      ? await validateClinicalDocumentFile(fileBytes, claimedContentType)
+      : undefined;
+    const contentType = validatedFile?.contentType ?? "image/jpeg";
+    const contentBase64 = fileBytes ? Buffer.from(fileBytes).toString("base64") : undefined;
+    const contentHash = createHash("sha256")
+      .update(typedDocumentType)
+      .update("\0")
+      .update(fileBytes ?? `sample:${fileName}`)
+      .digest("hex");
 
     const result = await analyzeMedicationDocument({
       documentType: typedDocumentType,
@@ -70,6 +83,7 @@ export async function POST(request: Request) {
     });
     const document = await registerDocumentAndSyncMedicationReminders(careScopeFor(session), {
       fileName,
+      contentHash,
       documentType: typedDocumentType,
       size: file instanceof File ? file.size : 284_000,
       isSample,
@@ -88,13 +102,22 @@ export async function POST(request: Request) {
       addedMedicationCount,
     });
   } catch (error) {
-    console.error("Document analysis failed", error);
+    if (error instanceof DocumentUploadValidationError) {
+      return Response.json({ message: error.userMessage }, { status: 400 });
+    }
     if (error instanceof DocumentAnalysisNotConfiguredError) {
       return Response.json(
         { message: "실제 문서 분석 API가 설정되지 않았어요. 비식별 샘플만 이용할 수 있어요." },
         { status: 503 },
       );
     }
+    if (error instanceof DocumentAnalysisIncompleteError) {
+      return Response.json(
+        { message: "문서에서 약 또는 진단 정보를 충분히 읽지 못했어요. 더 선명한 파일로 다시 시도해주세요." },
+        { status: 422 },
+      );
+    }
+    console.error("Document analysis failed", error);
     return Response.json(
       { message: "문서를 분석하지 못했어요. 파일을 확인한 뒤 다시 시도해주세요." },
       { status: 500 },

@@ -124,7 +124,7 @@ export function DocumentUploadForm() {
             id="document"
             name="document"
             type="file"
-            accept="image/*,application/pdf"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
             required
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
           />

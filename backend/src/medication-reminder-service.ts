@@ -19,6 +19,11 @@ interface RegisterDependencies {
     input: RegisterDocumentInput,
   ): Promise<ClinicalDocument & { size: number }>;
   getCareSnapshot(scope: CareDataScope): Promise<CareSnapshot>;
+  deleteDocument(
+    scope: CareDataScope,
+    documentId: string,
+    currentSnapshot?: CareSnapshot,
+  ): Promise<CareSnapshot>;
   syncMedicationReminderSchedules(input: ReminderSyncInput): Promise<unknown>;
 }
 
@@ -48,15 +53,27 @@ export async function registerDocumentAndSyncMedicationReminders(
   dependencies: RegisterDependencies = {
     registerDocument,
     getCareSnapshot,
+    deleteDocument,
     syncMedicationReminderSchedules,
   },
 ) {
+  const existingSnapshot = await dependencies.getCareSnapshot(scope);
+  const existingDocument = existingSnapshot.documents.find(
+    (document) => document.contentHash === input.contentHash,
+  );
+  if (existingDocument) return { ...existingDocument, size: input.size };
+
   const document = await dependencies.registerDocument(scope, input);
   const snapshot = await dependencies.getCareSnapshot(scope);
-  await syncWithOneRetry(dependencies.syncMedicationReminderSchedules, {
-    recipientId: scope.recipientId,
-    medications: snapshot.medications,
-  });
+  try {
+    await syncWithOneRetry(dependencies.syncMedicationReminderSchedules, {
+      recipientId: scope.recipientId,
+      medications: snapshot.medications,
+    });
+  } catch (error) {
+    await dependencies.deleteDocument(scope, document.id, snapshot);
+    throw error;
+  }
   return document;
 }
 

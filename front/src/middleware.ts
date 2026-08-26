@@ -1,25 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  contentSecurityPolicy,
+  cspResponseHeaderName,
+} from "@/lib/security-headers";
+
 const SESSION_COOKIE_NAME = "care_atlas_session";
+const protectedRoutePrefixes = [
+  "/today",
+  "/dashboard",
+  "/medications",
+  "/check-in",
+  "/documents",
+  "/profile",
+  "/report",
+];
 
-// OpenNext Cloudflare는 현재 Next.js 16의 Node.js proxy 런타임을 지원하지
-// 않으므로 동일한 인증 경계를 Edge Middleware로 유지합니다.
+function isProtectedRoute(pathname: string) {
+  return protectedRoutePrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+// OpenNext Cloudflare currently bundles the middleware convention for the Edge
+// runtime, while Next.js Proxy is emitted as an unsupported Node.js function.
 export function middleware(request: NextRequest) {
-  if (request.cookies.has(SESSION_COOKIE_NAME)) return NextResponse.next();
+  const nonce = btoa(crypto.randomUUID());
+  const policy = contentSecurityPolicy({
+    development: process.env.NODE_ENV === "development",
+    nonce,
+    upgradeInsecureRequests: request.nextUrl.protocol === "https:",
+  });
+  const responseHeaderName = cspResponseHeaderName(process.env.CSP_MODE);
 
-  const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("next", request.nextUrl.pathname);
-  return NextResponse.redirect(loginUrl);
+  if (isProtectedRoute(request.nextUrl.pathname) && !request.cookies.has(SESSION_COOKIE_NAME)) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", request.nextUrl.pathname);
+    const response = NextResponse.redirect(loginUrl);
+    response.headers.set(responseHeaderName, policy);
+    return response;
+  }
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  // Next.js가 framework/inline 태그에 nonce를 붙일 수 있도록 내부 요청에는 항상 차단형 이름을 사용합니다.
+  requestHeaders.set("Content-Security-Policy", policy);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set(responseHeaderName, policy);
+  return response;
 }
 
 export const config = {
-  matcher: [
-    "/today/:path*",
-    "/dashboard/:path*",
-    "/medications/:path*",
-    "/check-in/:path*",
-    "/documents/:path*",
-    "/profile/:path*",
-    "/report/:path*",
-  ],
+  matcher: ["/((?!api|_next/static|_next/image|.*\\..*).*)"],
 };

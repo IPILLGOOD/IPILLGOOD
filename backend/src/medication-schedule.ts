@@ -208,7 +208,7 @@ export function buildMedicationReminderSchedules(
           timeLabel,
           intervalDays: rule.intervalDays,
           startDate: medication.startDate,
-          endDate: medication.endDate,
+          ...(medication.endDate ? { endDate: medication.endDate } : {}),
           nextDueAt,
           timeZone: MEDICATION_TIME_ZONE,
           status: "active",

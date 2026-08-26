@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import demoSeed from "./data/demo-seed.json" with { type: "json" };
 import type {
   CareRecipient,
@@ -365,6 +363,7 @@ export async function saveDailyCheckIn(
 
 export interface RegisterDocumentInput {
   fileName: string;
+  contentHash: string;
   documentType: ClinicalDocumentType;
   size: number;
   isSample: boolean;
@@ -376,10 +375,13 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
   const firestore = await getAdminFirestore();
   const snapshot = fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
   const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
-  const documentRef = recipientRef.collection("clinicalDocuments").doc(randomUUID());
+  // A content-addressed id makes retries idempotent even when two identical
+  // requests pass the read-model duplicate check at the same time.
+  const documentRef = recipientRef.collection("clinicalDocuments").doc(input.contentHash);
   const document: ClinicalDocument & { size: number } = {
     id: documentRef.id,
     fileName: input.fileName,
+    contentHash: input.contentHash,
     documentType: input.documentType,
     uploadedAt: new Date().toISOString(),
     status: "confirmed",

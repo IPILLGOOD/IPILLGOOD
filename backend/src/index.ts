@@ -56,6 +56,7 @@ export {
 export { buildPatientQuestionResponse } from "./ai/questions/apply-question-response";
 export {
   analyzeMedicationDocument,
+  DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   type MedicationAnalyzerInput,
   type MedicationAnalyzerResult,
@@ -71,6 +72,15 @@ export {
   type OfficialDiseaseItem,
   type OfficialDiseaseLookupResult,
 } from "./official-disease-api";
+export {
+  MAX_DOCUMENT_FILE_BYTES,
+  MAX_DOCUMENT_IMAGE_DIMENSION,
+  MAX_DOCUMENT_IMAGE_PIXELS,
+  MAX_DOCUMENT_PDF_PAGES,
+  DocumentUploadValidationError,
+  validateClinicalDocumentFile,
+  type ValidatedDocumentFile,
+} from "./document-file-validation";
 export type {
   ActionState,
   AgentRunRecord,

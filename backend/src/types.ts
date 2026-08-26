@@ -225,6 +225,7 @@ export interface AgentRunRecord {
 export interface ClinicalDocument {
   id: string;
   fileName: string;
+  contentHash?: string;
   documentType: string;
   uploadedAt: string;
   status: "confirmed" | "awaiting_ai" | "needs_review";

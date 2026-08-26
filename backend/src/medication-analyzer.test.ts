@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   analyzeMedicationDocument,
+  DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
 } from "./ai/medication-analyzer.ts";
+import type { DocumentAnalysis } from "./types.ts";
 
 test("외부 문서 분석 API의 구조화 응답을 실제 분석 결과로 사용한다", async (context) => {
   const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
@@ -88,4 +90,111 @@ test("실제 파일인데 API가 없으면 데모 결과로 위장하지 않는�
     if (previousApiKey !== undefined) process.env.AI_API_KEY = previousApiKey;
     if (previousOpenAiKey !== undefined) process.env.OPENAI_API_KEY = previousOpenAiKey;
   }
+});
+
+test("OpenAI가 처방약을 누락하면 한 번 재시도하고 약 이름 finding을 보강한다", async (context) => {
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
+  const previousApiKey = process.env.AI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  delete process.env.AI_ANALYSIS_ENDPOINT;
+  delete process.env.AI_API_KEY;
+  context.after(() => {
+    if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAiKey;
+    if (previousEndpoint === undefined) delete process.env.AI_ANALYSIS_ENDPOINT;
+    else process.env.AI_ANALYSIS_ENDPOINT = previousEndpoint;
+    if (previousApiKey === undefined) delete process.env.AI_API_KEY;
+    else process.env.AI_API_KEY = previousApiKey;
+  });
+
+  const baseAnalysis = {
+    documentType: "처방전",
+    summary: "처방전 분석",
+    findings: [{ label: "복용 안내", value: "원본과 확인하세요." }],
+    carePoints: [],
+    questionsForProfessional: [],
+    disclaimer: "의료진 확인이 필요합니다.",
+    source: "openai",
+  } satisfies DocumentAnalysis;
+  let attempts = 0;
+
+  const result = await analyzeMedicationDocument(
+    {
+      documentType: "처방전",
+      fileName: "prescription.png",
+      contentType: "image/png",
+      contentBase64: "aW1hZ2U=",
+    },
+    {
+      async analyzeClinicalDocumentWithOpenAI() {
+        attempts += 1;
+        if (attempts === 1) return { ...baseAnalysis, medications: [] };
+        return {
+          ...baseAnalysis,
+          medications: [
+            {
+              productName: "노바스크정 5mg",
+              ingredientName: "암로디핀",
+              doseAmount: "1정",
+              frequency: "하루 1회",
+              timing: "아침 식사 후",
+              startDate: "2026-08-12",
+              purposePlain: "혈압 관리",
+              precautions: [],
+            },
+          ],
+        };
+      },
+    },
+  );
+
+  assert.equal(attempts, 2);
+  assert.ok(result.analysis.findings.some((finding) => finding.value.includes("노바스크정 5mg")));
+});
+
+test("OpenAI 재시도 후에도 필수 정보가 없으면 불완전 결과를 저장하지 않는다", async (context) => {
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
+  const previousApiKey = process.env.AI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  delete process.env.AI_ANALYSIS_ENDPOINT;
+  delete process.env.AI_API_KEY;
+  context.after(() => {
+    if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAiKey;
+    if (previousEndpoint === undefined) delete process.env.AI_ANALYSIS_ENDPOINT;
+    else process.env.AI_ANALYSIS_ENDPOINT = previousEndpoint;
+    if (previousApiKey === undefined) delete process.env.AI_API_KEY;
+    else process.env.AI_API_KEY = previousApiKey;
+  });
+
+  let attempts = 0;
+  await assert.rejects(
+    analyzeMedicationDocument(
+      {
+        documentType: "처방전",
+        fileName: "prescription.png",
+        contentType: "image/png",
+        contentBase64: "aW1hZ2U=",
+      },
+      {
+        async analyzeClinicalDocumentWithOpenAI() {
+          attempts += 1;
+          return {
+            documentType: "처방전",
+            summary: "읽기 실패",
+            findings: [],
+            carePoints: [],
+            questionsForProfessional: [],
+            disclaimer: "의료진 확인이 필요합니다.",
+            source: "openai",
+            medications: [],
+          };
+        },
+      },
+    ),
+    DocumentAnalysisIncompleteError,
+  );
+  assert.equal(attempts, 2);
 });

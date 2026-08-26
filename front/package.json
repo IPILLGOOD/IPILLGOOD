@@ -14,6 +14,7 @@
     "push:keys": "node scripts/generate-vapid-keys.mjs",
     "qa:google-pwa": "node scripts/google-auth-pwa-qa.mjs",
     "qa:push": "node scripts/push-qa.mjs",
+    "qa:security-headers": "node scripts/security-headers-qa.mjs",
     "test": "node --experimental-strip-types --test test/*.test.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
