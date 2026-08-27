@@ -2,7 +2,7 @@ import {
   deactivatePushSubscription,
   getCareSnapshot,
   getNotificationScheduleStatus,
-  getPushDeviceStatus,
+  getPushDeviceHealth,
   registerPushSubscription,
 } from "@care-atlas/backend";
 import { NextResponse } from "next/server";
@@ -18,6 +18,7 @@ const subscriptionSchema = z.object({
   browser: z.enum(["chrome", "safari", "edge", "firefox", "other"]),
   userAgent: z.string().max(512),
   timeZone: z.string().min(1).max(100),
+  onlyIfActive: z.boolean().optional(),
   subscription: z.object({
     endpoint: z.string().url().refine(isAllowedPushEndpoint, "지원하지 않는 Push endpoint입니다."),
     expirationTime: z.number().nullable().optional(),
@@ -37,11 +38,11 @@ export async function GET(request: Request) {
   const parsed = deleteSchema.safeParse({ deviceId: new URL(request.url).searchParams.get("deviceId") });
   if (!parsed.success) return Response.json({ error: "invalid_device" }, { status: 400 });
   try {
-    const [subscribed, status] = await Promise.all([
-      getPushDeviceStatus({ userId: session.id, recipientId: scope.recipientId, deviceId: parsed.data.deviceId }),
+    const [health, status] = await Promise.all([
+      getPushDeviceHealth({ userId: session.id, recipientId: scope.recipientId, deviceId: parsed.data.deviceId }),
       getNotificationScheduleStatus(scope.recipientId),
     ]);
-    return Response.json({ subscribed, status }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ ...health, status }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ error: "subscription_unavailable" }, { status: 503 });
   }
@@ -58,12 +59,13 @@ export async function POST(request: Request) {
     const input = subscriptionSchema.parse(await request.json());
     const scope = careScopeFor(session);
     const snapshot = await getCareSnapshot(scope);
-    await registerPushSubscription({
+    const registration = await registerPushSubscription({
       userId: session.id,
       recipientId: scope.recipientId,
       medications: snapshot.medications,
       ...input,
     });
+    if (!registration.record) return Response.json({ error: "subscription_no_longer_active" }, { status: 409 });
     const status = await getNotificationScheduleStatus(scope.recipientId);
     const response = NextResponse.json({ ok: true, status });
     response.cookies.set("ipillgood_push_device", input.deviceId, {

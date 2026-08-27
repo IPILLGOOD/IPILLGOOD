@@ -8,22 +8,15 @@ import {
   BellRing,
   Smartphone,
 } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import { Card } from "@/components/ui/Card";
-import {
-  disablePushNotifications,
-  enablePushNotifications,
-  inspectPushClient,
-  type PushClientState,
-} from "@/lib/push/client";
+import { usePushStatus } from "./PushStatusProvider";
 import {
   detectPushEnvironment,
   isStandalonePwa,
   shouldShowPushNotificationSection,
 } from "@/lib/push/environment";
-
-type BusyAction = "enable" | "disable" | null;
 
 function subscribeToPwaDisplayMode(notify: () => void) {
   const media = window.matchMedia("(display-mode: standalone)");
@@ -57,64 +50,7 @@ export function MedicationReminderCard() {
     getNotificationSectionVisibility,
     () => false,
   );
-  const [client, setClient] = useState<PushClientState | null>(null);
-  const [busy, setBusy] = useState<BusyAction>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!visible) return;
-
-    let active = true;
-    inspectPushClient()
-      .then((state) => {
-        if (active) setClient(state);
-      })
-      .catch(() => {
-        if (active) setError("알림 상태를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [visible]);
-
-  const enable = async () => {
-    if (!client?.publicKey) return;
-    setBusy("enable");
-    setError("");
-    try {
-      const result = await enablePushNotifications(client.publicKey);
-      if (result.status === "denied") {
-        setClient({ ...client, permission: "denied", subscribed: false });
-      } else if (result.status === "unsupported") {
-        setClient({ ...client, supported: false, subscribed: false });
-      } else {
-        setClient({
-          ...client,
-          permission: "granted",
-          subscribed: true,
-          status: result.scheduleStatus,
-        });
-      }
-    } catch {
-      setError("알림 권한 또는 기기 등록을 완료하지 못했어요.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const disable = async () => {
-    if (!client) return;
-    setBusy("disable");
-    setError("");
-    try {
-      await disablePushNotifications();
-      setClient({ ...client, subscribed: false, status: null });
-    } catch {
-      setError("알림을 해제하지 못했어요. 잠시 후 다시 시도해 주세요.");
-    } finally {
-      setBusy(null);
-    }
-  };
+  const { client, busy, error, checking, enable, disable } = usePushStatus();
 
   const nextReminder = formatReminderTime(client?.status?.nextReminderAt);
   const unavailable = client && (!client.configured || !client.supported || client.permission === "denied");
@@ -157,12 +93,12 @@ export function MedicationReminderCard() {
         {client && !unavailable ? (
           <div className="medication-reminder-card__actions">
             {client.subscribed ? (
-              <button className="button button--quiet" type="button" onClick={disable} disabled={busy !== null}>
+              <button className="button button--quiet" type="button" onClick={disable} disabled={busy !== null || checking}>
                 <BellOff size={17} aria-hidden="true" />
                 {busy === "disable" ? "해제 중…" : "이 기기 알림 끄기"}
               </button>
             ) : (
-              <button className="button button--primary" type="button" onClick={enable} disabled={busy !== null}>
+              <button className="button button--primary" type="button" onClick={enable} disabled={busy !== null || checking}>
                 <Smartphone size={18} aria-hidden="true" />
                 {busy === "enable" ? "기기 등록 중…" : "이 기기에서 알림 받기"}
               </button>

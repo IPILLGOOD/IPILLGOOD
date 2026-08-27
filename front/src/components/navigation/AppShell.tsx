@@ -14,6 +14,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import type { SessionUser } from "@/lib/auth/session";
+import { PushStatusProvider } from "@/components/notifications/PushStatusProvider";
+import { PushKeyNotice } from "@/components/notifications/PushKeyNotice";
 
 const navigation = [
   { href: "/today", label: "오늘 할 일", icon: CalendarCheck2, mobile: true },
@@ -79,7 +81,7 @@ export function AppShell({
   if (isPublicPage) return children;
 
   return (
-    <>
+    <PushStatusProvider key={`${user?.provider}:${user?.id}`} enabled={Boolean(user)}>
       <a className="skip-link" href="#main-content">
         본문으로 바로가기
       </a>
@@ -115,6 +117,7 @@ export function AppShell({
             </form>
           </header>
           <main id="main-content" className="main-content" tabIndex={-1}>
+            <PushKeyNotice />
             {children}
           </main>
           <footer className="app-footer">
@@ -124,6 +127,6 @@ export function AppShell({
         </div>
       </div>
       <NavigationLinks mobile />
-    </>
+    </PushStatusProvider>
   );
 }

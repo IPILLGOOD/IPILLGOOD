@@ -118,6 +118,7 @@ export async function registerPushSubscription(input: {
   timeZone: string;
   subscription: BrowserPushSubscription;
   medications: MedicationPlan[];
+  onlyIfActive?: boolean;
   now?: Date;
   firestore?: FirestoreLike;
 }) {
@@ -131,6 +132,8 @@ export async function registerPushSubscription(input: {
       tx.get(ref), tx.get(firestore.collection(SUBSCRIPTIONS_COLLECTION).where("deviceId", "==", input.deviceId)),
     ]);
     const current = existing.data() as PushSubscriptionRecord | undefined;
+    // A background repair must not revive an opt-out that happened after the client checked.
+    if (input.onlyIfActive && (!current?.active || current.userId !== input.userId || current.recipientId !== input.recipientId)) return null;
     for (const doc of sameDevice.docs) {
       if (doc.id !== id && (doc.data() as PushSubscriptionRecord).active) tx.set(doc.ref, { active: false, updatedAt: nowIso }, { merge: true });
     }
@@ -148,6 +151,7 @@ export async function registerPushSubscription(input: {
     return next;
   });
 
+  if (!record) return { record: null, schedules: [] };
   const schedules = await syncMedicationReminderSchedules({
     recipientId: input.recipientId,
     medications: input.medications,
@@ -514,8 +518,19 @@ async function* dueReminderPages(firestore: FirestoreLike, now: Date) {
 }
 
 export async function getPushDeviceStatus(input: { userId: string; recipientId: string; deviceId: string; firestore?: FirestoreLike }) {
+  return (await getPushDeviceHealth(input)).subscribed;
+}
+
+export async function getPushDeviceHealth(input: { userId: string; recipientId: string; deviceId: string; firestore?: FirestoreLike }) {
   const firestore = input.firestore ?? await getAdminFirestore();
   const doc = await subscriptionRef(firestore, stableId(input.userId, input.deviceId)).get();
   const record = doc.data() as PushSubscriptionRecord | undefined;
-  return Boolean(record?.active && record.recipientId === input.recipientId);
+  if (!record?.active || record.userId !== input.userId || record.recipientId !== input.recipientId) {
+    return { subscribed: false, endpointHash: null, lastHttpStatus: null };
+  }
+  return {
+    subscribed: true,
+    endpointHash: createHash("sha256").update(record.subscription.endpoint).digest("hex"),
+    lastHttpStatus: record.lastHttpStatus ?? null,
+  };
 }
