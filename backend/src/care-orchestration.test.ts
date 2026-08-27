@@ -231,3 +231,26 @@ test("만료된 생성 lease를 회수하고 중단 attempt를 추적한다", as
   assert.equal(calls, 1);
   assert.deepEqual(attempts.docs.map((doc) => (doc.data() as { status: string }).status).sort(), ["completed", "interrupted"]);
 });
+
+
+test("게시 실패는 unavailable을 반환하고 같은 checkpoint로 복구한다", async () => {
+  const { getQuestionSetAvailability } = await import("./care-orchestration-service.ts");
+  const { firestore, input } = await generationFixture();
+  let calls = 0;
+  const runAgent: typeof runCareAgent = async (request) => { calls++; return runCareAgent({ ...request, apiKey: "" }); };
+  firestore.beforeCommit = (writes) => {
+    if (writes.some((write) => write.path.includes("/questionSets/"))) {
+      firestore.beforeCommit = undefined;
+      throw new Error("PRIVATE_STORAGE_DETAIL");
+    }
+  };
+  const unavailable = await getQuestionSetAvailability(input, { runAgent });
+  assert.equal(unavailable.status, "unavailable");
+  assert.equal("questionSet" in unavailable, false);
+  assert.equal(JSON.stringify(unavailable).includes("PRIVATE_STORAGE_DETAIL"), false);
+  assert.equal((await firestore.collection(`careRecipients/${input.scope.recipientId}/questionSets`).get()).docs.length, 0);
+  const ready = await getQuestionSetAvailability(input, { runAgent });
+  assert.equal(ready.status, "ready");
+  assert.equal(calls, 1);
+  if (ready.status === "ready") assert.equal((await firestore.collection(`careRecipients/${input.scope.recipientId}/questionSets`).doc(ready.questionSet.question_set_id).get()).exists, true);
+});

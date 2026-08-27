@@ -22,6 +22,22 @@ export function dateKeyInSeoul(value = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
 }
 
+export type QuestionSetAvailability =
+  | { status: "ready"; questionSet: PatientQuestionSet }
+  | { status: "unavailable"; message: string };
+
+// An unpublished result must never become a usable form. Keep the checkpoint for retry.
+export async function getQuestionSetAvailability(
+  input: Parameters<typeof getOrCreateQuestionSet>[0],
+  dependencies: Parameters<typeof getOrCreateQuestionSet>[1] = {},
+): Promise<QuestionSetAvailability> {
+  try {
+    return { status: "ready", questionSet: await getOrCreateQuestionSet(input, { maxWaitMs: 1500, ...dependencies }) };
+  } catch {
+    return { status: "unavailable", message: "질문을 안전하게 저장하지 못했어요. 잠시 후 다시 준비해 주세요." };
+  }
+}
+
 export async function getOrCreateQuestionSet(input: {
   scope: CareDataScope;
   targetDate?: string;
