@@ -10,6 +10,7 @@ import {
 const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@care-atlas/backend"],
+  serverExternalPackages: ["@google-cloud/firestore"],
   async headers() {
     return [
       {
