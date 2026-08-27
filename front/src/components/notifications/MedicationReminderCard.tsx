@@ -1,5 +1,7 @@
 "use client";
 
+import { formatInSeoul } from "@care-atlas/backend/dates";
+
 import {
   Bell,
   BellOff,
@@ -39,14 +41,14 @@ function getNotificationSectionVisibility() {
 
 function formatReminderTime(value: string | null | undefined) {
   if (!value) return null;
-  return new Intl.DateTimeFormat("ko-KR", {
+  return formatInSeoul(value, {
     timeZone: "Asia/Seoul",
     month: "long",
     day: "numeric",
     weekday: "short",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  });
 }
 
 export function MedicationReminderCard() {

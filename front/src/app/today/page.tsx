@@ -1,3 +1,4 @@
+import { dateKeyInSeoul } from "@care-atlas/backend/dates";
 import {
   ArrowRight,
   CheckCircle2,
@@ -27,12 +28,7 @@ export const metadata: Metadata = {
   description: "오늘의 복약 일정과 몸 상태를 한 번에 확인하고 기록합니다.",
 };
 
-const seoulDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Seoul",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
+
 
 export default async function TodayPage() {
   const scope = await requireCareScope();
@@ -44,9 +40,9 @@ export default async function TodayPage() {
     answerer: "caregiver",
     snapshot,
   });
-  const dateKey = seoulDateFormatter.format(new Date());
+  const dateKey = dateKeyInSeoul();
   const todaySymptoms = snapshot.symptomEvents.filter(
-    (event) => seoulDateFormatter.format(new Date(event.occurredAt)) === dateKey,
+    (event) => dateKeyInSeoul(event.occurredAt) === dateKey,
   );
   const fallbackCheckIn: DailyCheckIn | null = todaySymptoms[0]
     ? {

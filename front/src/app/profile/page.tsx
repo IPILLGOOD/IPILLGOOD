@@ -1,3 +1,4 @@
+import { formatInSeoul } from "@care-atlas/backend/dates";
 import { Accessibility, History, ShieldCheck } from "lucide-react";
 
 import { ProfileForm } from "@/components/profile/ProfileForm";
@@ -38,7 +39,7 @@ export default async function ProfilePage() {
             <h2>마지막 확인</h2>
             <p>
               {snapshot.recipient.consentConfirmed
-                ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeStyle: "short" }).format(new Date(snapshot.recipient.lastConfirmedAt))
+                ? formatInSeoul(snapshot.recipient.lastConfirmedAt, { dateStyle: "long", timeStyle: "short" })
                 : "아직 프로필을 확인하지 않았어요."}
             </p>
           </Card>

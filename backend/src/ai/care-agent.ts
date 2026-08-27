@@ -1,3 +1,4 @@
+import { addCalendarDays, seoulDateRange } from "../dates.ts";
 import { createHash, randomUUID } from "node:crypto";
 
 import OpenAI from "openai";
@@ -124,8 +125,9 @@ const careAgentJsonSchema = {
 function recentSnapshot(snapshot: CareSnapshot, targetDate: string) {
   // 오늘 답변이 입력 리비전을 바꿔 제출 직후 새 질문 세트가 생기지 않도록
   // 질문 생성에는 목표 날짜 직전까지의 기록만 사용합니다.
-  const end = new Date(`${targetDate}T00:00:00+09:00`).getTime() - 1;
-  const start = end - 14 * 86_400_000;
+  const range = seoulDateRange(addCalendarDays(targetDate, -1), 14);
+  const start = Date.parse(range.startInclusive);
+  const end = Date.parse(range.endExclusive);
   return {
     target_date: targetDate,
     recipient: {
@@ -144,7 +146,7 @@ function recentSnapshot(snapshot: CareSnapshot, targetDate: string) {
     dose_events: snapshot.doseEvents
       .filter((event) => {
         const timestamp = new Date(event.scheduledAt).getTime();
-        return timestamp >= start && timestamp <= end;
+        return timestamp >= start && timestamp < end;
       })
       .map((event) => ({
         id: event.id,
@@ -155,7 +157,7 @@ function recentSnapshot(snapshot: CareSnapshot, targetDate: string) {
     symptom_events: snapshot.symptomEvents
       .filter((event) => {
         const timestamp = new Date(event.occurredAt).getTime();
-        return timestamp >= start && timestamp <= end;
+        return timestamp >= start && timestamp < end;
       })
       .map((event) => ({
         id: event.id,

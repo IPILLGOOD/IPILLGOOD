@@ -1,3 +1,4 @@
+import { dateKeyInSeoul } from "./dates.ts";
 import { randomUUID } from "node:crypto";
 
 import { careInputRevision, runCareAgent, type CareAgentResult } from "./ai/care-agent.ts";
@@ -18,9 +19,7 @@ type Generation = {
   sourceDocumentIds: string[];
 };
 
-export function dateKeyInSeoul(value = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
-}
+export { dateKeyInSeoul } from "./dates.ts";
 
 export async function getOrCreateQuestionSet(input: {
   scope: CareDataScope;

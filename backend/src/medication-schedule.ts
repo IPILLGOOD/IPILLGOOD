@@ -1,8 +1,9 @@
+import { SEOUL_TIME_ZONE, addCalendarDays, calendarDayDifference, dateKeyInSeoul, dateKeyInTimeZone, seoulTimeLabel } from "./dates.ts";
 import { createHash } from "node:crypto";
 
 import type { DoseEvent, MedicationPlan } from "./types.ts";
 
-export const MEDICATION_TIME_ZONE = "Asia/Seoul" as const;
+export const MEDICATION_TIME_ZONE = SEOUL_TIME_ZONE;
 
 export interface MedicationScheduleTask {
   id: string;
@@ -53,14 +54,7 @@ export function medicationFrequencyRule(frequency: string) {
   return { count: 1, intervalDays: 1 };
 }
 
-export function dateKeyInTimeZone(date: Date, timeZone = MEDICATION_TIME_ZONE) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
+export { dateKeyInTimeZone } from "./dates.ts";
 
 export function isMedicationDueOnDate(
   medication: Pick<MedicationPlan, "startDate" | "endDate">,
@@ -71,9 +65,7 @@ export function isMedicationDueOnDate(
   if (medication.endDate && medication.endDate < dateKey) return false;
   if (intervalDays === 1) return true;
 
-  const start = new Date(`${medication.startDate}T00:00:00+09:00`).getTime();
-  const target = new Date(`${dateKey}T00:00:00+09:00`).getTime();
-  const elapsedDays = Math.floor((target - start) / 86_400_000);
+  const elapsedDays = calendarDayDifference(medication.startDate, dateKey);
   return elapsedDays >= 0 && elapsedDays % intervalDays === 0;
 }
 
@@ -107,10 +99,7 @@ function isoAtSeoulTime(dateKey: string, timeLabel: string) {
   return `${dateKey}T${timeLabel}:00+09:00`;
 }
 
-function addDays(dateKey: string, days: number) {
-  const timestamp = new Date(`${dateKey}T00:00:00+09:00`).getTime() + days * 86_400_000;
-  return dateKeyInTimeZone(new Date(timestamp));
-}
+
 
 export function nextMedicationDueAt(
   medication: Pick<MedicationPlan, "startDate" | "endDate">,
@@ -120,7 +109,7 @@ export function nextMedicationDueAt(
 ) {
   const firstDate = dateKeyInTimeZone(after);
   for (let offset = 0; offset <= 366; offset += 1) {
-    const dateKey = addDays(firstDate, offset);
+    const dateKey = addCalendarDays(firstDate, offset);
     if (medication.endDate && dateKey > medication.endDate) return null;
     if (!isMedicationDueOnDate(medication, dateKey, intervalDays)) continue;
     const candidate = new Date(isoAtSeoulTime(dateKey, timeLabel));
@@ -145,7 +134,7 @@ export function createMedicationSchedule(
     const eventsForMedication = events
       .filter(
         (event) =>
-          event.medicationPlanId === medication.id && event.scheduledAt.slice(0, 10) === dateKey,
+          event.medicationPlanId === medication.id && dateKeyInSeoul(event.scheduledAt) === dateKey,
       )
       .sort((a, b) =>
         String(b.answeredAt ?? b.scheduledAt).localeCompare(
@@ -157,7 +146,7 @@ export function createMedicationSchedule(
       const timeLabel = timeForMedicationSlot(slotLabel, slotIndex, rule.count);
       const scheduledAt = isoAtSeoulTime(dateKey, timeLabel);
       const exactEvent = eventsForMedication.find(
-        (event) => event.scheduledAt.slice(11, 16) === timeLabel,
+        (event) => seoulTimeLabel(event.scheduledAt) === timeLabel,
       );
 
       tasks.push({
