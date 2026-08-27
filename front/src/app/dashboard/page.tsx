@@ -17,8 +17,10 @@ import { getCareSnapshot } from "@care-atlas/backend";
 import {
   activeMedications,
   adherenceSummary,
+  formatDate,
   uniqueSymptomDays,
 } from "@/lib/presentation";
+import { recentCareRecords } from "@/lib/recent-care-records";
 import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
@@ -27,10 +29,11 @@ export default async function DashboardPage() {
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
   const medications = activeMedications(snapshot.medications);
-  const adherence = adherenceSummary(snapshot.doseEvents);
-  const symptomDays = uniqueSymptomDays(snapshot.symptomEvents);
+  const recent = recentCareRecords(snapshot);
+  const adherence = adherenceSummary(recent.doseEvents);
+  const symptomDays = uniqueSymptomDays(recent.symptomEvents);
   const dizzinessDays = uniqueSymptomDays(
-    snapshot.symptomEvents.filter((event) => event.symptomType === "어지러움"),
+    recent.symptomEvents.filter((event) => event.symptomType === "어지러움"),
   );
 
   return (
@@ -82,7 +85,7 @@ export default async function DashboardPage() {
               </div>
               <Badge tone="neutral">최근 7일</Badge>
             </div>
-            <CareTimeline medications={medications} symptoms={snapshot.symptomEvents} />
+            <CareTimeline medications={recent.medications} symptoms={recent.symptomEvents} />
             <p className="causal-note">
               두 기록의 시기가 겹치더라도 약이 증상의 원인이라는 뜻은 아니에요.
             </p>
@@ -94,24 +97,25 @@ export default async function DashboardPage() {
             <div className="section-heading">
               <div>
                 <h2>최근 7일 요약</h2>
-                <p>사용자가 답한 기록 기준</p>
+                <p>{formatDate(recent.range.startDate)}–{formatDate(recent.range.endDate)} · 오늘 포함 · 한국 시간</p>
               </div>
               <CalendarCheck2 size={21} color="var(--color-primary-700)" aria-hidden="true" />
             </div>
             <div className="metric-row">
               <div className="metric">
-                <strong>{adherence.rate}%</strong>
-                <span>복용 완료 응답</span>
+                <strong>{adherence.rate === null ? "기록 없음" : `${adherence.rate}%`}</strong>
+                <span>응답 중 복용 완료</span>
               </div>
               <div className="metric">
-                <strong>{symptomDays}일</strong>
-                <span>어지러움 기록</span>
+                <strong>{symptomDays === 0 ? "기록 없음" : `${symptomDays}일`}</strong>
+                <span>몸 상태 기록</span>
               </div>
               <div className="metric">
                 <strong>{medications.length}개</strong>
                 <span>현재 복용약</span>
               </div>
             </div>
+            <p className="causal-note">복약 수치는 답한 기록만 집계하며, 실제 복용 여부나 무응답 회차를 나타내지 않아요.</p>
           </Card>
 
           {dizzinessDays >= 3 ? (

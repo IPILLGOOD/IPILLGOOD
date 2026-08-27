@@ -9,8 +9,10 @@ import { getCareSnapshot } from "@care-atlas/backend";
 import {
   activeMedications,
   adherenceSummary,
+  formatDate,
   uniqueSymptomDays,
 } from "@/lib/presentation";
+import { recentCareRecords } from "@/lib/recent-care-records";
 import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
@@ -19,15 +21,16 @@ export default async function ReportPage() {
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
   const medications = activeMedications(snapshot.medications);
-  const adherence = adherenceSummary(snapshot.doseEvents);
-  const symptomDays = uniqueSymptomDays(snapshot.symptomEvents);
+  const recent = recentCareRecords(snapshot);
+  const adherence = adherenceSummary(recent.doseEvents);
+  const symptomDays = uniqueSymptomDays(recent.symptomEvents);
 
   return (
     <>
       <PageHeader
         eyebrow="Care Report · 최근 7일"
         title={`${snapshot.recipient.displayName} 돌봄 기록`}
-        description="보호자와 어르신이 답한 내용을 의료진·약사와 이야기하기 쉽게 정리했어요."
+        description={`${formatDate(recent.range.startDate)}–${formatDate(recent.range.endDate)} · 오늘 포함 · 한국 시간 기준으로 답한 기록을 정리했어요.`}
         action={<PrintButton />}
       />
 
@@ -40,14 +43,15 @@ export default async function ReportPage() {
                 <span>현재 복용약</span>
               </div>
               <div>
-                <strong>{adherence.confirmed}/{adherence.total}회</strong>
-                <span>복용 완료 응답</span>
+                <strong>{adherence.total === 0 ? "기록 없음" : `${adherence.confirmed}/${adherence.total}회`}</strong>
+                <span>응답 중 복용 완료</span>
               </div>
               <div>
-                <strong>{symptomDays}일</strong>
-                <span>어지러움 기록</span>
+                <strong>{symptomDays === 0 ? "기록 없음" : `${symptomDays}일`}</strong>
+                <span>몸 상태 기록</span>
               </div>
             </div>
+            <p className="causal-note">복약 수치는 답한 기록만 집계하며, 실제 복용 여부나 무응답 회차를 나타내지 않아요.</p>
           </Card>
 
           <Card>
@@ -81,7 +85,7 @@ export default async function ReportPage() {
               </div>
               <CalendarDays size={21} color="var(--color-primary-700)" aria-hidden="true" />
             </div>
-            <CareTimeline medications={medications} symptoms={snapshot.symptomEvents} />
+            <CareTimeline medications={recent.medications} symptoms={recent.symptomEvents} />
           </Card>
         </div>
 
