@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
   getCareSnapshot,
-  getOrCreateQuestionSet,
+  getQuestionSetAvailability,
 } from "@care-atlas/backend";
 import { createMedicationSchedule } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function CheckInPage() {
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
-  const questionSet = await getOrCreateQuestionSet({
+  const questions = await getQuestionSetAvailability({
     scope,
     answerer: "caregiver",
     snapshot,
@@ -31,7 +31,7 @@ export default async function CheckInPage() {
       />
       <div className="checkin-layout">
         <Card>
-          <CheckInForm tasks={tasks} questionSet={questionSet} />
+          <CheckInForm tasks={tasks} questionSet={questions.status === "ready" ? questions.questionSet : null} />
         </Card>
         <aside className="checkin-aside">
           <Card tone="accent">

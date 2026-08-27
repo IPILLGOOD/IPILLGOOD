@@ -1,44 +1,48 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { ArrowRight, ClipboardCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { saveCheckInAction } from "@/app/actions";
+import { useCheckInForm } from "@/components/check-in/useCheckInForm";
+import { QuestionRecovery } from "@/components/check-in/QuestionRecovery";
 import { DynamicQuestionFields } from "@/components/check-in/DynamicQuestionFields";
 import { FormMessage } from "@/components/ui/FormMessage";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import type { MedicationScheduleTask } from "@/lib/presentation";
 import type {
-  ActionState,
   DailyCheckIn,
   PatientQuestionSet,
 } from "@care-atlas/backend";
 
-const initialState: ActionState = { status: "idle", message: "" };
 const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청거림"];
 
 export function TodayQuickCheckIn({
   tasks,
   checkIn,
-  questionSet,
+  questionSet: initialQuestions,
 }: {
   tasks: MedicationScheduleTask[];
   checkIn: DailyCheckIn | null;
-  questionSet: PatientQuestionSet;
+  questionSet: PatientQuestionSet | null;
 }) {
   const router = useRouter();
-  const [state, formAction] = useActionState(saveCheckInAction, initialState);
+  const form = useCheckInForm(initialQuestions);
+  const { state, formAction, questionSet } = form;
 
   useEffect(() => {
     if (state.status === "success") router.refresh();
   }, [router, state.status]);
 
+  const recovery = <QuestionRecovery unavailable={!questionSet} pending={form.pending} message={form.recoveryMessage} onRetry={form.recover} />;
+  if (!questionSet) return recovery;
+
   return (
     <form
       className="quick-checkin-form"
       action={formAction}
+      onReset={(event) => event.preventDefault()}
       aria-label="오늘의 안부 바로 기록"
     >
       <div className="quick-checkin__header">
@@ -49,7 +53,8 @@ export function TodayQuickCheckIn({
         </div>
       </div>
 
-      <FormMessage state={state} />
+      {!form.recoveryMessage && <FormMessage state={state} />}
+      {(state.recoverQuestions || form.recoveryMessage) && recovery}
       <input type="hidden" name="checkInScope" value="wellbeing" />
 
       {tasks.map((task) => (
@@ -66,7 +71,7 @@ export function TodayQuickCheckIn({
         <select
           id="quick-answered-by"
           name="answeredBy"
-          defaultValue={checkIn?.completedBy ?? "caregiver"}
+          {...form.field("answeredBy", checkIn?.completedBy ?? "caregiver")}
           required
         >
           <option value="caregiver">보호자</option>
@@ -84,7 +89,7 @@ export function TodayQuickCheckIn({
                 name="symptoms"
                 type="checkbox"
                 value={symptom}
-                defaultChecked={checkIn?.symptoms.includes(symptom)}
+                {...form.check("symptoms", symptom, checkIn?.symptoms.includes(symptom) ?? false)}
               />
               <span>{symptom}</span>
             </label>
@@ -92,14 +97,14 @@ export function TodayQuickCheckIn({
         </div>
       </fieldset>
 
-      <DynamicQuestionFields questionSet={questionSet} compact />
+      <DynamicQuestionFields questionSet={questionSet} controls={form} compact />
 
       <div className="field">
         <label htmlFor="quick-severity">불편한 정도</label>
         <select
           id="quick-severity"
           name="severity"
-          defaultValue={String(checkIn?.severity ?? 3)}
+          {...form.field("severity", String(checkIn?.severity ?? 3))}
         >
           <option value="1">아주 조금</option>
           <option value="3">조금 불편함</option>
@@ -115,13 +120,13 @@ export function TodayQuickCheckIn({
           id="quick-note"
           name="note"
           maxLength={500}
-          defaultValue={checkIn?.note ?? ""}
+          {...form.field("note", checkIn?.note ?? "")}
           placeholder="직접 보거나 들은 내용을 적어주세요."
         />
       </div>
 
       <div className="quick-checkin__actions">
-        <SubmitButton pendingText="저장하는 중…">안부 기록 저장</SubmitButton>
+        <SubmitButton disabled={form.pending} pendingText="저장하는 중…">안부 기록 저장</SubmitButton>
         <Link href="/check-in">
           더 자세히 기록 <ArrowRight size={16} aria-hidden="true" />
         </Link>

@@ -15,7 +15,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { createMedicationSchedule } from "@/lib/presentation";
 import {
   getCareSnapshot,
-  getOrCreateQuestionSet,
+  getQuestionSetAvailability,
 } from "@care-atlas/backend";
 import type { DailyCheckIn } from "@care-atlas/backend";
 import { requireCareScope } from "@/lib/auth/care-scope";
@@ -39,7 +39,7 @@ export default async function TodayPage() {
   const snapshot = await getCareSnapshot(scope);
   const todayCheckIn = snapshot.todayCheckIn ?? null;
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
-  const questionSet = await getOrCreateQuestionSet({
+  const questions = await getQuestionSetAvailability({
     scope,
     answerer: "caregiver",
     snapshot,
@@ -131,7 +131,7 @@ export default async function TodayPage() {
 
         <aside className="today-checklist">
           <Card tone="accent">
-            <TodayQuickCheckIn tasks={tasks} checkIn={checkIn} questionSet={questionSet} />
+            <TodayQuickCheckIn tasks={tasks} checkIn={checkIn} questionSet={questions.status === "ready" ? questions.questionSet : null} />
           </Card>
         </aside>
       </div>

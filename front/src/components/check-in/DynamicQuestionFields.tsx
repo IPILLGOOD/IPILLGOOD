@@ -1,11 +1,14 @@
 import type { PatientQuestionSet } from "@care-atlas/backend";
+import type { useCheckInForm } from "./useCheckInForm";
 
 export function DynamicQuestionFields({
   questionSet,
   compact = false,
+  controls,
 }: {
   questionSet: PatientQuestionSet;
   compact?: boolean;
+  controls: Pick<ReturnType<typeof useCheckInForm>, "field" | "check">;
 }) {
   return (
     <fieldset className={compact ? "quick-checkin__section" : "question-block"}>
@@ -29,7 +32,7 @@ export function DynamicQuestionFields({
                 <select
                   aria-label={question.display.caregiver_text}
                   name={`question_${question.question_id}`}
-                  defaultValue=""
+                  {...controls.field(`question_${question.question_id}`)}
                   required={question.required}
                 >
                   <option value="" disabled>
@@ -48,6 +51,7 @@ export function DynamicQuestionFields({
                       name={`question_${question.question_id}`}
                       type="radio"
                       value={option.value}
+                      {...controls.check(`question_${question.question_id}`, option.value)}
                       required={question.required}
                     />
                     {option.label}

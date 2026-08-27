@@ -27,7 +27,7 @@ export {
   deleteDocumentAndSyncMedicationReminders,
   registerDocumentAndSyncMedicationReminders,
 } from "./medication-reminder-service";
-export { dateKeyInSeoul, getOrCreateQuestionSet } from "./care-orchestration-service";
+export { dateKeyInSeoul, getOrCreateQuestionSet, getQuestionSetAvailability, type QuestionSetAvailability } from "./care-orchestration-service";
 export {
   MEDICATION_TIME_ZONE,
   activeMedications,

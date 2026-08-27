@@ -8,15 +8,18 @@ import {
   deleteDocumentAndSyncMedicationReminders,
   getCareSnapshot,
   getPatientQuestionSet,
+  getQuestionSetAvailability,
   saveDailyCheckIn,
   updateRecipientProfile,
   type ActionState,
+  type QuestionSetAvailability,
 } from "@care-atlas/backend";
 
 import { createMedicationSchedule } from "@/lib/presentation";
 import { getSession } from "@/lib/auth/session";
 import { careScopeFor } from "@/lib/auth/care-scope";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import type { CheckInActionState } from "@/lib/check-in-recovery";
 import {
   buildRecipientProfile,
   collectCompleteDoseResponses,
@@ -103,57 +106,57 @@ export async function saveProfileAction(
 }
 
 export async function saveCheckInAction(
-  _previousState: ActionState,
+  _previousState: CheckInActionState,
   formData: FormData,
-): Promise<ActionState> {
-  const guard = await demoWriteGuard();
-  if (guard) return guard;
-  const answeredBy = formData.get("answeredBy");
-  if (answeredBy !== "caregiver" && answeredBy !== "recipient") {
-    return { status: "error", message: "누가 답했는지 선택해주세요." };
-  }
-
-  const session = await getSession();
-  if (!session) return { status: "error", message: "로그인 정보가 만료되었어요." };
-  const rateLimit = await enforceRateLimit("checkIn", { userId: session.id });
-  if (!rateLimit.allowed) {
-    return {
-      status: "error",
-      message: `요청이 너무 많아요. ${rateLimit.retryAfterSeconds}초 뒤 다시 시도해주세요.`,
-    };
-  }
-  const scope = careScopeFor(session);
-  const snapshot = await getCareSnapshot(scope);
-  const schedule = new Map(
-    createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [
-      task.id,
-      task,
-    ]),
-  );
-
-  const { responses, missingTaskIds } = collectCompleteDoseResponses(formData, schedule);
-  if (missingTaskIds.length > 0) {
-    return { status: "error", message: "각 복용 일정의 복용 여부를 모두 확인해주세요." };
-  }
-
-  const symptoms = formData
-    .getAll("symptoms")
-    .filter((value): value is string => typeof value === "string");
-  const severity = Number(formData.get("severity") ?? 0);
-  const note = String(formData.get("note") ?? "").trim();
-  const questionSetId = String(formData.get("questionSetId") ?? "").trim();
-  if (!/^question-set-[a-zA-Z0-9-]{10,100}$/.test(questionSetId)) {
-    return { status: "error", message: "오늘의 맞춤 질문을 다시 불러와주세요." };
-  }
-
+): Promise<CheckInActionState> {
   try {
+    const guard = await demoWriteGuard();
+    if (guard) return guard;
+    const answeredBy = formData.get("answeredBy");
+    if (answeredBy !== "caregiver" && answeredBy !== "recipient") {
+      return { status: "error", message: "누가 답했는지 선택해주세요." };
+    }
+
+    const session = await getSession();
+    if (!session) return { status: "error", message: "로그인 정보가 만료되었어요." };
+    const rateLimit = await enforceRateLimit("checkIn", { userId: session.id });
+    if (!rateLimit.allowed) {
+      return {
+        status: "error",
+        message: `요청이 너무 많아요. ${rateLimit.retryAfterSeconds}초 뒤 다시 시도해주세요.`,
+      };
+    }
+    const scope = careScopeFor(session);
+    const snapshot = await getCareSnapshot(scope);
+    const schedule = new Map(
+      createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [
+        task.id,
+        task,
+      ]),
+    );
+
+    const { responses, missingTaskIds } = collectCompleteDoseResponses(formData, schedule);
+    if (missingTaskIds.length > 0) {
+      return { status: "error", message: "각 복용 일정의 복용 여부를 모두 확인해주세요." };
+    }
+
+    const symptoms = formData
+      .getAll("symptoms")
+      .filter((value): value is string => typeof value === "string");
+    const severity = Number(formData.get("severity") ?? 0);
+    const note = String(formData.get("note") ?? "").trim();
+    const questionSetId = String(formData.get("questionSetId") ?? "").trim();
+    if (!/^question-set-[a-zA-Z0-9-]{10,100}$/.test(questionSetId)) {
+      return { status: "error", message: "오늘의 맞춤 질문을 다시 불러와주세요." };
+    }
+
     const questionSet = await getPatientQuestionSet(scope, questionSetId);
     if (
       !questionSet ||
       questionSet.subject_ref !== scope.recipientId ||
       questionSet.target_date !== dateKeyInSeoul()
     ) {
-      return { status: "error", message: "오늘의 맞춤 질문이 변경됐어요. 새로고침해주세요." };
+      return { status: "error", recoverQuestions: true, message: "오늘의 맞춤 질문을 다시 확인해야 해요. 입력은 유지돼요." };
     }
     const questionResponse = buildPatientQuestionResponse({
       questionSet,
@@ -194,5 +197,19 @@ export async function saveCheckInAction(
       status: "error",
       message: "기록을 저장하지 못했어요. 잠시 후 다시 시도해주세요.",
     };
+  }
+}
+
+export async function recoverCheckInQuestions(): Promise<QuestionSetAvailability> {
+  try {
+    const guard = await demoWriteGuard();
+    if (guard) return { status: "unavailable", message: guard.message };
+    const session = await getSession();
+    if (!session) return { status: "unavailable", message: "다시 로그인한 뒤 시도해 주세요." };
+    const limit = await enforceRateLimit("checkIn", { userId: session.id });
+    if (!limit.allowed) return { status: "unavailable", message: `${limit.retryAfterSeconds}초 뒤 다시 시도해 주세요.` };
+    return await getQuestionSetAvailability({ scope: careScopeFor(session), answerer: "caregiver" });
+  } catch {
+    return { status: "unavailable", message: "질문을 불러오지 못했어요. 잠시 후 다시 시도해 주세요." };
   }
 }
