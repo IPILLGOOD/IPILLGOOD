@@ -1,5 +1,7 @@
 import { calendarDayDifference, dateKeyInSeoul, formatInSeoul } from "@care-atlas/backend/dates";
-import type { DoseEvent, MedicationPlan, SymptomEvent } from "@care-atlas/backend";
+import type { MedicationPlan } from "@care-atlas/backend";
+
+export { adherenceSummary, uniqueSymptomDays } from "./recent-care-records";
 
 export { createMedicationSchedule, type MedicationScheduleTask } from "@care-atlas/backend";
 
@@ -9,17 +11,6 @@ export function formatDate(date: string, options?: Intl.DateTimeFormatOptions) {
 
 export function daysSince(date: string, now = new Date()) {
   return Math.max(1, calendarDayDifference(dateKeyInSeoul(date), dateKeyInSeoul(now)) + 1);
-}
-
-export function adherenceSummary(events: DoseEvent[]) {
-  const answerable = events.filter((event) => event.response !== "not_yet");
-  const confirmed = answerable.filter((event) => event.response === "completed").length;
-  const rate = answerable.length === 0 ? 0 : Math.round((confirmed / answerable.length) * 100);
-  return { confirmed, total: answerable.length, rate };
-}
-
-export function uniqueSymptomDays(events: SymptomEvent[]) {
-  return new Set(events.map((event) => dateKeyInSeoul(event.occurredAt))).size;
 }
 
 export function activeMedications(medications: MedicationPlan[]) {

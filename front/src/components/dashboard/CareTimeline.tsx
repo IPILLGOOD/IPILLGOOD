@@ -1,7 +1,6 @@
 import { formatDate } from "@/lib/presentation";
+import { careTimelineItems } from "@/lib/recent-care-records";
 import type { MedicationPlan, SymptomEvent } from "@care-atlas/backend";
-
-type TimelineItem = { date: string; title: string; detail: string };
 
 export function CareTimeline({
   medications,
@@ -10,27 +9,16 @@ export function CareTimeline({
   medications: MedicationPlan[];
   symptoms: SymptomEvent[];
 }) {
-  const items: TimelineItem[] = [
-    ...medications
-      .filter((medication) => medication.isNew)
-      .map((medication) => ({
-        date: medication.startDate,
-        title: `${medication.productName} 복용 시작`,
-        detail: medication.sourceLabel,
-      })),
-    ...symptoms.slice(0, 4).map((symptom) => ({
-      date: symptom.occurredAt,
-      title: `${symptom.symptomType} ${symptom.severity}/10 기록`,
-      detail: symptom.dailyLifeImpact,
-    })),
-  ]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 5);
+  const items = careTimelineItems(medications, symptoms);
+
+  if (items.length === 0) {
+    return <p className="empty-state">최근 7일 동안 기록된 약 변화와 몸 상태가 없어요.</p>;
+  }
 
   return (
     <ol className="timeline" aria-label="최근 약과 몸 상태 기록">
-      {items.map((item, index) => (
-        <li className="timeline-item" key={`${item.date}-${item.title}-${index}`}>
+      {items.map((item) => (
+        <li className="timeline-item" key={item.id}>
           <time className="timeline-item__date" dateTime={item.date}>
             {formatDate(item.date)}
           </time>
