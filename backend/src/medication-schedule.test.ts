@@ -88,3 +88,12 @@ test("발송된 일정은 다음 복약 시각으로 한 번만 전진한다", (
   assert.equal(advanced.nextDueAt, "2026-08-24T23:00:00.000Z");
   assert.equal(advanced.status, "active");
 });
+
+
+test("UTC와 KST로 표현한 같은 복약 회차는 동일한 응답으로 연결한다", () => {
+  for (const scheduledAt of ["2026-08-23T23:00:00.000Z", "2026-08-24T08:00:00+09:00"]) {
+    const tasks = createMedicationSchedule([medications[0]!], [{ id: "dose-utc", medicationPlanId: "med-twice", scheduledAt, response: "completed", answeredBy: "caregiver" }], new Date("2026-08-24T00:00:00Z"));
+    assert.equal(tasks.find((task) => task.timeLabel === "08:00")?.response, "completed");
+    assert.equal(tasks.find((task) => task.timeLabel === "19:00")?.response, "not_yet");
+  }
+});

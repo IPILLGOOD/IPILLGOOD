@@ -1,19 +1,14 @@
+import { calendarDayDifference, dateKeyInSeoul, formatInSeoul } from "@care-atlas/backend/dates";
 import type { DoseEvent, MedicationPlan, SymptomEvent } from "@care-atlas/backend";
 
 export { createMedicationSchedule, type MedicationScheduleTask } from "@care-atlas/backend";
 
 export function formatDate(date: string, options?: Intl.DateTimeFormatOptions) {
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "short",
-    day: "numeric",
-    ...options,
-  }).format(new Date(date));
+  return formatInSeoul(date, { ...(!options?.dateStyle && !options?.timeStyle ? { month: "short" as const, day: "numeric" as const } : {}), ...options });
 }
 
-export function daysSince(date: string) {
-  const start = new Date(date).getTime();
-  const now = new Date().getTime();
-  return Math.max(1, Math.floor((now - start) / 86_400_000) + 1);
+export function daysSince(date: string, now = new Date()) {
+  return Math.max(1, calendarDayDifference(dateKeyInSeoul(date), dateKeyInSeoul(now)) + 1);
 }
 
 export function adherenceSummary(events: DoseEvent[]) {
@@ -24,7 +19,7 @@ export function adherenceSummary(events: DoseEvent[]) {
 }
 
 export function uniqueSymptomDays(events: SymptomEvent[]) {
-  return new Set(events.map((event) => event.occurredAt.slice(0, 10))).size;
+  return new Set(events.map((event) => dateKeyInSeoul(event.occurredAt))).size;
 }
 
 export function activeMedications(medications: MedicationPlan[]) {

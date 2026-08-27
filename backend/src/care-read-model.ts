@@ -1,3 +1,4 @@
+import { seoulTimeLabel, dateKeyInSeoul } from "./dates.ts";
 import { createHash } from "node:crypto";
 
 import type { CareSnapshot, DailyCheckIn, DoseEvent, SymptomEvent } from "./types.ts";
@@ -14,14 +15,7 @@ export interface DailyCheckInInput {
   answeredBy: "caregiver" | "recipient";
 }
 
-export function dateKeyInSeoul(value: Date) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(value);
-}
+export { dateKeyInSeoul } from "./dates.ts";
 
 export function currentDailyCheckIn(
   checkIn: DailyCheckIn | null | undefined,
@@ -44,7 +38,7 @@ export function applyDailyCheckInToSnapshot(
   const dateKey = dateKeyInSeoul(now);
   const doseEvents = input.doseResponses.map((response) => {
     const medicationKey = response.medicationPlanId.replace(/[^a-zA-Z0-9_-]/g, "-");
-    const timeKey = response.scheduledAt.slice(11, 16).replace(":", "");
+    const timeKey = seoulTimeLabel(response.scheduledAt).replace(":", "");
     return {
       id: `${dateKey}-${medicationKey}-${timeKey}`,
       medicationPlanId: response.medicationPlanId,
