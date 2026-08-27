@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { inspectPushClient, enablePushNotifications } from "../src/lib/push/client.ts";
 import { pushEndpointHash } from "../src/lib/push/key-validation.ts";
+import { createPushRefresher } from "../src/lib/push/auto-reconnect.ts";
 
 const keyBytes = (fill) => Uint8Array.from({ length: 65 }, (_, i) => i === 0 ? 4 : fill);
 const oldKey = keyBytes(1);
@@ -13,14 +14,15 @@ function harness(t, options = {}) {
   const subscription = (key, endpoint) => ({
     endpoint, expirationTime: null, options: { applicationServerKey: key?.buffer ?? null },
     getKey: (name) => new Uint8Array(name === "auth" ? 16 : 65).fill(3).buffer,
-    unsubscribe: async () => { state.unsubscribes++; if (state.refuseUnsubscribe) return false; state.current = null; return true; },
+    unsubscribe: async () => { state.unsubscribes++; if (state.refuseUnsubscribe) return false; state.current = null; state.afterUnsubscribe?.(); return true; },
   });
   state.current = subscription(options.boundKey === undefined ? oldKey : options.boundKey, "https://fcm.googleapis.com/fcm/send/synthetic-old");
   state.serverEndpoint = state.current.endpoint;
   const registration = { pushManager: {
-    getSubscription: async () => state.current,
+    getSubscription: async () => { state.afterCurrentRead?.(); return state.current; },
     subscribe: async ({ applicationServerKey }) => {
       state.creates++;
+      if (state.failCreate) throw new Error("Push service unavailable");
       state.current = subscription(applicationServerKey, `https://fcm.googleapis.com/fcm/send/synthetic-${state.creates}`);
       state.afterCreate?.();
       return state.current;
@@ -42,6 +44,7 @@ function harness(t, options = {}) {
       }
       if (init.method === "POST") {
         state.posts++;
+        state.lastUpload = JSON.parse(init.body);
         if (state.failUpload) return Response.json({}, { status: 500 });
         state.serverEndpoint = JSON.parse(init.body).subscription.endpoint;
         state.registered = true;
@@ -153,4 +156,129 @@ test("unsupported browser without Notification does not throw or mutate", async 
   assert.equal(result.supported, false);
   assert.equal(result.subscribed, false);
   assert.equal(state.posts + state.prompts, 0);
+});
+
+test("granted permission silently renews stale keys and verifies the uploaded subscription without a prompt", async (t) => {
+  const state = harness(t, { key: newKey });
+  const refresh = createPushRefresher();
+  const result = await refresh();
+  assert.equal(result.keyStatus, "matched");
+  assert.equal(result.subscribed, true);
+  assert.equal(state.unsubscribes, 1);
+  assert.equal(state.creates, 1);
+  assert.equal(state.posts, 1);
+  assert.equal(state.prompts, 0);
+  assert.equal(state.lastUpload.onlyIfActive, true, "server must preserve opt-outs concurrent with repair");
+  await refresh();
+  assert.equal(state.posts, 1, "healthy reentry does not register again");
+});
+
+test("expired subscriptions are automatically renewed only with granted permission", async (t) => {
+  const state = harness(t);
+  state.current.expirationTime = Date.now() - 1;
+  assert.equal((await createPushRefresher()()).subscribed, true);
+  assert.equal(state.unsubscribes, 1);
+  assert.equal(state.creates, 1);
+  assert.equal(state.prompts, 0);
+});
+
+test("default or denied permission never triggers automatic unsubscribe, registration or a permission request", async (t) => {
+  const state = harness(t, { key: newKey });
+  for (const permission of ["default", "denied"]) {
+    state.permission = permission;
+    assert.equal((await createPushRefresher()()).subscribed, false);
+  }
+  assert.equal(state.unsubscribes + state.creates + state.posts + state.prompts, 0);
+});
+
+test("account opt-out and another account's browser subscription are not automatically re-enabled", async (t) => {
+  const state = harness(t, { key: newKey });
+  state.registered = false;
+  const result = await createPushRefresher()();
+  assert.equal(result.registered, false);
+  assert.equal(result.subscribed, false);
+  assert.equal(state.unsubscribes + state.creates + state.posts + state.prompts, 0);
+});
+
+test("missing key metadata and server auth errors with a matching key do not cause automatic rotations", async (t) => {
+  const state = harness(t, { boundKey: null });
+  assert.equal((await createPushRefresher()()).keyStatus, "unverifiable");
+  state.current.options.applicationServerKey = oldKey.buffer;
+  state.lastHttpStatus = 403;
+  assert.equal((await createPushRefresher()()).deliveryAuthRejected, true);
+  assert.equal(state.unsubscribes + state.creates + state.posts + state.prompts, 0);
+});
+
+test("failed automatic upload backs off, then retries the same new subscription instead of rotating again", async (t) => {
+  const state = harness(t, { key: newKey });
+  let now = 0;
+  const refresh = createPushRefresher(() => now);
+  state.failUpload = true;
+  assert.equal((await refresh()).subscribed, false);
+  assert.equal(state.posts, 1);
+  assert.equal((await refresh()).subscribed, false);
+  assert.equal(state.posts, 1, "repeat focus/visibility events do not repeatedly upload");
+  state.failUpload = false;
+  now = 60_000;
+  assert.equal((await refresh()).subscribed, true);
+  assert.equal(state.posts, 2);
+  assert.equal(state.creates, 1);
+  assert.equal(state.unsubscribes, 1);
+  assert.equal(state.prompts, 0);
+});
+
+test("failed automatic unsubscribe leaves the original subscription intact and waits before retrying", async (t) => {
+  const state = harness(t, { key: newKey });
+  state.refuseUnsubscribe = true;
+  let now = 0;
+  const refresh = createPushRefresher(() => now);
+  assert.equal((await refresh()).subscribed, false);
+  await refresh();
+  assert.equal(state.unsubscribes, 1);
+  assert.equal(state.creates + state.posts, 0);
+  state.refuseUnsubscribe = false;
+  now = 60_000;
+  assert.equal((await refresh()).subscribed, true);
+});
+
+test("failed creation after key removal can recover the missing browser subscription on the next retry", async (t) => {
+  const state = harness(t, { key: newKey });
+  state.failCreate = true;
+  let now = 0;
+  const refresh = createPushRefresher(() => now);
+  assert.equal((await refresh()).subscribed, false);
+  assert.equal(state.current, null);
+  assert.equal(state.posts, 0);
+  state.failCreate = false;
+  now = 60_000;
+  assert.equal((await refresh()).subscribed, true);
+  assert.equal(state.unsubscribes, 1);
+  assert.equal(state.posts, 1);
+});
+
+test("account change during automatic creation aborts upload instead of registering against the new account", async (t) => {
+  const state = harness(t, { key: newKey });
+  const controller = new AbortController();
+  state.afterCreate = () => controller.abort();
+  await assert.rejects(createPushRefresher()(controller.signal), { name: "AbortError" });
+  assert.equal(state.posts, 0);
+  assert.equal(state.prompts, 0);
+});
+
+test("permission revoked between inspection and repair prevents any automatic mutation", async (t) => {
+  const state = harness(t, { key: newKey });
+  let reads = 0;
+  state.afterCurrentRead = () => { if (++reads === 3) state.permission = "default"; };
+  const result = await createPushRefresher()();
+  assert.equal(result.permission, "default");
+  assert.equal(state.unsubscribes + state.creates + state.posts + state.prompts, 0);
+});
+
+test("permission revoked after removing a stale key never opens a permission prompt or uploads", async (t) => {
+  const state = harness(t, { key: newKey });
+  state.afterUnsubscribe = () => { state.permission = "default"; };
+  const result = await createPushRefresher()();
+  assert.equal(result.permission, "default");
+  assert.equal(result.subscribed, false);
+  assert.equal(state.creates + state.posts + state.prompts, 0);
 });

@@ -9,6 +9,8 @@ export function PushKeyNotice() {
   const needsRenewal = client?.keyStatus === "mismatch" || client?.expired;
   const unverified = client?.keyStatus === "unverifiable";
   const permissionDenied = client?.permission === "denied";
+  // Granted subscriptions are repaired in the background, including retries after failure.
+  if (needsRenewal && client?.permission === "granted") return null;
   if (!needsRenewal && !client?.deliveryAuthRejected && !unverified && !error) return null;
   return (
     <Card tone="warning" className={styles.notice} aria-label="알림 연결 확인">

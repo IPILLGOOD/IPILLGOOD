@@ -2,7 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { disablePushNotifications, enablePushNotifications, inspectPushClient, type PushClientState } from "@/lib/push/client";
+import { disablePushNotifications, enablePushNotifications, type PushClientState } from "@/lib/push/client";
+import { createPushRefresher } from "@/lib/push/auto-reconnect";
 import { detectPushEnvironment, isStandalonePwa, shouldShowPushNotificationSection } from "@/lib/push/environment";
 import { observePushReentry } from "@/lib/push/refresh-lifecycle";
 
@@ -29,6 +30,8 @@ export function PushStatusProvider({ children, enabled }: { children: React.Reac
   const inFlight = useRef<Promise<void> | null>(null);
   const mutation = useRef(false);
   const mutationAbort = useRef<AbortController | null>(null);
+  const refreshAbort = useRef<AbortController | null>(null);
+  const refreshClient = useRef(createPushRefresher());
 
   const refresh = useCallback(async () => {
     if (!enabled || !alive.current || mutation.current || document.visibilityState !== "visible") return;
@@ -36,10 +39,12 @@ export function PushStatusProvider({ children, enabled }: { children: React.Reac
     const environment = detectPushEnvironment(navigator.userAgent);
     if (!shouldShowPushNotificationSection({ platform: environment.platform, standalone: isStandalonePwa() })) return;
     const version = generation.current;
+    const controller = new AbortController();
+    refreshAbort.current = controller;
     setChecking(true);
     const work = (async () => {
       try {
-        const state = await inspectPushClient();
+        const state = await refreshClient.current(controller.signal);
         if (alive.current && version === generation.current) { setClient(state); setError(""); }
       } catch {
         if (alive.current && version === generation.current) {
@@ -58,7 +63,7 @@ export function PushStatusProvider({ children, enabled }: { children: React.Reac
     generation.current++;
     alive.current = true;
     const stop = observePushReentry(() => { queueMicrotask(() => { void refresh(); }); }, document, window, window.matchMedia("(display-mode: standalone)"));
-    return () => { alive.current = false; inFlight.current = null; mutationAbort.current?.abort(); stop(); };
+    return () => { alive.current = false; inFlight.current = null; refreshAbort.current?.abort(); mutationAbort.current?.abort(); stop(); };
   }, [refresh]);
 
   useEffect(() => {
@@ -73,6 +78,7 @@ export function PushStatusProvider({ children, enabled }: { children: React.Reac
     const controller = new AbortController();
     mutationAbort.current = controller;
     generation.current++;
+    refreshAbort.current?.abort();
     setBusy(action);
     setError("");
     await inFlight.current;

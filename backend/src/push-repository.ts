@@ -118,6 +118,7 @@ export async function registerPushSubscription(input: {
   timeZone: string;
   subscription: BrowserPushSubscription;
   medications: MedicationPlan[];
+  onlyIfActive?: boolean;
   now?: Date;
   firestore?: FirestoreLike;
 }) {
@@ -131,6 +132,8 @@ export async function registerPushSubscription(input: {
       tx.get(ref), tx.get(firestore.collection(SUBSCRIPTIONS_COLLECTION).where("deviceId", "==", input.deviceId)),
     ]);
     const current = existing.data() as PushSubscriptionRecord | undefined;
+    // A background repair must not revive an opt-out that happened after the client checked.
+    if (input.onlyIfActive && (!current?.active || current.userId !== input.userId || current.recipientId !== input.recipientId)) return null;
     for (const doc of sameDevice.docs) {
       if (doc.id !== id && (doc.data() as PushSubscriptionRecord).active) tx.set(doc.ref, { active: false, updatedAt: nowIso }, { merge: true });
     }
@@ -148,6 +151,7 @@ export async function registerPushSubscription(input: {
     return next;
   });
 
+  if (!record) return { record: null, schedules: [] };
   const schedules = await syncMedicationReminderSchedules({
     recipientId: input.recipientId,
     medications: input.medications,
