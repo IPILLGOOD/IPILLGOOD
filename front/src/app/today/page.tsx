@@ -10,6 +10,7 @@ import Link from "next/link";
 
 import { MedicationReminderCard } from "@/components/notifications/MedicationReminderCard";
 import { TodayTaskList } from "@/components/today/TodayTaskList";
+import { TodayGettingStarted } from "@/components/today/TodayGettingStarted";
 import { TodayQuickCheckIn } from "@/components/today/TodayQuickCheckIn";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -20,6 +21,7 @@ import {
 } from "@care-atlas/backend";
 import type { DailyCheckIn } from "@care-atlas/backend";
 import { requireCareScope } from "@/lib/auth/care-scope";
+import { gettingStartedGuide } from "@/lib/getting-started";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,15 @@ export const metadata: Metadata = {
 export default async function TodayPage() {
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
+  const guide = gettingStartedGuide(snapshot, scope.useDemoData);
+  if (guide) {
+    return (
+      <>
+        <PageHeader eyebrow="오늘 할 일" title="나의 돌봄 공간" description="대상자 정보를 확인하고 첫 기록을 준비해 주세요." />
+        <TodayGettingStarted guide={guide} />
+      </>
+    );
+  }
   const todayCheckIn = snapshot.todayCheckIn ?? null;
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
   const questions = await getQuestionSetAvailability({
@@ -74,7 +85,7 @@ export default async function TodayPage() {
 
       <div className="today-workspace">
         <div className="today-workspace__main">
-          <Card className="today-progress-card">
+          {tasks.length > 0 ? <Card className="today-progress-card">
             <div className="today-progress-card__header">
               <div>
                 <span className="today-progress-card__eyebrow">오늘 진행 상황</span>
@@ -88,7 +99,7 @@ export default async function TodayPage() {
               <span className="today-progress-card__value">{progress}%</span>
             </div>
             <progress className="today-progress" aria-label="오늘 복약 확인 진행률" max={100} value={progress} />
-          </Card>
+          </Card> : null}
 
           <Card className="today-tasks-card">
             <div className="section-heading">
