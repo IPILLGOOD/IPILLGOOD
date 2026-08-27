@@ -10,7 +10,7 @@ export function FormMessage({ state }: { state: ActionState }) {
     <div
       className={`form-message form-message--${state.status}`}
       role={success ? "status" : "alert"}
-      aria-live="polite"
+      aria-atomic="true"
     >
       <Icon size={20} aria-hidden="true" />
       <span>{state.message}</span>

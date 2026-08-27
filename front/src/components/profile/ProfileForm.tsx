@@ -25,6 +25,7 @@ export function ProfileForm({ recipient }: { recipient: CareRecipient }) {
             name="displayName"
             defaultValue={recipient.displayName}
             required
+            aria-invalid={Boolean(error("displayName"))}
             aria-describedby={`displayName-hint${error("displayName") ? " displayName-error" : ""}`}
           />
           <p className="field-hint" id="displayName-hint">
@@ -48,6 +49,7 @@ export function ProfileForm({ recipient }: { recipient: CareRecipient }) {
             defaultValue={savedAge}
             placeholder="예: 75"
             required
+            aria-invalid={Boolean(error("ageBand"))}
             aria-describedby={`ageBand-hint${error("ageBand") ? " ageBand-error" : ""}`}
           />
           <p className="field-hint" id="ageBand-hint">
@@ -153,13 +155,15 @@ export function ProfileForm({ recipient }: { recipient: CareRecipient }) {
           type="checkbox"
           defaultChecked={recipient.consentConfirmed}
           required
+          aria-invalid={Boolean(error("consentConfirmed"))}
+          aria-describedby={error("consentConfirmed") ? "consent-error" : undefined}
         />
         <span>
           어르신의 동의 또는 적법한 대리 권한이 있으며, 건강정보 저장에 동의합니다.
         </span>
       </label>
       {error("consentConfirmed") ? (
-        <p className="field-error">{error("consentConfirmed")}</p>
+        <p className="field-error" id="consent-error">{error("consentConfirmed")}</p>
       ) : null}
 
       <div className="form-actions">

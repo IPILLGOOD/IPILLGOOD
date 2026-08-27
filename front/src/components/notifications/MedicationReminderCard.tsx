@@ -169,7 +169,7 @@ export function MedicationReminderCard() {
         ) : null}
 
         {error ? (
-          <div className="medication-reminder-card__status" aria-live="polite">
+          <div className="medication-reminder-card__status">
             <span role="alert">{error}</span>
           </div>
         ) : null}

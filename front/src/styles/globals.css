@@ -26,6 +26,14 @@ textarea {
   font: inherit;
 }
 
+/* Native fieldset/select min-content widths must not force horizontal scrolling at large text sizes. */
+fieldset,
+select,
+textarea {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
 button,
 a,
 input[type="checkbox"],
