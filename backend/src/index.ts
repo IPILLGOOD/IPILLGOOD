@@ -48,6 +48,7 @@ export {
   dispatchDueMedicationReminders,
   getNotificationScheduleStatus,
   getPushDeviceStatus,
+  getPushDeviceHealth,
   getPushDeliveryReceipt,
   recordPushDeliveryReceipt,
   registerPushSubscription,

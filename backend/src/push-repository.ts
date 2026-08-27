@@ -514,8 +514,19 @@ async function* dueReminderPages(firestore: FirestoreLike, now: Date) {
 }
 
 export async function getPushDeviceStatus(input: { userId: string; recipientId: string; deviceId: string; firestore?: FirestoreLike }) {
+  return (await getPushDeviceHealth(input)).subscribed;
+}
+
+export async function getPushDeviceHealth(input: { userId: string; recipientId: string; deviceId: string; firestore?: FirestoreLike }) {
   const firestore = input.firestore ?? await getAdminFirestore();
   const doc = await subscriptionRef(firestore, stableId(input.userId, input.deviceId)).get();
   const record = doc.data() as PushSubscriptionRecord | undefined;
-  return Boolean(record?.active && record.recipientId === input.recipientId);
+  if (!record?.active || record.userId !== input.userId || record.recipientId !== input.recipientId) {
+    return { subscribed: false, endpointHash: null, lastHttpStatus: null };
+  }
+  return {
+    subscribed: true,
+    endpointHash: createHash("sha256").update(record.subscription.endpoint).digest("hex"),
+    lastHttpStatus: record.lastHttpStatus ?? null,
+  };
 }

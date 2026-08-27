@@ -1,0 +1,7 @@
+.notice {
+  margin-bottom: var(--space-6);
+}
+
+.notice p {
+  margin: 0 0 var(--space-4);
+}
