@@ -42,6 +42,13 @@ export async function POST(request: Request) {
     const documentType = String(formData.get("documentType") ?? "처방전");
     const isSample = formData.get("sample") === "true";
 
+    if (isSample && session.provider !== "demo") {
+      return Response.json(
+        { message: "샘플 문서 체험은 데모 로그인에서만 이용할 수 있어요." },
+        { status: 403 },
+      );
+    }
+
     if (!allowedDocumentTypes.has(documentType as ClinicalDocumentType)) {
       return Response.json({ message: "처방전 또는 진단서를 선택해주세요." }, { status: 400 });
     }
@@ -107,7 +114,11 @@ export async function POST(request: Request) {
     }
     if (error instanceof DocumentAnalysisNotConfiguredError) {
       return Response.json(
-        { message: "실제 문서 분석 API가 설정되지 않았어요. 비식별 샘플만 이용할 수 있어요." },
+        {
+          message: session.provider === "demo"
+            ? "실제 문서 분석 API가 설정되지 않았어요. 비식별 샘플만 이용할 수 있어요."
+            : "문서 분석 서비스를 준비 중이에요. 잠시 후 다시 시도해주세요.",
+        },
         { status: 503 },
       );
     }

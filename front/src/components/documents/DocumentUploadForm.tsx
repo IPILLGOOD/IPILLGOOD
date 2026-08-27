@@ -14,7 +14,7 @@ interface AnalysisResponse {
   addedMedicationCount?: number;
 }
 
-export function DocumentUploadForm() {
+export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) {
   const router = useRouter();
   const [documentType, setDocumentType] = useState<ClinicalDocumentType>("처방전");
   const [file, setFile] = useState<File | null>(null);
@@ -152,18 +152,22 @@ export function DocumentUploadForm() {
         </div>
       </form>
 
-      <div className="sample-divider" aria-hidden="true">
-        <span>또는</span>
-      </div>
-      <button
-        className="button button--secondary sample-button"
-        type="button"
-        disabled={pending}
-        onClick={handleSample}
-      >
-        <FlaskConical size={18} aria-hidden="true" />
-        비식별 샘플 {documentType}으로 체험
-      </button>
+      {allowSamples ? (
+        <>
+          <div className="sample-divider" aria-hidden="true">
+            <span>또는</span>
+          </div>
+          <button
+            className="button button--secondary sample-button"
+            type="button"
+            disabled={pending}
+            onClick={handleSample}
+          >
+            <FlaskConical size={18} aria-hidden="true" />
+            비식별 샘플 {documentType}으로 체험
+          </button>
+        </>
+      ) : null}
 
       {status !== "idle" ? (
         <p

@@ -4,6 +4,12 @@ import { randomUUID } from "node:crypto";
 import { emulatorFixture } from "../../backend/test-support/emulator";
 
 const browserEvents = new WeakMap<object, string[]>();
+
+async function syntheticGoogleToken(userId: string) {
+  // Uses the normal session verifier with this run's random secret, never a production auth bypass.
+  return new SignJWT({ name: "자동 검증 계정", provider: "google" }).setProtectedHeader({ alg: "HS256" }).setSubject(userId).setIssuedAt().setExpirationTime("5m").sign(new TextEncoder().encode(process.env.SESSION_SECRET));
+}
+
 test.beforeEach(async ({ context, page }) => {
   const events: string[] = [];
   browserEvents.set(page, events);
@@ -44,12 +50,15 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     await expect(page.getByText("오늘의 몸 상태를 기록했어요.")).toBeVisible();
     await page.goto("/documents");
     const before = await page.locator(".document-item").count();
-    await page.getByRole("button", { name: "비식별 샘플 처방전으로 체험" }).click();
-    await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
-    await expect(page.locator(".document-item")).toHaveCount(before + 1);
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "“비식별_샘플_처방전.jpg” 문서 삭제" }).first().click();
-    await expect(page.locator(".document-item")).toHaveCount(before);
+    for (const documentType of ["처방전", "진단서"]) {
+      await page.getByRole("radio", { name: new RegExp(`^${documentType}`) }).check();
+      await page.getByRole("button", { name: `비식별 샘플 ${documentType}으로 체험` }).click();
+      await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+      await expect(page.locator(".document-item")).toHaveCount(before + 1);
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.getByRole("button", { name: `“비식별_샘플_${documentType}.jpg” 문서 삭제` }).first().click();
+      await expect(page.locator(".document-item")).toHaveCount(before);
+    }
     await page.goto("/today");
     await expect(page.getByLabel("보호자 메모")).toHaveValue("격리된 자동 검증 기록");
     await expect(page.getByLabel("어지러움", { exact: true })).toBeChecked();
@@ -78,8 +87,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
 test("synthetic account: isolated normal session, read-only Push status, forged auth rejected", async ({ context, page, request }) => {
   const fixture = emulatorFixture("admin");
   const userId = `test-${randomUUID()}`;
-  // Uses the normal session verifier with this run's random secret, never a production auth bypass.
-  const token = await new SignJWT({ name: "자동 검증 계정", provider: "google" }).setProtectedHeader({ alg: "HS256" }).setSubject(userId).setIssuedAt().setExpirationTime("5m").sign(new TextEncoder().encode(process.env.SESSION_SECRET));
+  const token = await syntheticGoogleToken(userId);
   const recipientId = `google-${userId}`;
   let emulatorToken: string | undefined;
   try {
@@ -107,6 +115,95 @@ test("synthetic account: isolated normal session, read-only Push status, forged 
     if (emulatorToken) await request.post(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:delete?key=synthetic`, { data: { idToken: emulatorToken } });
     await fixture.admin.recursiveDelete(fixture.admin.collection("careRecipients").doc(recipientId));
     await fixture.admin.collection("careReadModels").doc(recipientId).delete();
+    await fixture.cleanup();
+  }
+});
+
+test("documents: samples stay demo-only across API requests, uploads and account switches", async ({ context, page, request }, info) => {
+  const fixture = emulatorFixture("admin");
+  const userId = `test-${randomUUID()}`;
+  const recipientId = `google-${userId}`;
+  const token = await syntheticGoogleToken(userId);
+  const sessionCookie = { name: "care_atlas_session", value: token, url: process.env.IPILLGOOD_TEST_BASE_URL!, httpOnly: true, sameSite: "Lax" as const };
+  // A valid file exercises upload validation without containing personal data or contacting an AI service.
+  const upload = {
+    name: "synthetic-prescription.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  };
+  let demoRecipientId: string | undefined;
+  try {
+    expect((await request.post("/api/documents/analyze", { multipart: { documentType: "처방전", sample: "true" } })).status()).toBe(401);
+    await context.addCookies([sessionCookie]);
+    await page.goto("/documents");
+    await expect(page.getByText("아직 등록한 문서가 없어요")).toBeVisible();
+    await expect(page.getByText("처방전이나 진단서를 첨부하고 분석해보세요.")).toBeVisible();
+    await expect(page.getByText("비식별 샘플로 안전하게 흐름을 체험할 수 있어요.")).toHaveCount(0);
+
+    for (const width of [320, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.locator(".sample-button, .sample-divider, .demo-document-samples")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "처방전 첨부하고 분석하기" })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      if (width === 320 || width === 1440) {
+        await info.attach(`normal-account-documents-${width}`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+      }
+    }
+    for (const documentType of ["처방전", "진단서"]) {
+      await page.getByRole("radio", { name: new RegExp(`^${documentType}`) }).check();
+      await expect(page.getByRole("button", { name: /비식별 샘플 .*으로 체험/ })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: `${documentType} 첨부하고 분석하기` })).toBeEnabled();
+      const forbidden = await context.request.post("/api/documents/analyze", { multipart: { documentType, sample: "true" } });
+      expect(forbidden.status()).toBe(403);
+      expect((await forbidden.json()).message).toBe("샘플 문서 체험은 데모 로그인에서만 이용할 수 있어요.");
+    }
+    const sampleWithFile = await context.request.post("/api/documents/analyze", {
+      multipart: { documentType: "처방전", sample: "true", document: upload },
+    });
+    expect(sampleWithFile.status()).toBe(403);
+    expect((await context.request.post("/api/documents/analyze", { multipart: { documentType: "처방전" } })).status()).toBe(400);
+
+    await page.getByRole("radio", { name: /^처방전/ }).check();
+    await page.locator('input[name="document"]').setInputFiles(upload);
+    const analysisResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/documents/analyze" && response.request().method() === "POST");
+    await page.getByRole("button", { name: "처방전 첨부하고 분석하기" }).click();
+    // The isolated environment intentionally has no AI credentials: upload must reach the normal analysis path, not the demo policy denial.
+    expect((await analysisResponse).status()).toBe(503);
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText("문서 분석 서비스를 준비 중이에요. 잠시 후 다시 시도해주세요.");
+    await expect(page.getByRole("button", { name: "처방전 첨부하고 분석하기" })).toBeEnabled();
+    const model = await fixture.admin.collection("careReadModels").doc(recipientId).get();
+    expect(model.data()?.documents).toEqual([]);
+    expect(model.data()?.medications).toEqual([]);
+    for (const collection of ["clinicalDocuments", "medicationPlans"]) {
+      expect((await fixture.admin.collection("careRecipients").doc(recipientId).collection(collection).get()).empty).toBe(true);
+    }
+    expect((await fixture.admin.collection("medicationReminderSchedules").where("recipientId", "==", recipientId).get()).empty).toBe(true);
+    await page.reload();
+    await expect(page.getByText("아직 등록한 문서가 없어요")).toBeVisible();
+    await expect(page.locator(".sample-button")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "로그아웃" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    expect((await context.request.post("/api/documents/analyze", { multipart: { sample: "true" } })).status()).toBe(401);
+    await page.goto("/login");
+    await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+    await expect(page).toHaveURL(/\/today$/);
+    demoRecipientId = decodeJwt((await context.cookies()).find((entry) => entry.name === "care_atlas_session")!.value).sub;
+    await page.goto("/documents");
+    await expect(page.getByRole("button", { name: "비식별 샘플 처방전으로 체험" })).toBeVisible();
+    await expect(page.locator(".demo-document-samples")).toBeVisible();
+    await page.getByRole("button", { name: "로그아웃" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await context.addCookies([sessionCookie]);
+    await page.goto("/documents");
+    await expect(page.locator(".sample-button, .sample-divider, .demo-document-samples")).toHaveCount(0);
+    await expect(page.getByText("처방전이나 진단서를 첨부하고 분석해보세요.")).toBeVisible();
+  } finally {
+    for (const id of [recipientId, demoRecipientId].filter((id): id is string => Boolean(id))) {
+      await fixture.admin.recursiveDelete(fixture.admin.collection("careRecipients").doc(id));
+      await fixture.admin.collection("careReadModels").doc(id).delete();
+    }
+    if (demoRecipientId) await fixture.admin.collection("demoSessions").doc(demoRecipientId).delete();
     await fixture.cleanup();
   }
 });
