@@ -80,9 +80,12 @@ export async function syncMedicationReminderSchedules(input: {
       }
     }
     const revision = (model.data() as { revision?: number } | undefined)?.revision ?? 0;
-    const oldJob = job.data() as { status?: string; appliedRevision?: number } | undefined;
+    const oldJob = job.data() as { status?: string; appliedRevision?: number; queuedAt?: string } | undefined;
     if ((active || job.exists) && (oldJob?.status !== "completed" || oldJob.appliedRevision !== revision)) {
-      tx.set(jobRef, { recipientId: input.recipientId, status: "completed", desiredRevision: revision, appliedRevision: revision, attempts: 0, completedAt: now.toISOString(), updatedAt: now.toISOString() });
+      tx.set(jobRef, { recipientId: input.recipientId, status: "completed", desiredRevision: revision, appliedRevision: revision, attempts: 0,
+        completedAt: now.toISOString(), lastSucceededAt: now.toISOString(), errorCode: null,
+        lastQueueDelayMs: Math.max(0, now.getTime() - (Date.parse(oldJob?.queuedAt ?? "") || now.getTime())), updatedAt: now.toISOString(),
+      }, { merge: true });
     }
     return normalized;
   });
@@ -104,16 +107,16 @@ export async function reconcileMedicationReminders(input: { firestore?: Firestor
     ...pending.docs.map((doc) => doc.id),
     ...active.docs.map((doc) => (doc.data() as { recipientId: string }).recipientId),
   ]);
-  let repaired = 0;
+  let processed = 0;
   let failed = 0;
   for (const recipientId of recipients) {
     const ref = firestore.collection(REMINDER_SYNC_COLLECTION).doc(recipientId);
     const before = await ref.get();
-    const job = before.data() as { status?: string; attempts?: number; desiredRevision?: number; nextAttemptAt?: string } | undefined;
+    const job = before.data() as { status?: string; attempts?: number; desiredRevision?: number; nextAttemptAt?: string; queuedAt?: string } | undefined;
     if (job?.status === "quarantined" || (job?.status === "pending" && (job.nextAttemptAt ?? "") > now.toISOString())) continue;
     try {
       await syncMedicationReminderSchedules({ recipientId, firestore, now });
-      repaired++;
+      processed++;
     } catch {
       failed++;
       await firestore.runTransaction(async (tx) => {
@@ -122,18 +125,20 @@ export async function reconcileMedicationReminders(input: { firestore?: Firestor
         const attempts = (latest?.attempts ?? 0) + 1;
         tx.set(ref, { recipientId, desiredRevision: latest?.desiredRevision ?? 0,
           status: attempts >= 5 ? "quarantined" : "pending", attempts,
+          queuedAt: latest?.status === "pending" ? latest.queuedAt ?? now.toISOString() : now.toISOString(), lastFailureAt: now.toISOString(),
           nextAttemptAt: new Date(now.getTime() + Math.min(60_000 * 2 ** (attempts - 1), 3_600_000)).toISOString(),
           errorCode: "REMINDER_SYNC_FAILED", updatedAt: now.toISOString(),
-        });
+        }, { merge: true });
       });
     }
   }
   const lastId = active.docs.at(-1)?.id ?? "";
   if (lastId || cursor) await cursorRef.set({ subscriptionId: active.docs.length === limit ? lastId : "", updatedAt: now.toISOString() });
-  return { checked: recipients.size, repaired, failed };
+  return { checked: recipients.size, processed, failed };
 }
 
 export async function retryMedicationReminderSync(recipientId: string, firestore?: FirestoreLike) {
   firestore ??= await getAdminFirestore();
-  await firestore.collection(REMINDER_SYNC_COLLECTION).doc(recipientId).set({ recipientId, status: "pending", attempts: 0, nextAttemptAt: new Date().toISOString() }, { merge: true });
+  const now = new Date().toISOString();
+  await firestore.collection(REMINDER_SYNC_COLLECTION).doc(recipientId).set({ recipientId, status: "pending", attempts: 0, queuedAt: now, nextAttemptAt: now, errorCode: null }, { merge: true });
 }

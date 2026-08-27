@@ -264,8 +264,8 @@ async function mutateCare<T>(
       const now = new Date().toISOString();
       tx.set(firestore.collection("medicationReminderSync").doc(scope.recipientId), {
         recipientId: scope.recipientId, desiredRevision: revision, status: "pending",
-        attempts: 0, nextAttemptAt: now, updatedAt: now,
-      });
+        attempts: 0, nextAttemptAt: now, queuedAt: now, errorCode: null, updatedAt: now,
+      }, { merge: true });
     }
     return update.result;
   });

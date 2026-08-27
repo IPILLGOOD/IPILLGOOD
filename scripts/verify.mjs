@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, createWriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import net from "node:net";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -84,7 +84,7 @@ try {
   env.IPILLGOOD_TEST_BASE_URL = `http://127.0.0.1:${appPort}`;
   const emulator = launch(process.execPath, ["node_modules/firebase-tools/lib/bin/firebase.js", "emulators:start", "--only", "firestore,auth", "--project", env.FIREBASE_PROJECT_ID, "--config", config]);
   await Promise.all([ready(`http://${env.FIRESTORE_EMULATOR_HOST}`, emulator), ready(`http://${env.FIREBASE_AUTH_EMULATOR_HOST}`, emulator)]);
-  const guarded = { NODE_OPTIONS: `--import=${resolve(root, "scripts/test-network-guard.mjs")}` };
+  const guarded = { NODE_OPTIONS: `--import=${pathToFileURL(resolve(root, "scripts/test-network-guard.mjs")).href}` };
   await run("emulator-contracts", process.execPath, ["--experimental-strip-types", "--test", "backend/integration/*.test.ts"], guarded);
   cpSync(resolve(root, "front/.next/static"), resolve(root, "front/.next/standalone/front/.next/static"), { recursive: true });
   cpSync(resolve(root, "front/public"), resolve(root, "front/.next/standalone/front/public"), { recursive: true });

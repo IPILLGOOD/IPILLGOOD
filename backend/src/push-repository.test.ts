@@ -403,6 +403,9 @@ test("동기화 장애는 backoff·격리 후 운영자 재시도로 복구한�
   }
   const ref = firestore.collection("medicationReminderSync").doc("recipient-1");
   assert.equal(((await ref.get()).data() as { status: string }).status, "quarantined");
+  const quarantined = (await ref.get()).data() as { queuedAt: string; lastSucceededAt: string };
+  assert.equal(quarantined.queuedAt, "2026-08-23T22:00:00.000Z");
+  assert.equal(quarantined.lastSucceededAt, "2026-08-23T22:00:00.000Z");
   firestore.beforeRead = undefined;
   await retryMedicationReminderSync("recipient-1", firestore);
   await reconcileMedicationReminders({ firestore, now: new Date("2099-01-01T00:00:00Z") });

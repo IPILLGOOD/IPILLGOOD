@@ -22,7 +22,10 @@ try {
     console.log(JSON.stringify({ command, applied: true }));
   } else {
     const job = (await firestore.collection("medicationReminderSync").doc(recipientId).get()).data();
-    console.log(JSON.stringify({ command, applied: false, status: job?.status ?? "missing", attempts: job?.attempts ?? 0, desiredRevision: job?.desiredRevision, appliedRevision: job?.appliedRevision }));
+    console.log(JSON.stringify({ command, applied: false, status: job?.status ?? "missing", attempts: job?.attempts ?? 0,
+      desiredRevision: job?.desiredRevision, appliedRevision: job?.appliedRevision,
+      queuedAt: job?.queuedAt, lastSucceededAt: job?.lastSucceededAt, lastFailureAt: job?.lastFailureAt, lastQueueDelayMs: job?.lastQueueDelayMs,
+    }));
   }
 } finally {
   if (typeof firestore.terminate === "function") await firestore.terminate();
