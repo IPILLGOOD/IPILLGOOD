@@ -32,7 +32,7 @@ export default async function DocumentsPage() {
             </div>
           </div>
           {scope.useDemoData ? <DemoDocumentSamples /> : null}
-          <DocumentUploadForm />
+          <DocumentUploadForm allowSamples={scope.useDemoData === true} />
         </Card>
 
         <div className="document-aside-stack">
@@ -95,7 +95,11 @@ export default async function DocumentsPage() {
               <div className="empty-state" role="status">
                 <FileText size={26} aria-hidden="true" />
                 <strong>아직 등록한 문서가 없어요</strong>
-                <p>비식별 샘플로 안전하게 흐름을 체험할 수 있어요.</p>
+                <p>
+                  {scope.useDemoData
+                    ? "비식별 샘플로 안전하게 흐름을 체험할 수 있어요."
+                    : "처방전이나 진단서를 첨부하고 분석해보세요."}
+                </p>
               </div>
             )}
           </Card>
