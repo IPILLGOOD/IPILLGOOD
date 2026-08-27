@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { SignJWT } from "jose";
 import { emulatorFixture } from "../../backend/test-support/emulator";
+import { seedCareAccount, syntheticMedication } from "../../backend/test-support/care-fixtures";
 
 for (const path of ["/today", "/check-in"]) {
   test(`${path}: missing stored question preserves inputs and recovers without reload`, async ({ context, page }) => {
@@ -11,6 +12,8 @@ for (const path of ["/today", "/check-in"]) {
     const token = await new SignJWT({ name: "질문 복구 검증", provider: "google" }).setProtectedHeader({ alg: "HS256" }).setSubject(userId).setIssuedAt().setExpirationTime("5m").sign(new TextEncoder().encode(process.env.SESSION_SECRET));
     await context.addCookies([{ name: "care_atlas_session", value: token, url: process.env.IPILLGOOD_TEST_BASE_URL!, httpOnly: true, sameSite: "Lax" }]);
     try {
+      // Recovery concerns existing care records; genuinely empty accounts now get onboarding guidance.
+      await seedCareAccount(fixture.firestore, recipientId, { consent: true, medications: [syntheticMedication] });
       await page.goto(path);
       const form = page.getByRole("form", { name: path === "/today" ? "오늘의 안부 바로 기록" : "오늘의 복약과 안부 기록" });
       await form.getByLabel("보호자 메모").fill("새로고침 없이 보존할 메모");

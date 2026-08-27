@@ -106,11 +106,6 @@ export function MedicationReminderCard() {
           </div>
         ) : null}
 
-        {error ? (
-          <div className="medication-reminder-card__status">
-            <span role="alert">{error}</span>
-          </div>
-        ) : null}
       </section>
     </Card>
   );

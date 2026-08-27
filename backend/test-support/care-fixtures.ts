@@ -8,7 +8,7 @@ export const syntheticMedication: MedicationPlan = {
   timing: "아침 식사 후", startDate: "2026-08-20", status: "active", isNew: false, sourceLabel: "synthetic", watchFor: [],
 };
 export function syntheticDocument(id: string): RegisterDocumentInput {
-  return { fileName: `${id}.pdf`, contentHash: id, documentType: "진단서", size: 100, isSample: true, analysis: null };
+  return { fileName: `${id}.pdf`, contentHash: id, documentType: "진단서", size: 100, isSample: true, analysis: undefined };
 }
 export async function seedCareAccount(firestore: FirestoreLike, recipientId: string, options: { consent?: boolean; medications?: MedicationPlan[] } = {}) {
   const snapshot = createInitialCareSnapshot({ recipientId });

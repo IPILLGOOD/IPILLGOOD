@@ -14,7 +14,7 @@ export function PushKeyNotice() {
   if (!needsRenewal && !client?.deliveryAuthRejected && !unverified && !error) return null;
   return (
     <Card tone="warning" className={styles.notice} aria-label="알림 연결 확인">
-      <p role="status">{error || (permissionDenied
+      <p role={error ? "alert" : "status"}>{error || (permissionDenied
         ? "브라우저 또는 기기 설정에서 알림을 허용한 뒤 다시 확인해 주세요."
         : needsRenewal
         ? "알림 연결 키가 변경되었거나 구독이 만료됐어요. 이 기기의 알림을 다시 연결해 주세요."

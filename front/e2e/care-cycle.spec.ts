@@ -104,6 +104,12 @@ test("synthetic account: isolated normal session, read-only Push status, forged 
     await context.addCookies([{ name: "care_atlas_session", value: token, url: process.env.IPILLGOOD_TEST_BASE_URL!, httpOnly: true, sameSite: "Lax" }]);
     await page.goto("/today");
     await expect(page).toHaveURL(/\/today$/);
+    await expect(page.getByRole("heading", { name: "돌봄 기록을 시작해 볼까요" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "프로필과 동의 확인하기" })).toHaveAttribute("href", "/profile");
+    await expect(page.getByRole("form", { name: "오늘의 안부 바로 기록" })).toHaveCount(0);
+    for (const collection of ["careAnalyses", "questionSets", "agentRuns"]) {
+      expect((await fixture.admin.collection("careRecipients").doc(recipientId).collection(collection).get()).empty).toBe(true);
+    }
     const status = await context.request.get("/api/push/subscriptions?deviceId=test-device-000001");
     expect(status.status()).toBe(200);
     expect((await status.json()).subscribed).toBe(false);

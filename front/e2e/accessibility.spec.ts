@@ -144,8 +144,9 @@ test.describe("mobile Push status semantics (simulated user agent, no delivery)"
     await expect(page.getByText("이 기기의 알림 가능 여부를 확인하고 있어요.")).toBeVisible();
     await audit(page, "push-loading", info);
     release();
-    const alert = page.getByRole("alert").filter({ hasText: "알림 상태를 불러오지 못했어요" });
-    await expect(alert).toContainText("알림 상태를 불러오지 못했어요");
+    const alert = page.getByRole("alert").filter({ hasText: "알림 연결을 확인하지 못했어요" });
+    await expect(alert).toHaveCount(1);
+    await expect(alert).toContainText("알림 연결을 확인하지 못했어요");
     expect(await alert.evaluate((element) => element.parentElement?.closest('[aria-live], [role="status"], [role="alert"]') === null)).toBe(true);
     await audit(page, "push-config-error", info);
     await page.unroute("**/api/push/config");
