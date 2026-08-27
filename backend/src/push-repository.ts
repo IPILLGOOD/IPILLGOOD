@@ -1,17 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { getAdminFirestore } from "./firebase-admin.ts";
-import {
-  isEphemeralDemoSessionActive,
-  isEphemeralDemoSessionId,
-} from "./demo-session.ts";
 import type { FirestoreLike } from "./firestore-rest.ts";
 import {
   advanceMedicationReminderSchedule,
-  buildMedicationReminderSchedules,
   type MedicationReminderSchedule,
 } from "./medication-schedule.ts";
+import { medicationPlanRevision, syncMedicationReminderSchedules } from "./reminder-reconciliation.ts";
+export { syncMedicationReminderSchedules } from "./reminder-reconciliation.ts";
 import type { MedicationPlan } from "./types.ts";
+import { stableJson } from "./stable-json.ts";
 import {
   sendWebPush,
   type BrowserPushSubscription,
@@ -72,18 +70,6 @@ function stableId(...values: Array<string | number>) {
     .slice(0, 48);
 }
 
-function isAlreadyExistsError(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const value = error as { code?: number | string; status?: number; message?: string };
-  return (
-    value.code === 6 ||
-    value.code === "already-exists" ||
-    value.status === 409 ||
-    value.message?.includes("HTTP 409") === true ||
-    value.message?.includes("ALREADY_EXISTS") === true
-  );
-}
-
 function subscriptionRef(
   firestore: FirestoreLike,
   subscriptionId: string,
@@ -122,57 +108,6 @@ async function schedulesForRecipient(
   return snapshot.docs.map((document) => document.data() as MedicationReminderSchedule);
 }
 
-export async function syncMedicationReminderSchedules(input: {
-  recipientId: string;
-  medications: MedicationPlan[];
-  now?: Date;
-  firestore?: FirestoreLike;
-}) {
-  const firestore = input.firestore ?? (await getAdminFirestore());
-  if (
-    isEphemeralDemoSessionId(input.recipientId) &&
-    !(await isEphemeralDemoSessionActive(input.recipientId, { firestore }))
-  ) {
-    throw new Error("데모 세션이 만료되었거나 종료되었습니다.");
-  }
-  const now = input.now ?? new Date();
-  const nextSchedules = buildMedicationReminderSchedules(
-    input.recipientId,
-    input.medications,
-    now,
-  );
-  const existing = await schedulesForRecipient(firestore, input.recipientId);
-  const existingById = new Map(existing.map((schedule) => [schedule.id, schedule]));
-  const normalizedSchedules = nextSchedules.map((schedule) => {
-    const current = existingById.get(schedule.id);
-    const graceStart = now.getTime() - 30 * 60 * 1_000;
-    if (
-      current?.status === "active" &&
-      new Date(current.nextDueAt).getTime() >= graceStart &&
-      current.nextDueAt < schedule.nextDueAt
-    ) {
-      return { ...schedule, nextDueAt: current.nextDueAt };
-    }
-    return schedule;
-  });
-  const nextIds = new Set(normalizedSchedules.map((schedule) => schedule.id));
-  const batch = firestore.batch();
-
-  for (const schedule of normalizedSchedules) {
-    batch.set(scheduleRef(firestore, schedule.id), schedule);
-  }
-  for (const schedule of existing) {
-    if (nextIds.has(schedule.id) || schedule.status === "ended") continue;
-    batch.set(
-      scheduleRef(firestore, schedule.id),
-      { status: "ended", updatedAt: now.toISOString() },
-      { merge: true },
-    );
-  }
-  await batch.commit();
-  return normalizedSchedules;
-}
-
 export async function registerPushSubscription(input: {
   userId: string;
   recipientId: string;
@@ -191,46 +126,27 @@ export async function registerPushSubscription(input: {
   const nowIso = now.toISOString();
   const id = stableId(input.userId, input.deviceId);
   const ref = subscriptionRef(firestore, id);
-  const existing = await ref.get();
-  const existingRecord = existing.exists
-    ? (existing.data() as PushSubscriptionRecord)
-    : undefined;
-  const sameDevice = await firestore
-    .collection(SUBSCRIPTIONS_COLLECTION)
-    .where("deviceId", "==", input.deviceId)
-    .get();
-  const batch = firestore.batch();
-
-  for (const document of sameDevice.docs) {
-    const record = document.data() as PushSubscriptionRecord;
-    if (document.id === id || !record.active) continue;
-    batch.set(
-      document.ref,
-      { active: false, updatedAt: nowIso },
-      { merge: true },
-    );
-  }
-
-  const record: PushSubscriptionRecord = {
-    id,
-    userId: input.userId,
-    recipientId: input.recipientId,
-    deviceId: input.deviceId,
-    platform: input.platform,
-    browser: input.browser,
-    userAgent: input.userAgent.slice(0, 512),
-    timeZone: input.timeZone,
-    subscription: input.subscription,
-    active: true,
-    createdAt: existingRecord?.createdAt ?? nowIso,
-    updatedAt: nowIso,
-    lastSeenAt: nowIso,
-    lastDeliveryAt: existingRecord?.lastDeliveryAt,
-    lastFailureAt: existingRecord?.lastFailureAt,
-    lastHttpStatus: existingRecord?.lastHttpStatus,
-  };
-  batch.set(ref, record);
-  await batch.commit();
+  const record = await firestore.runTransaction(async (tx) => {
+    const [existing, sameDevice] = await Promise.all([
+      tx.get(ref), tx.get(firestore.collection(SUBSCRIPTIONS_COLLECTION).where("deviceId", "==", input.deviceId)),
+    ]);
+    const current = existing.data() as PushSubscriptionRecord | undefined;
+    for (const doc of sameDevice.docs) {
+      if (doc.id !== id && (doc.data() as PushSubscriptionRecord).active) tx.set(doc.ref, { active: false, updatedAt: nowIso }, { merge: true });
+    }
+    if (current?.active && current.recipientId === input.recipientId && stableJson(current.subscription) === stableJson(input.subscription)) {
+      if (now.getTime() - Date.parse(current.lastSeenAt) >= 6 * 60 * 60 * 1000) tx.set(ref, { lastSeenAt: nowIso }, { merge: true });
+      return current;
+    }
+    const next: PushSubscriptionRecord = {
+      id, userId: input.userId, recipientId: input.recipientId, deviceId: input.deviceId,
+      platform: input.platform, browser: input.browser, userAgent: input.userAgent.slice(0, 512),
+      timeZone: input.timeZone, subscription: input.subscription, active: true,
+      createdAt: current?.createdAt ?? nowIso, updatedAt: nowIso, lastSeenAt: nowIso,
+    };
+    tx.set(ref, next);
+    return next;
+  });
 
   const schedules = await syncMedicationReminderSchedules({
     recipientId: input.recipientId,
@@ -246,26 +162,16 @@ async function deactivateSchedulesIfUnused(
   recipientId: string,
   now: Date,
 ) {
-  if ((await activeSubscriptionsForRecipient(firestore, recipientId)).length) return;
-  const schedules = await schedulesForRecipient(firestore, recipientId);
-  const batch = firestore.batch();
-  for (const schedule of schedules) {
-    if (schedule.status === "ended") continue;
-    batch.set(
-      scheduleRef(firestore, schedule.id),
-      { status: "ended", updatedAt: now.toISOString() },
-      { merge: true },
-    );
-  }
-  await batch.commit();
+  await syncMedicationReminderSchedules({ recipientId, now, firestore });
 }
 
 export async function deactivatePushSubscription(input: {
   userId: string;
   deviceId: string;
   now?: Date;
+  firestore?: FirestoreLike;
 }) {
-  const firestore = await getAdminFirestore();
+  const firestore = input.firestore ?? await getAdminFirestore();
   const now = input.now ?? new Date();
   const id = stableId(input.userId, input.deviceId);
   const ref = subscriptionRef(firestore, id);
@@ -301,7 +207,12 @@ async function updateSubscriptionAfterDelivery(
   result: WebPushDeliveryResult,
   now: Date,
 ) {
-  await subscriptionRef(firestore, subscription.id).set(
+  await firestore.runTransaction(async (tx) => {
+    const ref = subscriptionRef(firestore, subscription.id);
+    const current = (await tx.get(ref)).data() as PushSubscriptionRecord | undefined;
+    // A deleted or replaced subscription must not be recreated or disabled by an old send result.
+    if (!current || stableJson(current.subscription) !== stableJson(subscription.subscription)) return;
+    tx.set(ref,
     result.ok
       ? {
           lastDeliveryAt: now.toISOString(),
@@ -309,13 +220,14 @@ async function updateSubscriptionAfterDelivery(
           updatedAt: now.toISOString(),
         }
       : {
-          active: result.expired ? false : subscription.active,
+          ...(result.expired ? { active: false } : {}),
           lastFailureAt: now.toISOString(),
           lastHttpStatus: result.status,
           updatedAt: now.toISOString(),
         },
     { merge: true },
-  );
+    );
+  });
 }
 
 export async function sendTestPushToDevice(input: {
@@ -423,30 +335,48 @@ export async function getPushDeliveryReceipt(
   };
 }
 
-async function claimDelivery(
-  firestore: FirestoreLike,
-  schedule: MedicationReminderSchedule,
-  now: Date,
-) {
-  const id = stableId(schedule.id, schedule.nextDueAt);
+type DeviceResult = { status: "accepted" | "terminal" | "retryable"; httpStatus: number; retryAfterMs?: number };
+type Delivery = {
+  id: string; status: "sending" | "retryable" | "accepted" | "terminal";
+  owner: string; leaseUntil: string; attempts: number; nextAttemptAt?: string;
+  results?: Record<string, DeviceResult>;
+};
+
+async function claimDelivery(firestore: FirestoreLike, schedule: MedicationReminderSchedule, now: Date) {
+  const id = stableId(schedule.id, schedule.planRevisionId ?? "legacy", schedule.nextDueAt);
   const ref = firestore.collection(DELIVERIES_COLLECTION).doc(id);
-  const batch = firestore.batch();
-  batch.create(ref, {
-    id,
-    scheduleId: schedule.id,
-    recipientId: schedule.recipientId,
-    scheduledAt: schedule.nextDueAt,
-    status: "sending",
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
+  const owner = randomUUID();
+  return firestore.runTransaction(async (tx) => {
+    const [stored, delivery, plan] = await Promise.all([
+      tx.get(scheduleRef(firestore, schedule.id)), tx.get(ref),
+      tx.get(firestore.collection("careRecipients").doc(schedule.recipientId).collection("medicationPlans").doc(schedule.medicationPlanId)),
+    ]);
+    const currentSchedule = stored.data() as MedicationReminderSchedule | undefined;
+    const current = delivery.data() as Delivery | undefined;
+    if (currentSchedule?.status !== "active" || currentSchedule.nextDueAt !== schedule.nextDueAt || currentSchedule.planRevisionId !== schedule.planRevisionId) return null;
+    const medication = plan.data() as MedicationPlan | undefined;
+    if (!medication || medication.status !== "active" || (schedule.planRevisionId && medicationPlanRevision(medication) !== schedule.planRevisionId)) {
+      tx.set(stored.ref, { status: "ended", updatedAt: now.toISOString() }, { merge: true });
+      return null;
+    }
+    if (current?.status === "accepted" || current?.status === "terminal") {
+      tx.set(stored.ref, advanceMedicationReminderSchedule(currentSchedule, now));
+      return null;
+    }
+    if (current?.status === "sending" && Date.parse(current.leaseUntil) > now.getTime()) return null;
+    if (current?.status === "retryable" && Date.parse(current.nextAttemptAt ?? "") > now.getTime()) return null;
+    const stale = now.getTime() - Date.parse(schedule.nextDueAt) > 30 * 60 * 1000;
+    const next: Delivery = { id, status: stale ? "terminal" : "sending", owner,
+      leaseUntil: new Date(now.getTime() + 120_000).toISOString(), attempts: (current?.attempts ?? 0) + 1,
+      results: current?.results ?? {},
+    };
+    tx.set(ref, { ...next, scheduleId: schedule.id, recipientId: schedule.recipientId, scheduledAt: schedule.nextDueAt,
+      planRevisionId: schedule.planRevisionId ?? "legacy", updatedAt: now.toISOString(),
+      ...(stale ? { reason: "stale" } : {}),
+    }, { merge: true });
+    if (stale) tx.set(stored.ref, advanceMedicationReminderSchedule(currentSchedule, now));
+    return { ...next, ref, stale };
   });
-  try {
-    await batch.commit();
-    return { id, ref, claimed: true as const };
-  } catch (error) {
-    if (isAlreadyExistsError(error)) return { id, ref, claimed: false as const };
-    throw error;
-  }
 }
 
 function reminderPayload(
@@ -471,125 +401,121 @@ function reminderPayload(
 }
 
 export async function dispatchDueMedicationReminders(input: {
-  vapid: VapidConfiguration;
-  now?: Date;
-  limit?: number;
-  firestore?: FirestoreLike;
-  sender?: typeof sendWebPush;
+  vapid: VapidConfiguration; now?: Date; limit?: number; firestore?: FirestoreLike; sender?: typeof sendWebPush;
 }) {
-  const firestore = input.firestore ?? (await getAdminFirestore());
+  const firestore = input.firestore ?? await getAdminFirestore();
   const sender = input.sender ?? sendWebPush;
   const now = input.now ?? new Date();
-  const due = await firestore
-    .collection(SCHEDULES_COLLECTION)
-    .where("nextDueAt", "<=", now.toISOString())
-    .orderBy("nextDueAt", "asc")
-    .limit(input.limit ?? 100)
-    .get();
-  const schedules = due.docs
-    .map((document) => document.data() as MedicationReminderSchedule)
-    .filter((schedule) => schedule.status === "active");
-  const summary: DispatchSummary = {
-    checked: schedules.length,
-    claimed: 0,
-    delivered: 0,
-    failed: 0,
-    expiredSubscriptions: 0,
-    noSubscriptions: 0,
-    stale: 0,
-  };
-
-  for (const schedule of schedules) {
-    const claim = await claimDelivery(firestore, schedule, now);
-    if (!claim.claimed) {
-      await scheduleRef(firestore, schedule.id).set(
-        advanceMedicationReminderSchedule(schedule, now),
-      );
-      continue;
-    }
-    summary.claimed += 1;
-    if (now.getTime() - new Date(schedule.nextDueAt).getTime() > 30 * 60 * 1_000) {
-      summary.stale += 1;
-      await claim.ref.set(
-        { status: "stale", updatedAt: now.toISOString() },
-        { merge: true },
-      );
-      await scheduleRef(firestore, schedule.id).set(
-        advanceMedicationReminderSchedule(schedule, now),
-      );
-      continue;
-    }
-    const subscriptions = await activeSubscriptionsForRecipient(
-      firestore,
-      schedule.recipientId,
-    );
-    if (!subscriptions.length) summary.noSubscriptions += 1;
-    const results: Array<{
-      subscriptionId: string;
-      ok: boolean;
-      status: number;
-      expired: boolean;
-    }> = [];
-
-    for (const subscription of subscriptions) {
-      try {
-        const result = await sender(
-          subscription.subscription,
-          reminderPayload(schedule, claim.id, now),
-          {
-            vapid: input.vapid,
-            ttlSeconds: 30 * 60,
-            urgency: "high",
-            topic: stableId(schedule.id).slice(0, 32),
-          },
-        );
-        await updateSubscriptionAfterDelivery(firestore, subscription, result, now);
-        results.push({
-          subscriptionId: subscription.id,
-          ok: result.ok,
-          status: result.status,
-          expired: result.expired,
-        });
-        if (result.ok) summary.delivered += 1;
-        else summary.failed += 1;
-        if (result.expired) summary.expiredSubscriptions += 1;
-      } catch (error) {
-        summary.failed += 1;
-        results.push({
-          subscriptionId: subscription.id,
-          ok: false,
-          status: 0,
-          expired: false,
-        });
-        await subscriptionRef(firestore, subscription.id).set(
-          {
-            lastFailureAt: now.toISOString(),
-            lastHttpStatus: 0,
-            updatedAt: now.toISOString(),
-          },
-          { merge: true },
-        );
-        console.error("Web Push delivery failed", error);
+  const started = Date.now();
+  const claimLimit = Math.max(1, Math.min(input.limit ?? 100, 300));
+  const summary: DispatchSummary = { checked: 0, claimed: 0, delivered: 0, failed: 0, expiredSubscriptions: 0, noSubscriptions: 0, stale: 0 };
+  for await (const document of dueReminderPages(firestore, now)) {
+    if (summary.claimed >= claimLimit) break;
+    summary.checked++;
+    const schedule = document.data() as MedicationReminderSchedule;
+    try {
+      const subscriptions = await activeSubscriptionsForRecipient(firestore, schedule.recipientId);
+      if (!subscriptions.length) {
+        summary.noSubscriptions++;
+        await deactivateSchedulesIfUnused(firestore, schedule.recipientId, now);
+        continue;
       }
+      const claim = await claimDelivery(firestore, schedule, now);
+      if (!claim) continue;
+      summary.claimed++;
+      if (claim.stale) { summary.stale++; continue; }
+      for (const subscription of subscriptions) {
+        const sendNow = new Date(now.getTime() + Date.now() - started);
+        const prior = claim.results?.[subscription.id];
+        if (prior?.status === "accepted" || prior?.status === "terminal") continue;
+        // Recheck authorization and renew ownership immediately before each external send.
+        const allowed = await firestore.runTransaction(async (tx) => {
+          const [deliveryDoc, subscriptionDoc, scheduleDoc, planDoc] = await Promise.all([
+            tx.get(claim.ref), tx.get(subscriptionRef(firestore, subscription.id)), tx.get(scheduleRef(firestore, schedule.id)),
+            tx.get(firestore.collection("careRecipients").doc(schedule.recipientId).collection("medicationPlans").doc(schedule.medicationPlanId)),
+          ]);
+          const delivery = deliveryDoc.data() as Delivery | undefined;
+          const fresh = scheduleDoc.data() as MedicationReminderSchedule | undefined;
+          const plan = planDoc.data() as MedicationPlan | undefined;
+          const sub = subscriptionDoc.data() as PushSubscriptionRecord | undefined;
+          if (delivery?.owner !== claim.owner) throw new Error("DELIVERY_LEASE_LOST");
+          if (!sub?.active || sub.recipientId !== schedule.recipientId || fresh?.status !== "active" || fresh.nextDueAt !== schedule.nextDueAt || fresh.planRevisionId !== schedule.planRevisionId || !plan || plan.status !== "active" || (schedule.planRevisionId && medicationPlanRevision(plan) !== schedule.planRevisionId)) return false;
+          if (sendNow.getTime() >= Date.parse(schedule.nextDueAt) + 30 * 60_000) return false;
+          tx.set(claim.ref, { leaseUntil: new Date(sendNow.getTime() + 120_000).toISOString() }, { merge: true });
+          return sub;
+        });
+        let result: WebPushDeliveryResult;
+        if (!allowed) {
+          result = { ok: false, status: 0, expired: false, responseBody: "" };
+        } else {
+          try {
+            result = await sender(allowed.subscription, reminderPayload(schedule, claim.id, now), {
+              vapid: input.vapid, ttlSeconds: Math.max(1, Math.ceil((Date.parse(schedule.nextDueAt) + 30 * 60 * 1000 - sendNow.getTime()) / 1000)),
+              urgency: "high", topic: stableId(schedule.id).slice(0, 32),
+            });
+          } catch {
+            result = { ok: false, status: 0, expired: false, responseBody: "" };
+          }
+        }
+        const state: DeviceResult = {
+          status: !allowed ? "terminal" : result.ok ? "accepted" : result.status === 0 || result.status === 429 || result.status >= 500 ? "retryable" : "terminal",
+          httpStatus: result.status,
+          ...(result.retryAfterMs !== undefined ? { retryAfterMs: result.retryAfterMs } : {}),
+        };
+        await firestore.runTransaction(async (tx) => {
+          const delivery = (await tx.get(claim.ref)).data() as Delivery | undefined;
+          if (delivery?.owner !== claim.owner) throw new Error("DELIVERY_LEASE_LOST");
+          tx.set(claim.ref, { results: { [subscription.id]: state }, updatedAt: now.toISOString() }, { merge: true });
+        });
+        if (allowed) {
+          await updateSubscriptionAfterDelivery(firestore, allowed, result, now);
+          if (result.ok) summary.delivered++; else summary.failed++;
+          if (result.expired) summary.expiredSubscriptions++;
+        }
+      }
+      await firestore.runTransaction(async (tx) => {
+        const [deliveryDoc, scheduleDoc] = await Promise.all([tx.get(claim.ref), tx.get(scheduleRef(firestore, schedule.id))]);
+        const delivery = deliveryDoc.data() as Delivery | undefined;
+        if (delivery?.owner !== claim.owner) return;
+        const current = scheduleDoc.data() as MedicationReminderSchedule | undefined;
+        const results = Object.values(delivery.results ?? {});
+        const retry = results.some((result) => result.status === "retryable") && delivery.attempts < 5;
+        const delay = Math.max(30_000 * 2 ** (delivery.attempts - 1), ...results.map((result) => result.retryAfterMs ?? 0));
+        const nextAttempt = now.getTime() + delay;
+        const canRetry = retry && nextAttempt < Date.parse(schedule.nextDueAt) + 30 * 60 * 1000;
+        tx.set(claim.ref, { status: canRetry ? "retryable" : results.some((result) => result.status === "accepted") ? "accepted" : "terminal",
+          leaseUntil: now.toISOString(), ...(canRetry ? { nextAttemptAt: new Date(nextAttempt).toISOString() } : { reason: results.some((result) => result.status === "retryable") ? "retry_exhausted" : "finished" }), updatedAt: now.toISOString(),
+        }, { merge: true });
+        if (!canRetry && current?.status === "active" && current.nextDueAt === schedule.nextDueAt && current.planRevisionId === schedule.planRevisionId) {
+          tx.set(scheduleDoc.ref, advanceMedicationReminderSchedule(current, now));
+        }
+      });
+    } catch {
+      summary.failed++;
+      // Leave the lease reclaimable after expiry. Never advance an unrecorded outcome.
+      console.error(JSON.stringify({ event: "push_dispatch_failed", code: "DELIVERY_PROCESSING_FAILED" }));
     }
-
-    await claim.ref.set(
-      {
-        status:
-          results.length === 0
-            ? "no_subscriptions"
-            : results.some((result) => result.ok)
-              ? "accepted"
-              : "failed",
-        results,
-        updatedAt: now.toISOString(),
-      },
-      { merge: true },
-    );
-    await scheduleRef(firestore, schedule.id).set(
-      advanceMedicationReminderSchedule(schedule, now),
-    );
   }
-
   return summary;
+}
+
+async function* dueReminderPages(firestore: FirestoreLike, now: Date) {
+  let query = firestore.collection(SCHEDULES_COLLECTION)
+    .where("status", "==", "active").where("nextDueAt", "<=", now.toISOString())
+    .orderBy("nextDueAt", "asc").orderBy("id", "asc").limit(100);
+  // Waiting leases/retries must not monopolize the first page. Bound each cron's read budget.
+  for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+    const page = await query.get();
+    for (const document of page.docs) yield document;
+    if (page.docs.length < 100) return;
+    const last = page.docs.at(-1)!.data() as MedicationReminderSchedule;
+    query = query.startAfter(last.nextDueAt, last.id);
+  }
+}
+
+export async function getPushDeviceStatus(input: { userId: string; recipientId: string; deviceId: string; firestore?: FirestoreLike }) {
+  const firestore = input.firestore ?? await getAdminFirestore();
+  const doc = await subscriptionRef(firestore, stableId(input.userId, input.deviceId)).get();
+  const record = doc.data() as PushSubscriptionRecord | undefined;
+  return Boolean(record?.active && record.recipientId === input.recipientId);
 }

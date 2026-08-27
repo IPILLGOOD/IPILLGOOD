@@ -7,10 +7,12 @@ import {
 } from "./care-repository.ts";
 import { syncMedicationReminderSchedules } from "./push-repository.ts";
 import type { CareSnapshot, ClinicalDocument, MedicationPlan } from "./types.ts";
+import type { FirestoreLike } from "./firestore-rest.ts";
 
 type ReminderSyncInput = {
   recipientId: string;
   medications: MedicationPlan[];
+  firestore?: FirestoreLike;
 };
 
 interface RegisterDependencies {
@@ -69,10 +71,12 @@ export async function registerDocumentAndSyncMedicationReminders(
     await syncWithOneRetry(dependencies.syncMedicationReminderSchedules, {
       recipientId: scope.recipientId,
       medications: snapshot.medications,
+      firestore: scope.firestore,
     });
-  } catch (error) {
-    await dependencies.deleteDocument(scope, document.id, snapshot);
-    throw error;
+  } catch {
+    // The canonical write already committed its durable sync job. Rolling it
+    // back here can delete another successful request's data and lose intent.
+    console.error(JSON.stringify({ event: "reminder_sync_pending", code: "SYNC_DEFERRED" }));
   }
   return document;
 }
@@ -87,8 +91,13 @@ export async function deleteDocumentAndSyncMedicationReminders(
   },
 ) {
   const snapshot = await dependencies.deleteDocument(scope, documentId, currentSnapshot);
-  await syncWithOneRetry(dependencies.syncMedicationReminderSchedules, {
-    recipientId: scope.recipientId,
-    medications: snapshot.medications,
-  });
+  try {
+    await syncWithOneRetry(dependencies.syncMedicationReminderSchedules, {
+      recipientId: scope.recipientId,
+      medications: snapshot.medications,
+      firestore: scope.firestore,
+    });
+  } catch {
+    console.error(JSON.stringify({ event: "reminder_sync_pending", code: "SYNC_DEFERRED" }));
+  }
 }

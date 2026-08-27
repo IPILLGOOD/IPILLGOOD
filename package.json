@@ -7,6 +7,7 @@
     "backend"
   ],
   "scripts": {
+    "verify": "node scripts/verify.mjs",
     "dev": "npm run dev --workspace @care-atlas/front",
     "build": "npm run build --workspace @care-atlas/front",
     "start": "npm run start --workspace @care-atlas/front",
@@ -15,5 +16,16 @@
     "test": "npm run test --workspaces --if-present",
     "seed": "npm run seed --workspace @care-atlas/backend",
     "firebase:deploy": "npm run deploy --workspace @care-atlas/backend"
+  },
+  "overrides": {
+    "firebase-tools": {
+      "@google-cloud/pubsub": { "@opentelemetry/core": "2.10.0" },
+      "gaxios": { "uuid": "11.1.1" },
+      "superstatic": { "re2": "1.26.1" }
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "firebase-tools": "^15.28.1"
   }
 }

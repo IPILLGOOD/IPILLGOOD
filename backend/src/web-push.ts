@@ -39,6 +39,7 @@ export interface WebPushDeliveryResult {
   status: number;
   expired: boolean;
   responseBody: string;
+  retryAfterMs?: number;
 }
 
 function decodeBase64Url(value: string) {
@@ -107,6 +108,7 @@ export async function sendWebPush(
         status: error.statusCode,
         expired: error.statusCode === 404 || error.statusCode === 410,
         responseBody: error.body.slice(0, 500),
+        ...(error.retryAfterMs !== null ? { retryAfterMs: error.retryAfterMs } : {}),
       };
     }
     throw error;

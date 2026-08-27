@@ -1,6 +1,7 @@
 export {
   deleteDocument,
   getCareSnapshot,
+  rebuildCareReadModel,
   getPatientQuestionSet,
   getTodayDailyCheckIn,
   medicationPlansFromPrescription,
@@ -46,6 +47,7 @@ export {
   deactivatePushSubscription,
   dispatchDueMedicationReminders,
   getNotificationScheduleStatus,
+  getPushDeviceStatus,
   getPushDeliveryReceipt,
   recordPushDeliveryReceipt,
   registerPushSubscription,
@@ -56,6 +58,7 @@ export {
   type PushSubscriptionRecord,
   type PushDeliveryReceipt,
 } from "./push-repository";
+export { reconcileMedicationReminders, retryMedicationReminderSync } from "./reminder-reconciliation";
 export {
   getVapidConfiguration,
   sendWebPush,
