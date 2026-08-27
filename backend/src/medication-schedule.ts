@@ -32,6 +32,7 @@ export interface MedicationReminderSchedule {
   timeZone: typeof MEDICATION_TIME_ZONE;
   status: "active" | "ended";
   updatedAt: string;
+  planRevisionId?: string;
 }
 
 export function activeMedications(medications: MedicationPlan[]) {

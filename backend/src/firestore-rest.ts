@@ -7,7 +7,7 @@ interface ServiceAccountCredentials {
   token_uri?: string;
 }
 
-interface SetOptionsLike {
+export interface SetOptionsLike {
   merge?: boolean;
 }
 
@@ -46,19 +46,29 @@ export interface QueryLike {
   where(fieldPath: string, operator: QueryOperator, value: unknown): QueryLike;
   orderBy(fieldPath: string, direction?: QueryDirection): QueryLike;
   limit(count: number): QueryLike;
+  startAfter(...values: unknown[]): QueryLike;
   get(): Promise<QuerySnapshotLike>;
 }
 
-export interface WriteBatchLike {
-  set(ref: DocumentReferenceLike, data: unknown, options?: SetOptionsLike): WriteBatchLike;
-  create(ref: DocumentReferenceLike, data: unknown): WriteBatchLike;
-  delete(ref: DocumentReferenceLike): WriteBatchLike;
+export interface WriteOperationsLike {
+  set(ref: DocumentReferenceLike, data: unknown, options?: SetOptionsLike): this;
+  create(ref: DocumentReferenceLike, data: unknown): this;
+  delete(ref: DocumentReferenceLike): this;
+}
+
+export interface WriteBatchLike extends WriteOperationsLike {
   commit(): Promise<void>;
+}
+
+export interface TransactionLike extends WriteOperationsLike {
+  get(ref: DocumentReferenceLike): Promise<DocumentSnapshotLike>;
+  get(query: QueryLike | CollectionReferenceLike): Promise<QuerySnapshotLike>;
 }
 
 export interface FirestoreLike {
   collection(path: string): CollectionReferenceLike;
   batch(): WriteBatchLike;
+  runTransaction<T>(fn: (transaction: TransactionLike) => Promise<T>): Promise<T>;
 }
 
 function base64Url(bytes: Uint8Array) {
@@ -140,13 +150,15 @@ function encodedResourcePath(path: string) {
     .join("/");
 }
 
-class FirestoreRestError extends Error {
+export class FirestoreRestError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(status: number) {
+  constructor(status: number, code?: string) {
     super(`Firestore REST request failed: HTTP ${status}`);
     this.name = "FirestoreRestError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -171,20 +183,26 @@ function firestoreOperator(operator: QueryOperator) {
   }[operator];
 }
 
-class FirestoreRestClient implements FirestoreLike {
+export class FirestoreRestClient implements FirestoreLike {
   private readonly baseUrl: string;
   private readonly credentials: ServiceAccountCredentials;
   private readonly fetcher: typeof fetch;
+  private readonly emulatorHost?: string;
   private accessToken?: { value: string; expiresAt: number };
 
   constructor(
     credentials: ServiceAccountCredentials,
     projectId: string,
     fetcher: typeof fetch = fetch,
+    emulatorHost?: string,
   ) {
     this.credentials = credentials;
     this.fetcher = fetcher;
-    this.baseUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`;
+    this.emulatorHost = emulatorHost;
+    if (emulatorHost && (!/^(127\.0\.0\.1|localhost):\d+$/.test(emulatorHost) || !projectId.startsWith("demo-"))) {
+      throw new Error("Firestore emulator requires a loopback host and demo- project.");
+    }
+    this.baseUrl = `${emulatorHost ? `http://${emulatorHost}` : "https://firestore.googleapis.com"}/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`;
   }
 
   collection(path: string) {
@@ -192,7 +210,43 @@ class FirestoreRestClient implements FirestoreLike {
   }
 
   batch() {
-    return new RestWriteBatch();
+    return new RestWriteBatch(this);
+  }
+
+  async runTransaction<T>(fn: (transaction: TransactionLike) => Promise<T>): Promise<T> {
+    let retryTransaction: string | undefined;
+    for (let attempt = 0; ; attempt++) {
+      const response = await this.requestUrl(`${this.baseUrl}:beginTransaction`, {
+        method: "POST", body: JSON.stringify({ options: { readWrite: retryTransaction ? { retryTransaction } : {} } }),
+      });
+      const { transaction } = await response.json() as { transaction: string };
+      const writer = new RestTransaction(this, transaction);
+      try {
+        const result = await fn(writer);
+        await writer.commit();
+        return result;
+      } catch (error) {
+        await this.requestUrl(`${this.baseUrl}:rollback`, {
+          method: "POST", body: JSON.stringify({ transaction }),
+        }).catch(() => undefined);
+        if (!(error instanceof FirestoreRestError) || error.code !== "ABORTED" || attempt >= 6) throw error;
+        retryTransaction = transaction;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(100 * 2 ** attempt, 2000) * (0.5 + Math.random())));
+      }
+    }
+  }
+
+  documentName(path: string) {
+    return this.baseUrl.slice(this.baseUrl.indexOf("/projects/") + 1) + "/" + path;
+  }
+
+  async commit(writes: JsonRecord[], transaction?: string) {
+    if (!writes.length && !transaction) return;
+    if (writes.length > 500) throw new Error("Firestore commits are limited to 500 writes.");
+    await this.requestUrl(`${this.baseUrl}:commit`, {
+      method: "POST",
+      body: JSON.stringify({ writes, ...(transaction ? { transaction } : {}) }),
+    });
   }
 
   private async createAccessToken() {
@@ -224,6 +278,7 @@ class FirestoreRestClient implements FirestoreLike {
     const assertion = `${unsignedToken}.${base64Url(new Uint8Array(signature))}`;
     const response = await this.fetcher(tokenUri, {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -241,6 +296,7 @@ class FirestoreRestClient implements FirestoreLike {
   }
 
   private async getAccessToken() {
+    if (this.emulatorHost) return "owner";
     if (this.accessToken && this.accessToken.expiresAt > Date.now()) return this.accessToken.value;
     return this.createAccessToken();
   }
@@ -254,6 +310,7 @@ class FirestoreRestClient implements FirestoreLike {
       const response = await this.fetcher(url, {
         ...init,
         headers,
+        signal: init.signal ?? AbortSignal.timeout(30_000),
       });
       if (response.status === 401 && attempt === 0) {
         this.accessToken = undefined;
@@ -261,7 +318,8 @@ class FirestoreRestClient implements FirestoreLike {
       }
       if (allowNotFound && response.status === 404) return response;
       if (!response.ok) {
-        throw new FirestoreRestError(response.status);
+        const payload = await response.json().catch(() => ({})) as { error?: { status?: string } };
+        throw new FirestoreRestError(response.status, payload.error?.status);
       }
       return response;
     }
@@ -272,7 +330,17 @@ class FirestoreRestClient implements FirestoreLike {
     return this.requestUrl(`${this.baseUrl}/${relativeUrl}`, init, allowNotFound);
   }
 
-  async getDocument(path: string, ref: DocumentReferenceLike) {
+  async getDocument(path: string, ref: DocumentReferenceLike, transaction?: string) {
+    if (transaction) {
+      // batchGet carries the bytes-valued transaction in JSON, including on the emulator.
+      const response = await this.requestUrl(`${this.baseUrl}:batchGet`, {
+        method: "POST", body: JSON.stringify({ documents: [this.documentName(path)], transaction }),
+      });
+      const results = await response.json() as Array<{ found?: { fields?: JsonRecord }; missing?: string }>;
+      const result = results.find((entry) => entry.found || entry.missing);
+      if (!result) throw new Error("Firestore transaction read returned no document result.");
+      return new RestDocumentSnapshot(ref, result.found ? decodeFirestoreFields(result.found.fields ?? {}) : undefined);
+    }
     const response = await this.request(encodedResourcePath(path), {}, true);
     if (response.status === 404) return new RestDocumentSnapshot(ref, undefined);
     const document = (await response.json()) as { fields?: JsonRecord };
@@ -283,34 +351,26 @@ class FirestoreRestClient implements FirestoreLike {
     if (!data || typeof data !== "object" || Array.isArray(data)) {
       throw new Error("Firestore documents must be objects.");
     }
-    let nextData = data as JsonRecord;
-    if (options?.merge) {
-      const ref = new RestDocumentReference(this, path);
-      const current = await this.getDocument(path, ref);
-      const currentData = current.data();
-      nextData = {
-        ...(currentData && typeof currentData === "object" ? currentData as JsonRecord : {}),
-        ...nextData,
-      };
-    }
-    await this.request(encodedResourcePath(path), {
-      method: "PATCH",
-      body: JSON.stringify({ fields: encodeFirestoreFields(nextData) }),
-    });
+    await this.commit([this.setWrite(path, data as JsonRecord, options)]);
+  }
+
+  setWrite(path: string, data: JsonRecord, options?: SetOptionsLike) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Firestore documents must be objects.");
+    return {
+      update: { name: this.documentName(path), fields: encodeFirestoreFields(data) },
+      ...(options?.merge ? { updateMask: { fieldPaths: mergeFieldPaths(data) } } : {}),
+    };
   }
 
   async createDocument(path: string, data: unknown) {
     if (!data || typeof data !== "object" || Array.isArray(data)) {
       throw new Error("Firestore documents must be objects.");
     }
-    await this.request(`${encodedResourcePath(path)}?currentDocument.exists=false`, {
-      method: "PATCH",
-      body: JSON.stringify({ fields: encodeFirestoreFields(data as JsonRecord) }),
-    });
+    await this.commit([{ ...this.setWrite(path, data as JsonRecord), currentDocument: { exists: false } }]);
   }
 
   async deleteDocument(path: string) {
-    await this.request(encodedResourcePath(path), { method: "DELETE" }, true);
+    await this.commit([{ delete: this.documentName(path) }]);
   }
 
   async getCollection(path: string) {
@@ -339,6 +399,8 @@ class FirestoreRestClient implements FirestoreLike {
     constraints: QueryConstraint[],
     orders: QueryOrder[],
     resultLimit?: number,
+    transaction?: string,
+    startAfter?: unknown[],
   ): Promise<QuerySnapshotLike> {
     const segments = path.split("/").filter(Boolean);
     const collectionId = segments.at(-1) ?? "";
@@ -362,6 +424,7 @@ class FirestoreRestClient implements FirestoreLike {
     const response = await this.requestUrl(queryUrl, {
       method: "POST",
       body: JSON.stringify({
+        ...(transaction ? { transaction } : {}),
         structuredQuery: {
           from: [{ collectionId }],
           ...(where ? { where } : {}),
@@ -374,6 +437,7 @@ class FirestoreRestClient implements FirestoreLike {
               }
             : {}),
           ...(resultLimit ? { limit: resultLimit } : {}),
+          ...(startAfter ? { startAt: { values: startAfter.map(encodeFirestoreValue), before: false } } : {}),
         },
       }),
     });
@@ -461,6 +525,7 @@ class RestQuery implements QueryLike {
   private readonly constraints: QueryConstraint[];
   private readonly orders: QueryOrder[];
   private readonly resultLimit?: number;
+  private readonly cursor?: unknown[];
 
   constructor(
     client: FirestoreRestClient,
@@ -468,12 +533,14 @@ class RestQuery implements QueryLike {
     constraints: QueryConstraint[] = [],
     orders: QueryOrder[] = [],
     resultLimit?: number,
+    cursor?: unknown[],
   ) {
     this.client = client;
     this.path = path;
     this.constraints = constraints;
     this.orders = orders;
     this.resultLimit = resultLimit;
+    this.cursor = cursor;
   }
 
   where(fieldPath: string, operator: QueryOperator, value: unknown) {
@@ -483,6 +550,7 @@ class RestQuery implements QueryLike {
       [...this.constraints, { fieldPath, operator, value }],
       this.orders,
       this.resultLimit,
+      this.cursor,
     );
   }
 
@@ -493,6 +561,7 @@ class RestQuery implements QueryLike {
       this.constraints,
       [...this.orders, { fieldPath, direction }],
       this.resultLimit,
+      this.cursor,
     );
   }
 
@@ -503,11 +572,16 @@ class RestQuery implements QueryLike {
       this.constraints,
       this.orders,
       Math.max(1, Math.min(Math.floor(count), 300)),
+      this.cursor,
     );
   }
 
-  get(): Promise<QuerySnapshotLike> {
-    if (!this.constraints.length && !this.orders.length && !this.resultLimit) {
+  startAfter(...values: unknown[]) {
+    return new RestQuery(this.client, this.path, this.constraints, this.orders, this.resultLimit, values);
+  }
+
+  get(transaction?: string): Promise<QuerySnapshotLike> {
+    if (!transaction && !this.constraints.length && !this.orders.length && !this.resultLimit) {
       return this.client.getCollection(this.path);
     }
     return this.client.runQuery(
@@ -515,6 +589,8 @@ class RestQuery implements QueryLike {
       this.constraints,
       this.orders,
       this.resultLimit,
+      transaction,
+      this.cursor,
     );
   }
 }
@@ -531,36 +607,68 @@ class RestCollectionReference extends RestQuery implements CollectionReferenceLi
 }
 
 class RestWriteBatch implements WriteBatchLike {
-  private readonly operations: Array<() => Promise<void>> = [];
+  protected readonly writes: JsonRecord[] = [];
+  private committed = false;
+
+  protected readonly client: FirestoreRestClient;
+  protected readonly transaction?: string;
+  constructor(client: FirestoreRestClient, transaction?: string) {
+    this.client = client;
+    this.transaction = transaction;
+  }
+
+  private append(ref: DocumentReferenceLike, write: JsonRecord) {
+    if (this.committed) throw new Error("Firestore batch has already been committed.");
+    if (!(ref instanceof RestDocumentReference)) throw new Error("Incompatible Firestore document reference.");
+    this.writes.push(write);
+  }
 
   set(ref: DocumentReferenceLike, data: unknown, options?: SetOptionsLike) {
-    this.operations.push(() => ref.set(data, options));
+    this.append(ref, this.client.setWrite(ref.path, data as JsonRecord, options));
     return this;
   }
 
   create(ref: DocumentReferenceLike, data: unknown) {
-    this.operations.push(() => {
-      if (!(ref instanceof RestDocumentReference)) {
-        throw new Error("Firestore REST batch received an incompatible document reference.");
-      }
-      return ref.create(data);
-    });
+    this.append(ref, { ...this.client.setWrite(ref.path, data as JsonRecord), currentDocument: { exists: false } });
     return this;
   }
 
   delete(ref: DocumentReferenceLike) {
-    this.operations.push(() => {
-      if (!(ref instanceof RestDocumentReference)) {
-        throw new Error("Firestore REST batch received an incompatible document reference.");
-      }
-      return ref.delete();
-    });
+    this.append(ref, { delete: this.client.documentName(ref.path) });
     return this;
   }
 
   async commit() {
-    for (const operation of this.operations) await operation();
+    if (this.committed) throw new Error("Firestore batch has already been committed.");
+    this.committed = true;
+    await this.client.commit(this.writes, this.transaction);
   }
+}
+
+class RestTransaction extends RestWriteBatch implements TransactionLike {
+  get(ref: DocumentReferenceLike): Promise<DocumentSnapshotLike>;
+  get(query: QueryLike | CollectionReferenceLike): Promise<QuerySnapshotLike>;
+  get(value: DocumentReferenceLike | QueryLike | CollectionReferenceLike): Promise<DocumentSnapshotLike | QuerySnapshotLike> {
+    if (this.writes.length) throw new Error("Firestore transactions require all reads before writes.");
+    if (value instanceof RestDocumentReference) return this.client.getDocument(value.path, value, this.transaction);
+    if (value instanceof RestQuery) return value.get(this.transaction);
+    throw new Error("Incompatible Firestore transaction read.");
+  }
+}
+
+function mergeFieldPaths(data: JsonRecord, prefix: string[] = []): string[] {
+  return Object.entries(data).flatMap(([key, value]) => {
+    if (value === undefined) return [];
+    const parts = [...prefix, key];
+    if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length) {
+      return mergeFieldPaths(value as JsonRecord, parts);
+    }
+    return [parts.map((part) => `\`${part.replace(/\\/g, "\\\\").replace(/`/g, "\\`")}\``).join(".")];
+  });
+}
+
+export function createEmulatorFirestoreRestClient(projectId: string, host: string, fetcher: typeof fetch = fetch) {
+  return new FirestoreRestClient({ client_email: "", private_key: "" }, projectId, fetcher, host);
 }
 
 export function createFirestoreRestClient(rawCredentials: string, fallbackProjectId: string) {

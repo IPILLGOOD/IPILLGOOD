@@ -1,6 +1,6 @@
 import type { Firestore } from "@google-cloud/firestore";
 
-import type { FirestoreLike } from "./firestore-rest";
+import type { FirestoreLike } from "./firestore-rest.ts";
 
 const projectId =
   process.env.FIREBASE_PROJECT_ID ??
@@ -16,15 +16,18 @@ export function getAdminFirestore() {
       if (!serviceAccountJson) {
         throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured.");
       }
-      firestorePromise = import("./firestore-rest").then(({ createFirestoreRestClient }) =>
+      firestorePromise = import("./firestore-rest.ts").then(({ createFirestoreRestClient }) =>
         createFirestoreRestClient(serviceAccountJson, projectId),
       );
     } else {
       firestorePromise = import("@google-cloud/firestore").then(({ Firestore }) => {
-        return new Firestore({ projectId }) as Firestore as unknown as FirestoreLike;
+        return new Firestore({ projectId, ignoreUndefinedProperties: true }) as Firestore as unknown as FirestoreLike;
       });
     }
   }
 
-  return firestorePromise;
+  return firestorePromise.catch((error) => {
+    firestorePromise = undefined;
+    throw error;
+  });
 }

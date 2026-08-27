@@ -24,12 +24,15 @@ const RECIPIENT_SUBCOLLECTIONS = [
   "questionSets",
   "careAnalyses",
   "agentRuns",
+  "questionGenerations",
+  "questionGenerationAttempts",
 ] as const;
 
 const RECIPIENT_SCOPED_COLLECTIONS = [
   "pushSubscriptions",
   "medicationReminderSchedules",
   "pushDeliveries",
+  "medicationReminderSync",
 ] as const;
 
 export const DEMO_SESSION_DURATION_SECONDS = 2 * 60 * 60;

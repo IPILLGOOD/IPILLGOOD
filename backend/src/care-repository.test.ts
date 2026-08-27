@@ -9,7 +9,13 @@ import {
 import {
   createInitialCareSnapshot,
   medicationPlansFromPrescription,
+  getCareSnapshot,
+  registerDocument,
+  updateRecipientProfile,
+  rebuildCareReadModel,
+  deleteDocument,
 } from "./care-repository.ts";
+import { MemoryFirestore } from "../test-support/memory-firestore.ts";
 import type { CareSnapshot } from "./types.ts";
 
 const snapshot = {
@@ -30,6 +36,45 @@ test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복�
   assert.deepEqual(first.symptomEvents, []);
   assert.deepEqual(first.documents, []);
   assert.notEqual(first.recipient.id, second.recipient.id);
+});
+
+const upload = (id: string) => ({ fileName: `${id}.pdf`, contentHash: id, documentType: "진단서" as const, size: 100, isSample: true, analysis: null });
+
+test("서로 다른 문서의 동시 등록과 오래된 프로필 저장이 기존 데이터를 덮어쓰지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-concurrent", firestore };
+  const original = await getCareSnapshot(scope);
+  await Promise.all([registerDocument(scope, upload("a")), registerDocument(scope, upload("b"))]);
+  await updateRecipientProfile(scope, { ...original.recipient, displayName: "수정된 이름" }, original);
+  const result = await getCareSnapshot(scope);
+  assert.deepEqual(result.documents.map((item) => item.id).sort(), ["a", "b"]);
+  assert.equal(result.recipient.displayName, "수정된 이름");
+});
+
+test("읽기 오류를 빈 계정으로 반환하지 않고 fallback snapshot 쓰기를 거부한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-read-error", firestore };
+  const original = await getCareSnapshot(scope);
+  await registerDocument(scope, upload("kept"));
+  firestore.failReads = 1;
+  await assert.rejects(getCareSnapshot(scope), /INJECTED_READ_FAILURE/);
+  await assert.rejects(updateRecipientProfile(scope, original.recipient, { ...original, dataSource: "local-fallback" }), /서버 데이터/);
+  assert.equal((await getCareSnapshot(scope)).documents[0]?.id, "kept");
+});
+
+test("부분 commit 실패는 문서와 read model을 모두 보존하며 canonical 데이터로 복구한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-rebuild", firestore };
+  await registerDocument(scope, upload("kept"));
+  firestore.failCommits = 1;
+  await assert.rejects(registerDocument(scope, upload("failed")), /INJECTED_COMMIT_FAILURE/);
+  assert.equal(firestore.store.has("careRecipients/google-rebuild/clinicalDocuments/failed"), false);
+  firestore.store.delete("careReadModels/google-rebuild");
+  assert.equal((await getCareSnapshot(scope)).documents[0]?.id, "kept");
+  const model = firestore.store.get("careReadModels/google-rebuild") as Record<string, unknown>;
+  firestore.store.set("careReadModels/google-rebuild", { ...model, documents: [] });
+  assert.equal((await rebuildCareReadModel(scope)).repaired, true);
+  assert.equal((await getCareSnapshot(scope)).documents[0]?.id, "kept");
 });
 
 test("당일 체크인은 read model에서 같은 날짜 기록을 교체하고 과거 기록을 보존한다", () => {
@@ -93,6 +138,31 @@ test("read model의 체크인은 서울 날짜가 오늘과 일치할 때만 반
 
   assert.equal(currentDailyCheckIn(checkIn, new Date("2026-08-16T14:59:00.000Z")), checkIn);
   assert.equal(currentDailyCheckIn(checkIn, new Date("2026-08-16T15:01:00.000Z")), null);
+});
+
+test("기존 문서 삭제와 새 문서 등록의 동시 요청에서 새 데이터가 유실되지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-delete-race", firestore };
+  await registerDocument(scope, upload("old"));
+  const stale = await getCareSnapshot(scope);
+  await Promise.all([deleteDocument(scope, "old", stale), registerDocument(scope, upload("new"))]);
+  assert.deepEqual((await getCareSnapshot(scope)).documents.map((item) => item.id), ["new"]);
+});
+
+test("원본 변경과 복구 작업은 같은 commit에 저장되고 실패 시 둘 다 남지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-outbox", firestore };
+  await getCareSnapshot(scope);
+  await firestore.collection("pushSubscriptions").doc("sub").set({ recipientId: scope.recipientId, active: true });
+  firestore.beforeCommit = (operations) => {
+    if (operations.some((item) => item.path.startsWith("medicationReminderSync/"))) throw new Error("OUTBOX_FAILURE");
+  };
+  await assert.rejects(registerDocument(scope, upload("a")), /OUTBOX_FAILURE/);
+  assert.equal(firestore.store.has(`careRecipients/${scope.recipientId}/clinicalDocuments/a`), false);
+  assert.deepEqual((await getCareSnapshot(scope)).documents, []);
+  firestore.beforeCommit = undefined;
+  await registerDocument(scope, upload("a"));
+  assert.equal((firestore.store.get(`medicationReminderSync/${scope.recipientId}`) as { status: string }).status, "pending");
 });
 
 test("처방전에서 추출한 약을 복약 일정용 활성 계획으로 변환한다", () => {

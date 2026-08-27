@@ -322,6 +322,7 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 
 ## 문서
 
+- [저장·알림 안정성, 로컬·CI 전체 검증 및 운영 복구](docs/backend-reliability.md) — 깨끗한 checkout에서 `npm ci`, `npx playwright install --with-deps chromium` 후 `npm run verify`
 - [제품 기획안](md/IPILLGOOD_제품_기획안.md)
 - [문제 정의 및 필요성 근거 자료](md/IPILLGOOD_근거자료.md)
 - [기술 구조와 데이터 모델](md/architecture.md)

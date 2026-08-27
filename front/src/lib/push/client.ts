@@ -100,11 +100,19 @@ export async function inspectPushClient(): Promise<PushClientState> {
   const configuration = await getPushConfiguration();
   const current = supported ? await getCurrentSubscription() : null;
   let status: NotificationScheduleStatus | null = null;
-  if (current && configuration.configured) status = await uploadSubscription(current);
+  let registered = false;
+  const deviceId = window.localStorage.getItem(DEVICE_ID_KEY);
+  if (current && configuration.configured && deviceId) {
+    const response = await fetch(`/api/push/subscriptions?deviceId=${encodeURIComponent(deviceId)}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("알림 설정을 불러오지 못했어요.");
+    const result = await response.json() as { subscribed: boolean; status: NotificationScheduleStatus };
+    registered = result.subscribed;
+    status = result.status;
+  }
   return {
     supported,
     permission,
-    subscribed: Boolean(current),
+    subscribed: Boolean(current) && registered,
     needsIosInstall,
     configured: configuration.configured,
     publicKey: configuration.publicKey,

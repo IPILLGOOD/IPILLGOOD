@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { MemoryFirestore } from "../test-support/memory-firestore.ts";
+import { getOrCreateQuestionSet } from "./care-orchestration-service.ts";
 
 import { careInputRevision, runCareAgent } from "./ai/care-agent.ts";
 import {
@@ -177,4 +179,55 @@ test("OpenAI 미설정 시에도 기록에서 안전 폴백 분석을 만든다"
   assert.equal(result.source, "safe_fallback");
   assert.equal(result.run.status, "not_configured");
   assert.ok(result.output.findings.some((finding) => finding.event_refs.includes("symptom-1")));
+});
+
+async function generationFixture() {
+  const firestore = new MemoryFirestore();
+  const stored = { ...structuredClone(snapshot), dataSource: "firestore" as const };
+  const scope = { recipientId: stored.recipient.id, firestore };
+  await firestore.collection("careRecipients").doc(scope.recipientId).set(stored.recipient);
+  return { firestore, input: { scope, snapshot: stored, targetDate: "2026-08-16", answerer: "caregiver" as const } };
+}
+
+test("같은 입력의 동시 최초 요청은 Agent와 성공 결과를 한 번만 생성한다", async () => {
+  const { firestore, input } = await generationFixture();
+  let calls = 0;
+  const runAgent: typeof runCareAgent = async (request) => { calls++; return runCareAgent({ ...request, apiKey: "" }); };
+  const results = await Promise.all(Array.from({ length: 5 }, () => getOrCreateQuestionSet(input, { runAgent })));
+  assert.equal(calls, 1);
+  assert.equal(new Set(results.map((item) => item.question_set_id)).size, 1);
+  for (const collection of ["questionSets", "careAnalyses", "agentRuns"]) {
+    assert.equal((await firestore.collection(`careRecipients/${input.scope.recipientId}/${collection}`).get()).docs.length, 1);
+  }
+});
+
+test("외부 호출 성공 후 게시 저장 실패는 checkpoint 결과를 재사용한다", async () => {
+  const { firestore, input } = await generationFixture();
+  let calls = 0;
+  const runAgent: typeof runCareAgent = async (request) => { calls++; return runCareAgent({ ...request, apiKey: "" }); };
+  firestore.beforeCommit = (writes) => {
+    if (writes.some((write) => write.path.includes("/questionSets/"))) {
+      firestore.beforeCommit = undefined;
+      throw new Error("INJECTED_PUBLICATION_FAILURE");
+    }
+  };
+  await assert.rejects(getOrCreateQuestionSet(input, { runAgent }), /INJECTED_PUBLICATION_FAILURE/);
+  const result = await getOrCreateQuestionSet(input, { runAgent });
+  assert.equal(calls, 1);
+  assert.ok(result.question_set_id);
+  const attempts = await firestore.collection(`careRecipients/${input.scope.recipientId}/questionGenerationAttempts`).get();
+  assert.deepEqual(attempts.docs.map((doc) => (doc.data() as { status: string }).status).sort(), ["completed", "failed"]);
+});
+
+test("만료된 생성 lease를 회수하고 중단 attempt를 추적한다", async () => {
+  const { firestore, input } = await generationFixture();
+  const id = questionSetIdFor({ recipientId: input.scope.recipientId, targetDate: input.targetDate, answerer: input.answerer, inputRevision: careInputRevision(input.snapshot, input.targetDate) });
+  await firestore.collection(`careRecipients/${input.scope.recipientId}/questionGenerations`).doc(id).set({
+    status: "running", owner: "stopped-worker", attempts: 1, leaseUntil: "2020-01-01T00:00:00Z", sourceDocumentIds: [],
+  });
+  let calls = 0;
+  await getOrCreateQuestionSet(input, { runAgent: async (request) => { calls++; return runCareAgent({ ...request, apiKey: "" }); } });
+  const attempts = await firestore.collection(`careRecipients/${input.scope.recipientId}/questionGenerationAttempts`).get();
+  assert.equal(calls, 1);
+  assert.deepEqual(attempts.docs.map((doc) => (doc.data() as { status: string }).status).sort(), ["completed", "interrupted"]);
 });

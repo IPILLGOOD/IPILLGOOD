@@ -1,4 +1,14 @@
 {
-  "indexes": [],
+  "indexes": [
+    { "collectionGroup": "medicationReminderSchedules", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "nextDueAt", "order": "ASCENDING" }, { "fieldPath": "id", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "medicationReminderSync", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "nextAttemptAt", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "pushSubscriptions", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "active", "order": "ASCENDING" }, { "fieldPath": "id", "order": "ASCENDING" }
+    ] }
+  ],
   "fieldOverrides": []
 }

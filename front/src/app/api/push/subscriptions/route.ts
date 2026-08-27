@@ -2,6 +2,7 @@ import {
   deactivatePushSubscription,
   getCareSnapshot,
   getNotificationScheduleStatus,
+  getPushDeviceStatus,
   registerPushSubscription,
 } from "@care-atlas/backend";
 import { NextResponse } from "next/server";
@@ -28,6 +29,23 @@ const subscriptionSchema = z.object({
 });
 
 const deleteSchema = z.object({ deviceId: z.string().min(16).max(128) });
+
+export async function GET(request: Request) {
+  const session = await getSession();
+  if (!session) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const scope = careScopeFor(session);
+  const parsed = deleteSchema.safeParse({ deviceId: new URL(request.url).searchParams.get("deviceId") });
+  if (!parsed.success) return Response.json({ error: "invalid_device" }, { status: 400 });
+  try {
+    const [subscribed, status] = await Promise.all([
+      getPushDeviceStatus({ userId: session.id, recipientId: scope.recipientId, deviceId: parsed.data.deviceId }),
+      getNotificationScheduleStatus(scope.recipientId),
+    ]);
+    return Response.json({ subscribed, status }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return Response.json({ error: "subscription_unavailable" }, { status: 503 });
+  }
+}
 
 export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) {
