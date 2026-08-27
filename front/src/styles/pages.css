@@ -4,6 +4,52 @@
   gap: var(--space-5);
 }
 
+.getting-started__steps {
+  display: grid;
+  gap: var(--space-6);
+  margin: var(--space-6) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.getting-started__steps li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.getting-started__number {
+  display: grid;
+  place-items: center;
+  min-height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
+  font-weight: 700;
+}
+
+.getting-started__steps h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 1rem;
+}
+
+.getting-started__steps p {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.getting-started__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.getting-started__actions .button {
+  white-space: normal;
+}
+
 .today-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(20rem, 23rem);
