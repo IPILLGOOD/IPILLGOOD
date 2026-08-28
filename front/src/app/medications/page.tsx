@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import {
   getCareSnapshot,
   searchPharmacogenomicInfo,
+  withCareAccountProcessing,
   type PharmacogenomicLookupResult,
 } from "@care-atlas/backend";
 import { activeMedications, daysSince, formatDate } from "@/lib/presentation";
@@ -38,7 +39,7 @@ export default async function MedicationsPage({
     getCareSnapshot(scope),
     query
       ? rateLimit?.allowed
-        ? searchPharmacogenomicInfo(query)
+        ? withCareAccountProcessing(scope.recipientId, () => searchPharmacogenomicInfo(query))
         : Promise.resolve(limitedResult)
       : Promise.resolve(null),
   ]);

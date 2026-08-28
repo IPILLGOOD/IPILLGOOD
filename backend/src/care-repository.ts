@@ -1,4 +1,5 @@
 import demoSeed from "./data/demo-seed.json" with { type: "json" };
+import { assertCareAccountActive } from "./account-lifecycle.ts";
 import type {
   CareRecipient,
   CareSnapshot,
@@ -50,6 +51,7 @@ async function assertActiveDemoScope(
   scope: CareDataScope,
   firestore: FirestoreLike,
 ) {
+  await assertCareAccountActive(firestore, scope.recipientId);
   if (
     scope.useDemoData &&
     !(await isEphemeralDemoSessionActive(scope.recipientId, { firestore }))
@@ -175,6 +177,7 @@ async function canonicalReadModel(
 }
 
 async function assertTransactionScope(tx: TransactionLike, firestore: FirestoreLike, scope: CareDataScope) {
+  await assertCareAccountActive(firestore, scope.recipientId, tx);
   if (!scope.useDemoData) return;
   const doc = await tx.get(firestore.collection("demoSessions").doc(scope.recipientId));
   const session = doc.data() as { status?: string; expiresAt?: string } | undefined;

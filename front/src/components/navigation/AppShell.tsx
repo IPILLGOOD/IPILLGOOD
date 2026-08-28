@@ -76,7 +76,7 @@ export function AppShell({
   user: SessionUser | null;
 }) {
   const pathname = usePathname();
-  const isPublicPage = pathname === "/" || pathname === "/login";
+  const isPublicPage = pathname === "/" || pathname === "/login" || pathname === "/account/recovery";
 
   if (isPublicPage) return children;
 
@@ -110,11 +110,14 @@ export function AppShell({
         <div className="app-column">
           <header className="mobile-header">
             <Brand />
+            <div className="mobile-account-actions">
+            <Link className="mobile-logout" href="/profile" aria-label="프로필 및 계정 관리"><UserRound size={19} aria-hidden="true" /></Link>
             <form action="/api/auth/logout" method="post">
               <button className="mobile-logout" type="submit" aria-label="로그아웃">
                 <LogOut size={19} aria-hidden="true" />
               </button>
             </form>
+            </div>
           </header>
           <main id="main-content" className="main-content" tabIndex={-1}>
             <PushKeyNotice />

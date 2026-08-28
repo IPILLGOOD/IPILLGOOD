@@ -33,7 +33,8 @@ export function middleware(request: NextRequest) {
   });
   const responseHeaderName = cspResponseHeaderName(process.env.CSP_MODE);
 
-  if (isProtectedRoute(request.nextUrl.pathname) && !request.cookies.has(SESSION_COOKIE_NAME)) {
+  const deletionRecovery = request.nextUrl.pathname === "/profile" && request.cookies.has("ipillgood_account_deletion");
+  if (isProtectedRoute(request.nextUrl.pathname) && !request.cookies.has(SESSION_COOKIE_NAME) && !deletionRecovery) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", request.nextUrl.pathname);
     const response = NextResponse.redirect(loginUrl);

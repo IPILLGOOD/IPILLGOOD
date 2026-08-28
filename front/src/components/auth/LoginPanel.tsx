@@ -4,7 +4,7 @@ import Link from "next/link";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { GoogleLogo } from "./GoogleLogo";
 
-export function LoginPanel({ errorMessage }: { errorMessage?: string }) {
+export function LoginPanel({ errorMessage, successMessage }: { errorMessage?: string; successMessage?: string }) {
   return (
     <main className="login-page" id="main-content">
       <div className="login-page__brand-column">
@@ -31,6 +31,7 @@ export function LoginPanel({ errorMessage }: { errorMessage?: string }) {
           </div>
 
           {errorMessage ? <p className="login-error" role="alert">{errorMessage}</p> : null}
+          {successMessage ? <p className="account-deletion-notice" role="status">{successMessage}</p> : null}
 
           <div className="login-choice login-choice--google">
             <div>

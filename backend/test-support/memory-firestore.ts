@@ -23,6 +23,12 @@ class MemoryDocument implements DocumentReferenceLike {
   constructor(db: MemoryFirestore, path: string) { this.db = db; this.path = path; }
   get id() { return this.path.split("/").at(-1)!; }
   collection(name: string) { return new MemoryCollection(this.db, `${this.path}/${name}`); }
+  async listCollections() {
+    await this.db.read(this.path);
+    const prefix = `${this.path}/`;
+    const ids = new Set([...this.db.store.keys()].filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length).split("/")[0]!));
+    return [...ids].map((id) => new MemoryCollection(this.db, `${this.path}/${id}`));
+  }
   snapshot(store = this.db.store): DocumentSnapshotLike {
     const value = clone(store.get(this.path));
     return { exists: value !== undefined, id: this.id, ref: this, data: () => clone(value) };
@@ -78,6 +84,12 @@ class MemoryQuery implements QueryLike {
 
 class MemoryCollection extends MemoryQuery implements CollectionReferenceLike {
   doc(id: string) { return new MemoryDocument(this.db, `${this.path}/${id}`); }
+  async listDocuments() {
+    await this.db.read(this.path);
+    const prefix = `${this.path}/`;
+    const ids = new Set([...this.db.store.keys()].filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length).split("/")[0]!));
+    return [...ids].map((id) => this.doc(id));
+  }
 }
 
 class MemoryWriter implements WriteBatchLike, TransactionLike {

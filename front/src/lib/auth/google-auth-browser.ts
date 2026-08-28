@@ -106,7 +106,8 @@ export async function createGoogleServerSession(
     const result = (await response.json().catch(() => null)) as { error?: string } | null;
     throw googleAuthServerError(result?.error ?? "google_login_failed");
   }
+  const result = await response.json() as { redirectTo?: string };
   await authModule.signOut(auth).catch(() => undefined);
   clearGoogleRedirectState();
-  window.location.replace("/today");
+  window.location.replace(result.redirectTo === "/account/recovery" ? "/account/recovery" : "/today");
 }

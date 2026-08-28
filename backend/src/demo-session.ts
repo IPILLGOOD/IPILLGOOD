@@ -1,6 +1,7 @@
 import demoSeed from "./data/demo-seed.json" with { type: "json" };
 
 import { getAdminFirestore } from "./firebase-admin.ts";
+import { deleteRecipientHealthData } from "./health-data-deletion.ts";
 import type {
   DocumentReferenceLike,
   FirestoreLike,
@@ -12,28 +13,6 @@ const READ_MODELS_COLLECTION = "careReadModels";
 const RECIPIENTS_COLLECTION = "careRecipients";
 const DEMO_SESSION_ID_PATTERN =
   /^demo-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-
-const RECIPIENT_SUBCOLLECTIONS = [
-  "medicationPlans",
-  "doseEvents",
-  "symptomEvents",
-  "clinicalDocuments",
-  "clinicianQuestions",
-  "dailyCheckIns",
-  "questionResponses",
-  "questionSets",
-  "careAnalyses",
-  "agentRuns",
-  "questionGenerations",
-  "questionGenerationAttempts",
-] as const;
-
-const RECIPIENT_SCOPED_COLLECTIONS = [
-  "pushSubscriptions",
-  "medicationReminderSchedules",
-  "pushDeliveries",
-  "medicationReminderSync",
-] as const;
 
 export const DEMO_SESSION_DURATION_SECONDS = 2 * 60 * 60;
 export const DEMO_SESSION_CLEANUP_GRACE_SECONDS = 5 * 60;
@@ -178,25 +157,6 @@ async function deleteReferencesInChunks(
   }
 }
 
-async function scopedReferences(firestore: FirestoreLike, recipientId: string) {
-  const recipientRef = firestore.collection(RECIPIENTS_COLLECTION).doc(recipientId);
-  const [nestedSnapshots, topLevelSnapshots] = await Promise.all([
-    Promise.all(
-      RECIPIENT_SUBCOLLECTIONS.map((collection) =>
-        recipientRef.collection(collection).get(),
-      ),
-    ),
-    Promise.all(
-      RECIPIENT_SCOPED_COLLECTIONS.map((collection) =>
-        firestore.collection(collection).where("recipientId", "==", recipientId).get(),
-      ),
-    ),
-  ]);
-  return [...nestedSnapshots, ...topLevelSnapshots].flatMap((snapshot) =>
-    snapshot.docs.map((document) => document.ref),
-  );
-}
-
 export async function deleteEphemeralDemoSession(input: {
   id: string;
   now?: Date;
@@ -234,17 +194,12 @@ export async function deleteEphemeralDemoSession(input: {
     );
   }
 
-  const references = await scopedReferences(firestore, input.id);
-  await deleteReferencesInChunks(firestore, references);
-  const rootReferences = [
-    firestore.collection(READ_MODELS_COLLECTION).doc(input.id),
-    firestore.collection(RECIPIENTS_COLLECTION).doc(input.id),
-    ...(finalize ? [sessionRef] : []),
-  ];
+  const deleted = await deleteRecipientHealthData({ firestore, recipientId: input.id, includeProfile: true });
+  const rootReferences = finalize ? [sessionRef] : [];
   await deleteReferencesInChunks(firestore, rootReferences);
   return {
     id: input.id,
-    deletedDocuments: references.length + rootReferences.length,
+    deletedDocuments: deleted.deletedDocuments + rootReferences.length,
     finalized: finalize,
   };
 }

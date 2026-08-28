@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { assertCareAccountActive, isCareAccountActive } from "./account-lifecycle.ts";
+import { withCareAccountProcessing } from "./account-processing.ts";
 
 import { getAdminFirestore } from "./firebase-admin.ts";
 import type { FirestoreLike } from "./firestore-rest.ts";
@@ -128,6 +130,7 @@ export async function registerPushSubscription(input: {
   const id = stableId(input.userId, input.deviceId);
   const ref = subscriptionRef(firestore, id);
   const record = await firestore.runTransaction(async (tx) => {
+    await assertCareAccountActive(firestore, input.recipientId, tx);
     const [existing, sameDevice] = await Promise.all([
       tx.get(ref), tx.get(firestore.collection(SUBSCRIPTIONS_COLLECTION).where("deviceId", "==", input.deviceId)),
     ]);
@@ -179,10 +182,15 @@ export async function deactivatePushSubscription(input: {
   const now = input.now ?? new Date();
   const id = stableId(input.userId, input.deviceId);
   const ref = subscriptionRef(firestore, id);
-  const existing = await ref.get();
-  if (!existing.exists) return false;
-  const record = existing.data() as PushSubscriptionRecord;
-  await ref.set({ active: false, updatedAt: now.toISOString() }, { merge: true });
+  const record = await firestore.runTransaction(async (tx) => {
+    const existing = await tx.get(ref);
+    if (!existing.exists) return null;
+    const current = existing.data() as PushSubscriptionRecord;
+    if (!await isCareAccountActive(firestore, current.recipientId, tx)) return null;
+    tx.set(ref, { active: false, updatedAt: now.toISOString() }, { merge: true });
+    return current;
+  });
+  if (!record) return false;
   await deactivateSchedulesIfUnused(firestore, record.recipientId, now);
   return true;
 }
@@ -212,6 +220,7 @@ async function updateSubscriptionAfterDelivery(
   now: Date,
 ) {
   await firestore.runTransaction(async (tx) => {
+    if (!await isCareAccountActive(firestore, subscription.recipientId, tx)) return;
     const ref = subscriptionRef(firestore, subscription.id);
     const current = (await tx.get(ref)).data() as PushSubscriptionRecord | undefined;
     // A deleted or replaced subscription must not be recreated or disabled by an old send result.
@@ -250,7 +259,9 @@ export async function sendTestPushToDevice(input: {
   const now = input.now ?? new Date();
   const deliveryId = stableId("test", input.userId, input.deviceId, now.toISOString());
   const deliveryRef = firestore.collection(DELIVERIES_COLLECTION).doc(deliveryId);
-  await deliveryRef.set({
+  await firestore.runTransaction(async (tx) => {
+    await assertCareAccountActive(firestore, input.recipientId, tx);
+    tx.set(deliveryRef, {
     id: deliveryId,
     recipientId: input.recipientId,
     subscriptionId: subscription.id,
@@ -258,8 +269,10 @@ export async function sendTestPushToDevice(input: {
     status: "sending",
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
+    });
   });
-  const result = await sendWebPush(
+  await assertCareAccountActive(firestore, input.recipientId);
+  const result = await withCareAccountProcessing(input.recipientId, () => sendWebPush(
     subscription.subscription,
     {
       title: "IPILLGOOD 알림 확인",
@@ -281,16 +294,19 @@ export async function sendTestPushToDevice(input: {
       urgency: "normal",
       topic: "ipillgood-test",
     },
-  );
+  ), firestore);
   await updateSubscriptionAfterDelivery(firestore, subscription, result, now);
-  await deliveryRef.set(
+  await firestore.runTransaction(async (tx) => {
+    if (!await isCareAccountActive(firestore, input.recipientId, tx) || !(await tx.get(deliveryRef)).exists) return;
+    tx.set(deliveryRef,
     {
       status: result.ok ? "accepted" : result.expired ? "expired" : "failed",
       pushServiceStatus: result.status,
       updatedAt: now.toISOString(),
     },
     { merge: true },
-  );
+    );
+  });
   return { result, deliveryId };
 }
 
@@ -303,18 +319,14 @@ export async function recordPushDeliveryReceipt(input: {
 }) {
   const firestore = input.firestore ?? (await getAdminFirestore());
   const ref = firestore.collection(DELIVERIES_COLLECTION).doc(input.deliveryId);
-  const snapshot = await ref.get();
-  if (!snapshot.exists) return false;
-  const delivery = snapshot.data() as { recipientId?: string };
-  if (delivery.recipientId !== input.recipientId) return false;
-  const nowIso = (input.now ?? new Date()).toISOString();
-  await ref.set(
-    input.receipt === "displayed"
-      ? { displayedAt: nowIso, updatedAt: nowIso }
-      : { clickedAt: nowIso, updatedAt: nowIso },
-    { merge: true },
-  );
-  return true;
+  return firestore.runTransaction(async (tx) => {
+    if (!await isCareAccountActive(firestore, input.recipientId, tx)) return false;
+    const snapshot = await tx.get(ref);
+    if (!snapshot.exists || (snapshot.data() as { recipientId?: string }).recipientId !== input.recipientId) return false;
+    const nowIso = (input.now ?? new Date()).toISOString();
+    tx.set(ref, input.receipt === "displayed" ? { displayedAt: nowIso, updatedAt: nowIso } : { clickedAt: nowIso, updatedAt: nowIso }, { merge: true });
+    return true;
+  });
 }
 
 export async function getPushDeliveryReceipt(
@@ -351,6 +363,7 @@ async function claimDelivery(firestore: FirestoreLike, schedule: MedicationRemin
   const ref = firestore.collection(DELIVERIES_COLLECTION).doc(id);
   const owner = randomUUID();
   return firestore.runTransaction(async (tx) => {
+    if (!await isCareAccountActive(firestore, schedule.recipientId, tx)) return null;
     const [stored, delivery, plan] = await Promise.all([
       tx.get(scheduleRef(firestore, schedule.id)), tx.get(ref),
       tx.get(firestore.collection("careRecipients").doc(schedule.recipientId).collection("medicationPlans").doc(schedule.medicationPlanId)),
@@ -434,6 +447,7 @@ export async function dispatchDueMedicationReminders(input: {
         if (prior?.status === "accepted" || prior?.status === "terminal") continue;
         // Recheck authorization and renew ownership immediately before each external send.
         const allowed = await firestore.runTransaction(async (tx) => {
+          if (!await isCareAccountActive(firestore, schedule.recipientId, tx)) return false;
           const [deliveryDoc, subscriptionDoc, scheduleDoc, planDoc] = await Promise.all([
             tx.get(claim.ref), tx.get(subscriptionRef(firestore, subscription.id)), tx.get(scheduleRef(firestore, schedule.id)),
             tx.get(firestore.collection("careRecipients").doc(schedule.recipientId).collection("medicationPlans").doc(schedule.medicationPlanId)),
@@ -453,10 +467,10 @@ export async function dispatchDueMedicationReminders(input: {
           result = { ok: false, status: 0, expired: false, responseBody: "" };
         } else {
           try {
-            result = await sender(allowed.subscription, reminderPayload(schedule, claim.id, now), {
+            result = await withCareAccountProcessing(schedule.recipientId, () => sender(allowed.subscription, reminderPayload(schedule, claim.id, now), {
               vapid: input.vapid, ttlSeconds: Math.max(1, Math.ceil((Date.parse(schedule.nextDueAt) + 30 * 60 * 1000 - sendNow.getTime()) / 1000)),
               urgency: "high", topic: stableId(schedule.id).slice(0, 32),
-            });
+            }), firestore);
           } catch {
             result = { ok: false, status: 0, expired: false, responseBody: "" };
           }
@@ -467,6 +481,7 @@ export async function dispatchDueMedicationReminders(input: {
           ...(result.retryAfterMs !== undefined ? { retryAfterMs: result.retryAfterMs } : {}),
         };
         await firestore.runTransaction(async (tx) => {
+          if (!await isCareAccountActive(firestore, schedule.recipientId, tx)) return;
           const delivery = (await tx.get(claim.ref)).data() as Delivery | undefined;
           if (delivery?.owner !== claim.owner) throw new Error("DELIVERY_LEASE_LOST");
           tx.set(claim.ref, { results: { [subscription.id]: state }, updatedAt: now.toISOString() }, { merge: true });
@@ -478,6 +493,7 @@ export async function dispatchDueMedicationReminders(input: {
         }
       }
       await firestore.runTransaction(async (tx) => {
+        if (!await isCareAccountActive(firestore, schedule.recipientId, tx)) return;
         const [deliveryDoc, scheduleDoc] = await Promise.all([tx.get(claim.ref), tx.get(scheduleRef(firestore, schedule.id))]);
         const delivery = deliveryDoc.data() as Delivery | undefined;
         if (delivery?.owner !== claim.owner) return;

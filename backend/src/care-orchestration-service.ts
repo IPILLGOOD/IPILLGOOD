@@ -1,4 +1,6 @@
 import { dateKeyInSeoul } from "./dates.ts";
+import { assertCareAccountActive, isCareAccountActive } from "./account-lifecycle.ts";
+import { withCareAccountProcessing } from "./account-processing.ts";
 import { randomUUID } from "node:crypto";
 
 import { careInputRevision, runCareAgent, type CareAgentResult } from "./ai/care-agent.ts";
@@ -70,6 +72,7 @@ export async function getOrCreateQuestionSet(input: {
   // No external API calls inside transactions: a retried transaction must not repeat them.
   for (;;) {
     const claim = await firestore.runTransaction(async (tx) => {
+      await assertCareAccountActive(firestore, input.scope.recipientId, tx);
       const [question, generation, account, demo] = await Promise.all([
         tx.get(questionRef), tx.get(generationRef), tx.get(recipient),
         input.scope.useDemoData ? tx.get(firestore.collection("demoSessions").doc(input.scope.recipientId)) : null,
@@ -108,10 +111,12 @@ export async function getOrCreateQuestionSet(input: {
   const attemptRef = recipient.collection("questionGenerationAttempts").doc(`${id}-${attempt}`);
   try {
     if (!saved) {
+      await assertCareAccountActive(firestore, input.scope.recipientId);
       let result: CareAgentResult;
       try {
-        result = await (dependencies.runAgent ?? runCareAgent)({ snapshot, targetDate, requestId: id });
+        result = await withCareAccountProcessing(input.scope.recipientId, () => (dependencies.runAgent ?? runCareAgent)({ snapshot, targetDate, requestId: id }), firestore);
       } catch {
+        await assertCareAccountActive(firestore, input.scope.recipientId);
         result = await runCareAgent({ snapshot, targetDate, apiKey: "", requestId: id });
         result.run.status = "failed";
         result.run.errorCode = "CARE_AGENT_FAILED";
@@ -123,6 +128,7 @@ export async function getOrCreateQuestionSet(input: {
       for (let checkpointAttempt = 0; ; checkpointAttempt++) {
         try {
           await firestore.runTransaction(async (tx) => {
+            await assertCareAccountActive(firestore, input.scope.recipientId, tx);
             const generation = await tx.get(generationRef);
             if ((generation.data() as Generation | undefined)?.owner !== owner) throw new Error("질문 생성 권한이 만료되었습니다.");
             tx.set(generationRef, { status: "result_ready", result: saved }, { merge: true });
@@ -136,6 +142,7 @@ export async function getOrCreateQuestionSet(input: {
     }
     const completed = saved;
     return await firestore.runTransaction(async (tx) => {
+      await assertCareAccountActive(firestore, input.scope.recipientId, tx);
       const [generation, question, account, demo, ...sources] = await Promise.all([
         tx.get(generationRef), tx.get(questionRef), tx.get(recipient),
         input.scope.useDemoData ? tx.get(firestore.collection("demoSessions").doc(input.scope.recipientId)) : null,
@@ -158,6 +165,7 @@ export async function getOrCreateQuestionSet(input: {
   } catch (error) {
     // Preserve a durable result but relinquish ownership so the next request can finish publication.
     await firestore.runTransaction(async (tx) => {
+      if (!await isCareAccountActive(firestore, input.scope.recipientId, tx)) return;
       const generation = await tx.get(generationRef);
       if ((generation.data() as Generation | undefined)?.owner !== owner) return;
       tx.set(generationRef, { status: "failed", leaseUntil: clock().toISOString(), errorCode: "GENERATION_NOT_PUBLISHED" }, { merge: true });

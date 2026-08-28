@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isCareAccountActive } from "./account-lifecycle.ts";
 import { getAdminFirestore } from "./firebase-admin.ts";
 import type { FirestoreLike } from "./firestore-rest.ts";
 import { buildMedicationReminderSchedules, type MedicationReminderSchedule } from "./medication-schedule.ts";
@@ -31,6 +32,7 @@ export async function syncMedicationReminderSchedules(input: {
   const recipient = firestore.collection("careRecipients").doc(input.recipientId);
   const jobRef = firestore.collection(REMINDER_SYNC_COLLECTION).doc(input.recipientId);
   return firestore.runTransaction(async (tx) => {
+    if (!await isCareAccountActive(firestore, input.recipientId, tx)) return [];
     const [plans, model, subscriptions, schedules, job, demo] = await Promise.all([
       tx.get(recipient.collection("medicationPlans")), tx.get(firestore.collection("careReadModels").doc(input.recipientId)),
       tx.get(firestore.collection("pushSubscriptions").where("recipientId", "==", input.recipientId)),
@@ -120,6 +122,7 @@ export async function reconcileMedicationReminders(input: { firestore?: Firestor
     } catch {
       failed++;
       await firestore.runTransaction(async (tx) => {
+        if (!await isCareAccountActive(firestore, recipientId, tx)) return;
         const latest = (await tx.get(ref)).data() as typeof job;
         if (latest?.desiredRevision !== job?.desiredRevision || latest?.status !== job?.status) return;
         const attempts = (latest?.attempts ?? 0) + 1;
@@ -140,5 +143,8 @@ export async function reconcileMedicationReminders(input: { firestore?: Firestor
 export async function retryMedicationReminderSync(recipientId: string, firestore?: FirestoreLike) {
   firestore ??= await getAdminFirestore();
   const now = new Date().toISOString();
-  await firestore.collection(REMINDER_SYNC_COLLECTION).doc(recipientId).set({ recipientId, status: "pending", attempts: 0, queuedAt: now, nextAttemptAt: now, errorCode: null }, { merge: true });
+  await firestore.runTransaction(async (tx) => {
+    if (!await isCareAccountActive(firestore, recipientId, tx)) return;
+    tx.set(firestore.collection(REMINDER_SYNC_COLLECTION).doc(recipientId), { recipientId, status: "pending", attempts: 0, queuedAt: now, nextAttemptAt: now, errorCode: null }, { merge: true });
+  });
 }

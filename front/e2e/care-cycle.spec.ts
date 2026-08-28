@@ -93,13 +93,14 @@ test("synthetic account: isolated normal session, read-only Push status, forged 
   try {
     expect((await request.get("/api/push/subscriptions?deviceId=test-device-000001")).status()).toBe(401);
     expect((await request.post("/api/push/dispatch")).status()).toBe(401);
-    expect((await request.post("/api/auth/google", { data: { idToken: "invalid".repeat(30) } })).status()).toBe(401);
+    const authHeaders = { origin: process.env.IPILLGOOD_TEST_BASE_URL! };
+    expect((await request.post("/api/auth/google", { headers: authHeaders, data: { idToken: "invalid".repeat(30) } })).status()).toBe(401);
     const authUrl = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts`;
     const signup = await request.post(`${authUrl}:signUp?key=synthetic`, { data: { email: `${userId}@example.test`, password: randomUUID(), returnSecureToken: true } });
     expect(signup.ok()).toBe(true);
     emulatorToken = (await signup.json()).idToken;
     // Even with an Auth emulator running, the production Google route must reject its unsigned token.
-    expect((await request.post("/api/auth/google", { data: { idToken: emulatorToken } })).status()).toBe(401);
+    expect((await request.post("/api/auth/google", { headers: authHeaders, data: { idToken: emulatorToken } })).status()).toBe(401);
     expect((await request.post("/api/auth/demo", { headers: { origin: "https://untrusted.invalid" } })).status()).toBe(403);
     await context.addCookies([{ name: "care_atlas_session", value: token, url: process.env.IPILLGOOD_TEST_BASE_URL!, httpOnly: true, sameSite: "Lax" }]);
     await page.goto("/today");
