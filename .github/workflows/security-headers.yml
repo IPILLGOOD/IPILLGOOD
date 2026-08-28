@@ -29,3 +29,7 @@ jobs:
         run: |
           npm run start --workspace @care-atlas/front -- --hostname 127.0.0.1 > /tmp/ipillgood-next.log 2>&1 &
           npm run qa:security-headers --workspace @care-atlas/front
+      - name: Verify Cloudflare runtime responses
+        run: |
+          npx wrangler dev --config front/wrangler.jsonc --local --ip 127.0.0.1 --port 3105 --persist-to /tmp/ipillgood-worker-state > /tmp/ipillgood-worker.log 2>&1 &
+          IPILLGOOD_BASE_URL=http://127.0.0.1:3105 npm run qa:security-headers --workspace @care-atlas/front

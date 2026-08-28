@@ -9,7 +9,7 @@ const commonHeaderNames = [
 ];
 
 async function waitForServer() {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
       const response = await fetch(`${baseUrl}/login`, { redirect: "manual" });
       if (response.status < 500) return;
@@ -30,11 +30,12 @@ function assertCommonHeaders(response, path) {
 
 await waitForServer();
 
-for (const path of ["/", "/login", "/today"]) {
+for (const [path, status] of [["/", 200], ["/login", 200], ["/today", 307], ["/404", 404]]) {
   const response = await fetch(`${baseUrl}${path}`, {
     redirect: "manual",
     headers: path === "/today" ? { cookie: "care_atlas_session=invalid" } : undefined,
   });
+  assert.equal(response.status, status, `${path}: unexpected response status`);
   assertCommonHeaders(response, path);
   const policy = response.headers.get("content-security-policy");
   assert.ok(policy, `${path}: Content-Security-Policy 누락`);
@@ -44,7 +45,16 @@ for (const path of ["/", "/login", "/today"]) {
     policy,
     /script-src[^;]+'unsafe-inline'|style-src [^;]*'unsafe-inline'|api\.openai\.com|apis\.data\.go\.kr/,
   );
+  if (path === "/404") {
+    assert.equal(response.headers.get("location"), null, "/404 must not redirect to itself");
+    assert.match(await response.text(), /페이지를 찾을 수 없어요/);
+  }
 }
+
+const missingResponse = await fetch(`${baseUrl}/missing-response-qa/nested`, { redirect: "manual" });
+assert.equal(missingResponse.status, 307);
+assert.equal(missingResponse.headers.get("location"), "/404");
+assertCommonHeaders(missingResponse, "missing page redirect");
 
 const apiResponse = await fetch(`${baseUrl}/api/push/config`, { redirect: "manual" });
 assertCommonHeaders(apiResponse, "/api/push/config");
@@ -55,4 +65,4 @@ assertCommonHeaders(serviceWorkerResponse, "/sw.js");
 assert.match(serviceWorkerResponse.headers.get("content-type") ?? "", /javascript/);
 assert.match(serviceWorkerResponse.headers.get("content-security-policy") ?? "", /connect-src 'self'/);
 
-console.log("Security header QA passed for /, /login, /today, API, and /sw.js");
+console.log("Response QA passed for /, /login, /today, canonical 404, missing-page redirect, API, and /sw.js");
