@@ -6,7 +6,7 @@ import {
 } from "@/lib/security-headers";
 
 const SESSION_COOKIE_NAME = "care_atlas_session";
-const protectedRoutePrefixes = [
+const protectedPagePaths = [
   "/today",
   "/dashboard",
   "/medications",
@@ -17,9 +17,9 @@ const protectedRoutePrefixes = [
 ];
 
 function isProtectedRoute(pathname: string) {
-  return protectedRoutePrefixes.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+  // Authenticate real pages (including medication details). Unmatched children
+  // such as /documents/typo should reach the canonical 404, not the login page.
+  return protectedPagePaths.includes(pathname) || /^\/medications\/[^/]+$/.test(pathname);
 }
 
 // OpenNext Cloudflare currently bundles the middleware convention for the Edge

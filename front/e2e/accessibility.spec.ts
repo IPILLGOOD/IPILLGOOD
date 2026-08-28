@@ -51,6 +51,24 @@ async function audit(page: Page, name: string, info: TestInfo) {
   expect(results.violations.map((item) => ({ id: item.id, impact: item.impact, targets: item.nodes.map((node) => node.target) }))).toEqual([]);
 }
 
+test("reload and restored landmark focus do not frame the page, while links keep their focus rings", async ({ page }) => {
+  await page.goto("/404");
+  const main = page.getByRole("main");
+  const home = page.getByRole("link", { name: "홈으로 돌아가기", exact: true });
+
+  for (const reload of [false, true]) {
+    if (reload) await page.reload();
+    await expect(home).toBeVisible();
+    // Browser focus restoration and skip links can focus this non-interactive
+    // landmark. Keep that capability, without drawing a page-sized focus ring.
+    await page.keyboard.press("Tab");
+    await main.focus();
+    await expect(main).toBeFocused();
+    await expect(main).toHaveCSS("outline-style", "none");
+    await tabTo(page, home);
+  }
+});
+
 test("core flows: accessible names, targets, keyboard, error and success states", async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/login?error=google_login_failed");
@@ -62,6 +80,10 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/today$/);
   await audit(page, "desktop-today", info);
+  await tabTo(page, page.getByRole("link", { name: "본문으로 바로가기" }));
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("main")).toBeFocused();
+  await expect(page.getByRole("main")).toHaveCSS("outline-style", "none");
   await typeWithKeyboard(page, page.getByLabel("보호자 메모"), "접근성 키보드 검증");
   const questions = page.locator('select[name^="question_"]');
   for (let index = 0; index < await questions.count(); index++) {

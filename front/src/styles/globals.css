@@ -100,6 +100,12 @@ h3 {
   outline-offset: 3px;
 }
 
+/* Main landmarks receive focus for navigation/restoration, but are not controls.
+   Keep them focusable for skip links without drawing a frame around the page. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
+
 ::selection {
   background: var(--color-primary-100);
 }

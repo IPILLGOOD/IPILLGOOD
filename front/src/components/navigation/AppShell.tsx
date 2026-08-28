@@ -76,7 +76,7 @@ export function AppShell({
   user: SessionUser | null;
 }) {
   const pathname = usePathname();
-  const isPublicPage = pathname === "/" || pathname === "/login" || pathname === "/account/recovery";
+  const isPublicPage = pathname === "/" || pathname === "/login" || pathname === "/account/recovery" || pathname === "/404";
 
   if (isPublicPage) return children;
 
