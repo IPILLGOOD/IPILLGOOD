@@ -151,7 +151,8 @@ export function PwaInstallPrompt() {
     }
   };
 
-  if (!isVisible) return null;
+  // Account verification/deletion must not compete with a second dialog.
+  if (!isVisible || pathname === "/profile" || pathname === "/account/recovery") return null;
 
   return (
     <aside

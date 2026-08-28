@@ -29,6 +29,7 @@ export interface DocumentReferenceLike {
   id: string;
   path: string;
   collection(name: string): CollectionReferenceLike;
+  listCollections(): Promise<CollectionReferenceLike[]>;
   get(): Promise<DocumentSnapshotLike>;
   set(data: unknown, options?: SetOptionsLike): Promise<void>;
 }
@@ -36,6 +37,7 @@ export interface DocumentReferenceLike {
 export interface CollectionReferenceLike {
   path: string;
   doc(id: string): DocumentReferenceLike;
+  listDocuments(): Promise<DocumentReferenceLike[]>;
   where(fieldPath: string, operator: QueryOperator, value: unknown): QueryLike;
   orderBy(fieldPath: string, direction?: QueryDirection): QueryLike;
   limit(count: number): QueryLike;
@@ -188,6 +190,7 @@ export class FirestoreRestClient implements FirestoreLike {
   private readonly credentials: ServiceAccountCredentials;
   private readonly fetcher: typeof fetch;
   private readonly emulatorHost?: string;
+  private readonly oauthScope: string;
   private accessToken?: { value: string; expiresAt: number };
 
   constructor(
@@ -195,10 +198,12 @@ export class FirestoreRestClient implements FirestoreLike {
     projectId: string,
     fetcher: typeof fetch = fetch,
     emulatorHost?: string,
+    oauthScope = "https://www.googleapis.com/auth/datastore",
   ) {
     this.credentials = credentials;
     this.fetcher = fetcher;
     this.emulatorHost = emulatorHost;
+    this.oauthScope = oauthScope;
     if (emulatorHost && (!/^(127\.0\.0\.1|localhost):\d+$/.test(emulatorHost) || !projectId.startsWith("demo-"))) {
       throw new Error("Firestore emulator requires a loopback host and demo- project.");
     }
@@ -256,7 +261,7 @@ export class FirestoreRestClient implements FirestoreLike {
     const claims = textToBase64Url(
       JSON.stringify({
         iss: this.credentials.client_email,
-        scope: "https://www.googleapis.com/auth/datastore",
+        scope: this.oauthScope,
         aud: tokenUri,
         iat: now,
         exp: now + 3600,
@@ -295,7 +300,7 @@ export class FirestoreRestClient implements FirestoreLike {
     return this.accessToken.value;
   }
 
-  private async getAccessToken() {
+  async getAccessToken() {
     if (this.emulatorHost) return "owner";
     if (this.accessToken && this.accessToken.expiresAt > Date.now()) return this.accessToken.value;
     return this.createAccessToken();
@@ -392,6 +397,37 @@ export class FirestoreRestClient implements FirestoreLike {
       pageToken = result.nextPageToken ?? "";
     } while (pageToken);
     return { docs: documents } satisfies QuerySnapshotLike;
+  }
+
+  async listCollections(path: string) {
+    const collections: CollectionReferenceLike[] = [];
+    let pageToken = "";
+    do {
+      const response = await this.request(`${encodedResourcePath(path)}:listCollectionIds`, {
+        method: "POST", body: JSON.stringify({ pageSize: 300, ...(pageToken ? { pageToken } : {}) }),
+      });
+      const result = await response.json() as { collectionIds?: string[]; nextPageToken?: string };
+      collections.push(...(result.collectionIds ?? []).map((id) => this.collection(`${path}/${id}`)));
+      pageToken = result.nextPageToken ?? "";
+    } while (pageToken);
+    return collections;
+  }
+
+  async listDocuments(path: string) {
+    const references: DocumentReferenceLike[] = [];
+    let pageToken = "";
+    do {
+      // Missing parents can still own subcollections; normal queries omit them.
+      const query = new URLSearchParams({ pageSize: "300", showMissing: "true" });
+      if (pageToken) query.set("pageToken", pageToken);
+      const response = await this.request(`${encodedResourcePath(path)}?${query}`);
+      const result = await response.json() as { documents?: Array<{ name: string }>; nextPageToken?: string };
+      for (const doc of result.documents ?? []) {
+        references.push(new RestDocumentReference(this, `${path}/${doc.name.split("/").at(-1)}`));
+      }
+      pageToken = result.nextPageToken ?? "";
+    } while (pageToken);
+    return references;
   }
 
   async runQuery(
@@ -502,6 +538,8 @@ class RestDocumentReference implements DocumentReferenceLike {
     return new RestCollectionReference(this.client, `${this.path}/${name}`);
   }
 
+  listCollections() { return this.client.listCollections(this.path); }
+
   get(): Promise<DocumentSnapshotLike> {
     return this.client.getDocument(this.path, this);
   }
@@ -603,6 +641,8 @@ class RestCollectionReference extends RestQuery implements CollectionReferenceLi
   doc(id: string) {
     return new RestDocumentReference(this.client, `${this.path}/${id}`);
   }
+
+  listDocuments() { return this.client.listDocuments(this.path); }
 
 }
 

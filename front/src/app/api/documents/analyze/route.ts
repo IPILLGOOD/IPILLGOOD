@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import {
   analyzeMedicationDocument,
+  withCareAccountProcessing,
+  isServiceAccountActive,
   DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   DocumentUploadValidationError,
@@ -82,12 +84,15 @@ export async function POST(request: Request) {
       .update(fileBytes ?? `sample:${fileName}`)
       .digest("hex");
 
-    const result = await analyzeMedicationDocument({
+    if (session.provider === "google" && !await isServiceAccountActive(session.id)) {
+      return Response.json({ message: "회원 탈퇴 처리 중에는 분석할 수 없어요." }, { status: 403 });
+    }
+    const result = await withCareAccountProcessing(careScopeFor(session).recipientId, () => analyzeMedicationDocument({
       documentType: typedDocumentType,
       fileName,
       contentType,
       contentBase64,
-    });
+    }));
     const document = await registerDocumentAndSyncMedicationReminders(careScopeFor(session), {
       fileName,
       contentHash,

@@ -1,13 +1,13 @@
 import "server-only";
 
-import { isEphemeralDemoSessionActive } from "@care-atlas/backend";
+import { isEphemeralDemoSessionActive, getAccountSessionState, MAX_SESSION_SECONDS } from "@care-atlas/backend";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
 import { sessionSecretBytes } from "./session-security";
 
 export const SESSION_COOKIE_NAME = "care_atlas_session";
-const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_DURATION_SECONDS = MAX_SESSION_SECONDS;
 
 export type SessionUser = {
   id: string;
@@ -25,7 +25,10 @@ function getSessionSecret() {
 }
 
 async function signSession(user: SessionUser, durationSeconds: number) {
+  const state = user.provider === "google" ? await getAccountSessionState(user.id) : null;
+  if (state && !state.active) throw new Error("ACCOUNT_NOT_ACTIVE");
   return new SignJWT({
+    accountVersion: state?.version,
     name: user.name,
     email: user.email,
     picture: user.picture,
@@ -45,6 +48,8 @@ export async function createSession(
   const durationSeconds = options.durationSeconds ?? SESSION_DURATION_SECONDS;
   const token = await signSession(user, durationSeconds);
   const cookieStore = await cookies();
+  cookieStore.delete("ipillgood_account_deletion");
+  cookieStore.delete("ipillgood_account_recovery");
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -54,7 +59,7 @@ export async function createSession(
   });
 }
 
-export async function getSession(): Promise<SessionUser | null> {
+async function readSession(allowDeleting = false): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
@@ -65,6 +70,9 @@ export async function getSession(): Promise<SessionUser | null> {
     });
     if (
       !payload.sub ||
+      payload.aud !== undefined ||
+      typeof payload.iat !== "number" || typeof payload.exp !== "number" ||
+      payload.exp - payload.iat > MAX_SESSION_SECONDS ||
       typeof payload.name !== "string" ||
       (payload.provider !== "google" && payload.provider !== "demo")
     ) {
@@ -84,11 +92,20 @@ export async function getSession(): Promise<SessionUser | null> {
     ) {
       return null;
     }
+    if (!allowDeleting && user.provider === "google") {
+      const state = await getAccountSessionState(user.id);
+      if (!state.active || payload.accountVersion !== state.version) return null;
+    }
     return user;
   } catch {
     return null;
   }
 }
+
+export function getSession() { return readSession(); }
+
+/** Recovery only: this identity must never authorize care reads or writes. */
+export function getAccountDeletionSession() { return readSession(true); }
 
 export async function deleteSession() {
   const cookieStore = await cookies();

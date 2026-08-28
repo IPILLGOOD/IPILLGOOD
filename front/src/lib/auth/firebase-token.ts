@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { getFirebaseAccountAdmin, getAccountSessionState } from "@care-atlas/backend";
 
 const FIREBASE_PROJECT_ID =
   process.env.FIREBASE_PROJECT_ID ?? "care-atlas-seoul-2026-v2";
@@ -12,6 +13,7 @@ const FIREBASE_JWKS = createRemoteJWKSet(
 );
 
 type FirebaseClaims = {
+  auth_time?: number;
   email?: string;
   email_verified?: boolean;
   name?: string;
@@ -21,7 +23,7 @@ type FirebaseClaims = {
   };
 };
 
-export async function verifyFirebaseGoogleIdToken(idToken: string) {
+export async function verifyFirebaseGoogleIdToken(idToken: string, options: { recoverySignIn?: boolean } = {}) {
   const { payload } = await jwtVerify(idToken, FIREBASE_JWKS, {
     algorithms: ["RS256"],
     audience: FIREBASE_PROJECT_ID,
@@ -38,10 +40,19 @@ export async function verifyFirebaseGoogleIdToken(idToken: string) {
     throw new Error("Firebase Google ID token claims are invalid.");
   }
 
+  const account = await (await getFirebaseAccountAdmin()).lookup(claims.sub);
+  const state = await getAccountSessionState(claims.sub);
+  if (!account || account.disabled || typeof claims.auth_time !== "number" ||
+      claims.auth_time < Math.max(Number(account.validSince ?? 0), state.authValidAfter) ||
+      (!options.recoverySignIn && !state.active)) {
+    throw new Error("Firebase account is no longer active.");
+  }
+
   return {
     id: claims.sub,
     name: claims.name?.trim() || claims.email.split("@")[0],
     email: claims.email,
     picture: claims.picture,
+    authTime: claims.auth_time,
   };
 }

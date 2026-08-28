@@ -2612,3 +2612,55 @@
     box-shadow: none;
   }
 }
+.account-deletion-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.account-deletion-entry { color: var(--color-danger); }
+.account-deletion-button { background: var(--color-danger); color: var(--color-surface); }
+.account-deletion-button:hover { background: var(--color-danger); }
+.account-deletion-dialog {
+  width: min(36rem, calc(100% - var(--space-8)));
+  max-height: calc(100dvh - var(--space-8));
+  margin: auto;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+.account-deletion-dialog::backdrop { background: rgb(24 52 42 / 48%); }
+.account-deletion-dialog h2 { margin-bottom: var(--space-4); }
+.account-deletion-dialog p, .account-deletion-dialog li { line-height: 1.7; }
+.account-deletion-dialog ul { padding-left: var(--space-5); margin-block: var(--space-4); }
+.account-deletion-dialog li + li { margin-top: var(--space-2); }
+.account-deletion-notice {
+  padding: var(--space-4);
+  margin-block: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+}
+.account-deletion-notice p { white-space: pre-line; }
+.account-deletion-dialog .form-actions { flex-wrap: wrap; }
+.account-deletion-progress { display: grid; gap: var(--space-4); }
+.account-deletion-progress button { justify-self: start; }
+.account-recovery-page { max-width: 44rem; margin-inline: auto; padding: var(--space-6) var(--space-4); }
+.account-recovery-page h1, .account-deletion-dialog h2 { word-break: keep-all; overflow-wrap: anywhere; }
+.account-recovery-email { overflow-wrap: anywhere; }
+.account-recovery-dates { display: grid; gap: var(--space-4); margin: 0; }
+.account-recovery-dates dt { font-weight: 600; }
+.account-recovery-dates dd { margin: var(--space-1) 0 0; }
+.account-recovery-page .form-actions { flex-wrap: wrap; }
+.mobile-account-actions { display: flex; align-items: center; gap: var(--space-1); }
+@media (max-width: 480px) {
+  .account-deletion-dialog { padding: var(--space-4); }
+  .account-deletion-dialog .form-actions .button { width: 100%; }
+}

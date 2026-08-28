@@ -26,5 +26,7 @@ export async function POST() {
   }
   await deleteSession();
   cookieStore.delete("ipillgood_push_device");
+  cookieStore.delete("ipillgood_account_recovery");
+  cookieStore.delete("ipillgood_account_deletion");
   return new NextResponse(null, { status: 303, headers: { Location: "/" } });
 }

@@ -2,16 +2,27 @@ import { formatInSeoul } from "@care-atlas/backend/dates";
 import { Accessibility, History, ShieldCheck } from "lucide-react";
 
 import { ProfileForm } from "@/components/profile/ProfileForm";
+import { AccountDeletionCard } from "@/components/profile/AccountDeletionCard";
+import { AccountDeletionProgress } from "@/components/profile/AccountDeletionProgress";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareSnapshot } from "@care-atlas/backend";
-import { requireCareScope } from "@/lib/auth/care-scope";
+import { getCareSnapshot, getAccountDeletionPolicy, publicAccountDeletion } from "@care-atlas/backend";
+import { careScopeFor } from "@/lib/auth/care-scope";
+import { getSession } from "@/lib/auth/session";
+import { getAccountDeletionReceipt } from "@/lib/auth/account-deletion-receipt";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProfilePage() {
-  const scope = await requireCareScope();
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ account_reauth?: string; restored?: string }> }) {
+  const deletion = await getAccountDeletionReceipt();
+  if (deletion) return <><PageHeader eyebrow="계정 관리" title="회원 탈퇴 처리 상태" description="탈퇴 후 3개월 안에 같은 Google 계정으로 로그인하면 복구할 수 있어요." /><Card><AccountDeletionProgress initial={publicAccountDeletion(deletion)} /></Card></>;
+  const user = await getSession();
+  if (!user) redirect("/login");
+  const scope = careScopeFor(user);
   const snapshot = await getCareSnapshot(scope);
+  const params = await searchParams;
+  const reauthenticating = params.account_reauth === "1";
   return (
     <>
       <PageHeader
@@ -19,6 +30,7 @@ export default async function ProfilePage() {
         title="돌봄에 필요한 정보만 관리해요"
         description="정확한 복약 설명과 편한 사용을 위해 필요한 최소 정보만 입력해주세요. 각 정보의 활용 목적은 입력란 아래에서 확인할 수 있어요."
       />
+      {params.restored === "1" && <p className="account-deletion-notice" role="status">계정과 돌봄 기록이 복구됐어요. 복약 알림은 이 기기에서 다시 설정해주세요.</p>}
       <div className="profile-layout">
         <Card>
           <ProfileForm recipient={snapshot.recipient} />
@@ -45,6 +57,7 @@ export default async function ProfilePage() {
           </Card>
         </aside>
       </div>
+      <AccountDeletionCard userId={user.id} email={user.email} demo={user.provider === "demo"} policy={getAccountDeletionPolicy()} reauthenticating={reauthenticating} />
     </>
   );
 }

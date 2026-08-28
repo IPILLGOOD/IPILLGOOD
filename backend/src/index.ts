@@ -122,3 +122,9 @@ export type {
   QuestionPriority,
   SymptomEvent,
 } from "./types";
+export { getAccountDeletionPolicy, accountDeletionDeadline, assertRecentAccountAuthentication, type AccountDeletionPolicy } from "./account-deletion-policy";
+export { getAccountDeletion, requestAccountDeletion, processAccountDeletion, retryAccountDeletions, restoreAccount, publicAccountDeletion, type AccountDeletion } from "./account-deletion";
+export { AccountDeletingError, getAccountSessionState, isServiceAccountActive, assertCareAccountActive, MAX_SESSION_SECONDS } from "./account-lifecycle";
+export { getFirebaseAccountAdmin } from "./firebase-account-admin";
+export { withCareAccountProcessing } from "./account-processing";
+export { deleteRecipientHealthData, verifyRecipientHealthDataDeleted } from "./health-data-deletion";

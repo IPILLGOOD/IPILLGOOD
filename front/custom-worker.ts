@@ -42,7 +42,7 @@ const worker = {
       throw new Error("PUSH_CRON_SECRET is not configured.");
     }
     const failures: unknown[] = [];
-    for (const path of ["/api/demo/cleanup", "/api/push/dispatch"]) {
+    for (const path of ["/api/account/deletion/cleanup", "/api/demo/cleanup", "/api/push/dispatch"]) {
       try {
         await callScheduledRoute(path, env, ctx);
       } catch (error) {
