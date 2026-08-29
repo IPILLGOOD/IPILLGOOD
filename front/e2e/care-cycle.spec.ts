@@ -62,6 +62,10 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       if (documentType === "처방전") {
         expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount);
         expect((await recipient.collection("doseEvents").get()).size).toBe(baselineDoseEventCount);
+        const endDates = page.getByRole("region", { name: "원본과 비교해 약과 일정을 검토하세요" }).getByLabel("종료일");
+        for (let index = 0; index < await endDates.count(); index++) {
+          if (!await endDates.nth(index).inputValue()) await endDates.nth(index).fill("2027-12-31");
+        }
         await page.getByRole("button", { name: "선택한 약 3개 확정" }).click();
         await expect(page.getByText("선택한 약 3개를 복약 일정에 반영했어요.")).toBeVisible();
         expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount + 3);
