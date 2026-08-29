@@ -98,7 +98,7 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
               <label>횟수<input value={candidate.frequency} onChange={(event) => updateCandidate(candidate.id, { frequency: event.target.value })} required /></label>
               <label>복용 시점<input value={candidate.timing} onChange={(event) => updateCandidate(candidate.id, { timing: event.target.value })} required /></label>
               <label>시작일<input type="date" value={candidate.startDate} onChange={(event) => updateCandidate(candidate.id, { startDate: event.target.value })} required /></label>
-              <label>종료일<input type="date" value={candidate.endDate ?? ""} onChange={(event) => updateCandidate(candidate.id, { endDate: event.target.value || undefined })} /></label>
+              <label>종료일<input type="date" value={candidate.endDate ?? ""} onChange={(event) => updateCandidate(candidate.id, { endDate: event.target.value || undefined })} required /></label>
             </div>
             <p className="medication-draft-candidate__notice">
               <TriangleAlert size={16} aria-hidden="true" /> 분석값은 확인이 필요한 초안이에요. 처방전과 약 봉투를 기준으로 수정해주세요.

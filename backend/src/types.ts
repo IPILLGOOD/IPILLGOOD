@@ -311,6 +311,8 @@ export interface DiseaseLookupStatus {
 
 export interface DocumentAnalysis {
   documentType: ClinicalDocumentType;
+  prescriptionDate?: string;
+  totalSupplyDays?: number;
   summary: string;
   findings: Array<{
     label: string;

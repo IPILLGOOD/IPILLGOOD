@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { LoginPanel } from "@/components/auth/LoginPanel";
+import { careScopeFor } from "@/lib/auth/care-scope";
 import { getSession } from "@/lib/auth/session";
+import { isServiceHealthDataConsentConfirmed } from "@care-atlas/backend";
 
 export const metadata: Metadata = {
   title: "로그인",
@@ -19,7 +21,10 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; withdrawn?: string; erased?: string }>;
 }) {
   const session = await getSession();
-  if (session) redirect("/today");
+  if (session) {
+    const scope = careScopeFor(session);
+    redirect(await isServiceHealthDataConsentConfirmed(scope.recipientId) ? "/today" : "/profile?onboarding=1");
+  }
 
   const { error, withdrawn, erased } = await searchParams;
   const successMessage = erased === "1" ? "계정과 돌봄 기록을 영구 삭제했어요. 이전 기록은 복구할 수 없어요."

@@ -41,6 +41,8 @@ const documentAnalysisSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
+    prescriptionDate: { type: "string" },
+    totalSupplyDays: { type: "integer" },
     summary: { type: "string" },
     findings: {
       type: "array",
@@ -100,6 +102,8 @@ const documentAnalysisSchema = {
     },
   },
   required: [
+    "prescriptionDate",
+    "totalSupplyDays",
     "summary",
     "findings",
     "carePoints",
@@ -233,6 +237,8 @@ function documentContent(input: DocumentInput): ResponseInputContent[] {
         "진단서라면 diagnoses에 진단명과 KCD/ICD 코드를 각각 넣고, 코드가 없으면 빈 문자열을 넣으세요.",
         "처방전이라면 diagnoses는 빈 배열로 반환하세요.",
         "처방전이라면 medications에 처방된 약을 한 항목씩 넣으세요. 진단서라면 medications는 빈 배열로 반환하세요.",
+        "처방전의 발행일을 prescriptionDate에 YYYY-MM-DD로 넣고, 확인할 수 없으면 빈 문자열로 쓰세요.",
+        "처방전의 총 투약일수를 totalSupplyDays에 정수로 넣고, 확인할 수 없으면 0으로 쓰세요. 진단서는 prescriptionDate를 빈 문자열, totalSupplyDays를 0으로 쓰세요.",
         "복용 시작일과 종료일은 YYYY-MM-DD로 쓰고, 문서에 종료일이 없으면 endDate를 빈 문자열로 쓰세요.",
         "약 이름은 용량을 포함한 제품명, doseAmount는 1회 복용량, frequency는 '하루 2회' 같은 횟수, timing은 '아침·저녁 식사 후'처럼 적으세요.",
         "개인식별정보는 결과에 포함하지 마세요.",
@@ -266,6 +272,12 @@ export async function analyzeClinicalDocumentWithOpenAI(
   );
   return {
     ...parsed,
+    ...(parsed.prescriptionDate?.trim()
+      ? { prescriptionDate: parsed.prescriptionDate.trim() }
+      : { prescriptionDate: undefined }),
+    ...(Number.isInteger(parsed.totalSupplyDays) && Number(parsed.totalSupplyDays) > 0
+      ? { totalSupplyDays: Number(parsed.totalSupplyDays) }
+      : { totalSupplyDays: undefined }),
     diagnoses: parsed.diagnoses?.map((diagnosis) => ({
       name: diagnosis.name.trim(),
       ...(diagnosis.code?.trim() ? { code: diagnosis.code.trim() } : {}),

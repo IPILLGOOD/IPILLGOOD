@@ -1,5 +1,6 @@
 import demoSeed from "./data/demo-seed.json" with { type: "json" };
 import { assertCareAccountActive } from "./account-lifecycle.ts";
+import { assertHealthDataConsentConfirmed } from "./health-data-consent.ts";
 import type {
   CareRecipient,
   CareSnapshot,
@@ -21,10 +22,13 @@ import { isEphemeralDemoSessionActive } from "./demo-session.ts";
 import type { FirestoreLike, TransactionLike, DocumentReferenceLike } from "./firestore-rest.ts";
 import { stableJson } from "./stable-json.ts";
 import {
+  addCalendarDays,
+  dateKeyInSeoul,
+} from "./dates.ts";
+import {
   applyDailyCheckInToSnapshot,
   byDateDescending,
   currentDailyCheckIn,
-  dateKeyInSeoul,
   MAX_DOCUMENTS,
   MAX_DOSE_EVENTS,
   MAX_SYMPTOM_EVENTS,
@@ -244,7 +248,7 @@ async function mutateCare<T>(
   scope: CareDataScope,
   currentSnapshot: CareSnapshot | undefined,
   change: (tx: TransactionLike, snapshot: CareSnapshot, recipientRef: DocumentReferenceLike) => Promise<{ snapshot: CareSnapshot; result: T; unchanged?: boolean }>,
-  affectsMedications = false,
+  options: { affectsMedications?: boolean; requiresConsent?: boolean } = {},
 ): Promise<T> {
   assertValidScope(scope);
   if (currentSnapshot && (currentSnapshot.dataSource !== "firestore" || currentSnapshot.recipient.id !== scope.recipientId)) {
@@ -258,13 +262,16 @@ async function mutateCare<T>(
     const document = await tx.get(modelRef);
     if (!document.exists) throw new Error("돌봄 데이터를 다시 불러와 주세요.");
     const stored = document.data() as StoredCareReadModel;
-    const subscriptions = affectsMedications
+    const subscriptions = options.affectsMedications
       ? await tx.get(firestore.collection("pushSubscriptions").where("recipientId", "==", scope.recipientId)) : null;
+    if (options.requiresConsent) {
+      await assertHealthDataConsentConfirmed(firestore, scope.recipientId, tx);
+    }
     const update = await change(tx, fromStoredReadModel(stored, scope), firestore.collection("careRecipients").doc(scope.recipientId));
     if (update.unchanged) return update.result;
     const revision = (stored.revision ?? 0) + 1;
     tx.set(modelRef, { ...toStoredReadModel(update.snapshot), revision });
-    if (affectsMedications && subscriptions?.docs.some((doc) => (doc.data() as { active?: boolean }).active)) {
+    if (options.affectsMedications && subscriptions?.docs.some((doc) => (doc.data() as { active?: boolean }).active)) {
       // Durable intent and canonical plan updates commit together. No subscription => no reminder writes.
       const now = new Date().toISOString();
       tx.set(firestore.collection("medicationReminderSync").doc(scope.recipientId), {
@@ -322,7 +329,7 @@ export async function saveDailyCheckIn(
     tx.set(ref.collection("questionResponses").doc(input.questionResponse.response_id), input.questionResponse);
     tx.set(questionRef, { response_status: "answered", answered_at: input.questionResponse.answered_at }, { merge: true });
     return { snapshot: { ...update.nextSnapshot, todayCheckIn: checkIn }, result: undefined };
-  });
+  }, { requiresConsent: true });
 }
 
 export interface RegisterDocumentInput {
@@ -354,20 +361,31 @@ function createMedicationPlanDraft(
   if (medications.length === 0) return null;
   const timestamp = now.toISOString();
   const id = medicationDraftId(documentId);
+  const prescriptionDate = validCalendarDate(analysis?.prescriptionDate);
+  const totalSupplyDays = validSupplyDays(analysis?.totalSupplyDays);
   return {
     id,
     documentId,
     sourceDocumentRevision,
     revision: 1,
     state: "needs_review",
-    candidates: medications.map((medication, index) => ({
-      ...medication,
-      id: `${id}-candidate-${index + 1}`,
-      included: true,
-      state: "needs_review",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    })),
+    candidates: medications.map((medication, index) => {
+      const startDate = validCalendarDate(medication.startDate) ?? prescriptionDate ?? "";
+      const explicitEndDate = validCalendarDate(medication.endDate);
+      const endDate = explicitEndDate ?? (startDate && totalSupplyDays
+        ? addCalendarDays(startDate, totalSupplyDays - 1)
+        : undefined);
+      return {
+        ...medication,
+        startDate,
+        ...(endDate ? { endDate } : {}),
+        id: `${id}-candidate-${index + 1}`,
+        included: true,
+        state: "needs_review",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+    }),
     createdAt: timestamp,
     updatedAt: timestamp,
     expiresAt: new Date(now.getTime() + MEDICATION_DRAFT_TTL_MS).toISOString(),
@@ -404,7 +422,7 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
       snapshot: { ...snapshot, documents: [document, ...snapshot.documents] },
       result: document,
     };
-  });
+  }, { requiresConsent: true });
 }
 
 export async function getMedicationPlanDraft(
@@ -415,6 +433,7 @@ export async function getMedicationPlanDraft(
   if (!/^[^/]{1,256}$/.test(draftId)) throw new Error("올바르지 않은 복약 초안 ID입니다.");
   const firestore = scope.firestore ?? await getAdminFirestore();
   await assertActiveDemoScope(scope, firestore);
+  await assertHealthDataConsentConfirmed(firestore, scope.recipientId);
   const draft = await firestore.collection("careRecipients").doc(scope.recipientId)
     .collection("medicationPlanDrafts").doc(draftId).get();
   return draft.exists ? draft.data() as MedicationPlanDraft : null;
@@ -464,10 +483,12 @@ function confirmedMedicationPlan(
   confirmedBy: string,
   confirmedAt: string,
 ): MedicationPlan {
-  const required = [input.productName, input.doseAmount, input.frequency, input.timing, input.startDate];
-  if (required.some((value) => !value.trim())) throw new Error("약 이름과 복용 일정 필수값을 확인해주세요.");
-  if (!isoDatePattern.test(input.startDate)) throw new Error("복용 시작일을 YYYY-MM-DD로 입력해주세요.");
-  if (input.endDate && (!isoDatePattern.test(input.endDate) || input.endDate < input.startDate)) {
+  const required = [input.productName, input.doseAmount, input.frequency, input.timing, input.startDate, input.endDate];
+  if (required.some((value) => !value?.trim())) throw new Error("약 이름과 복용 기간을 포함한 일정 필수값을 확인해주세요.");
+  const startDate = validCalendarDate(input.startDate);
+  const endDate = validCalendarDate(input.endDate);
+  if (!startDate || startDate !== input.startDate) throw new Error("복용 시작일을 YYYY-MM-DD로 입력해주세요.");
+  if (!endDate || endDate !== input.endDate || endDate < startDate) {
     throw new Error("복용 종료일을 시작일 이후로 입력해주세요.");
   }
   return {
@@ -480,9 +501,9 @@ function confirmedMedicationPlan(
     doseAmount: input.doseAmount.trim(),
     frequency: input.frequency.trim(),
     timing: input.timing.trim(),
-    startDate: input.startDate,
-    ...(input.endDate ? { endDate: input.endDate } : {}),
-    status: "active",
+    startDate,
+    endDate,
+    status: endDate < dateKeyInSeoul(new Date(confirmedAt)) ? "ended" : "active",
     isNew: true,
     sourceLabel: "처방전 분석 초안 · 보호자 검토 완료",
     sourceDocumentId: draft.documentId,
@@ -604,7 +625,7 @@ export async function confirmMedicationPlanDraft(
       },
       result: { draft: activeDraft, medications, idempotentReplay: false },
     };
-  }, true);
+  }, { affectsMedications: true, requiresConsent: true });
   if ("expiredDraft" in result) {
     throw new Error("복약 초안이 만료됐어요. 문서를 다시 분석해주세요.");
   }
@@ -637,27 +658,43 @@ export async function cancelMedicationPlanDraft(
     };
     tx.set(draftRef, cancelled);
     return { snapshot, result: cancelled };
-  });
+  }, { requiresConsent: true });
 }
 
-const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+function validCalendarDate(value: string | undefined) {
+  if (!value) return undefined;
+  try {
+    return dateKeyInSeoul(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function validSupplyDays(value: number | undefined) {
+  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 3_650
+    ? Number(value)
+    : undefined;
+}
 
 export function medicationPlansFromPrescription(
   document: Pick<ClinicalDocument, "id" | "documentType" | "uploadedAt" | "analysis">,
+  today = dateKeyInSeoul(),
 ): MedicationPlan[] {
   if (document.documentType !== "처방전") return [];
   const sourceMedications = document.analysis?.medications ?? [];
-  const uploadedDate = dateKeyInSeoul(new Date(document.uploadedAt));
+  const prescriptionDate = validCalendarDate(document.analysis?.prescriptionDate);
+  const totalSupplyDays = validSupplyDays(document.analysis?.totalSupplyDays);
 
   return sourceMedications
     .filter((medication) => medication.productName.trim() && medication.frequency.trim())
-    .map((medication, index) => {
-      const startDate = isoDatePattern.test(medication.startDate)
-        ? medication.startDate
-        : uploadedDate;
-      const endDate = medication.endDate && isoDatePattern.test(medication.endDate)
-        ? medication.endDate
-        : undefined;
+    .flatMap((medication, index) => {
+      const startDate = validCalendarDate(medication.startDate) ?? prescriptionDate;
+      if (!startDate) return [];
+      const explicitEndDate = validCalendarDate(medication.endDate);
+      const endDate = explicitEndDate ?? (totalSupplyDays
+        ? addCalendarDays(startDate, totalSupplyDays - 1)
+        : undefined);
+      if (!endDate || endDate < startDate) return [];
       return {
         id: `rx-${document.id}-${index + 1}`,
         productName: medication.productName.trim(),
@@ -669,8 +706,8 @@ export function medicationPlansFromPrescription(
         frequency: medication.frequency.trim(),
         timing: medication.timing.trim() || "복용 시간 확인 필요",
         startDate,
-        ...(endDate ? { endDate } : {}),
-        status: "active" as const,
+        endDate,
+        status: endDate < today ? "ended" as const : "active" as const,
         isNew: true,
         sourceLabel: "처방전 분석에서 자동 등록 · 보호자 확인 필요",
         sourceDocumentId: document.id,
@@ -698,5 +735,5 @@ export async function deleteDocument(scope: CareDataScope, documentId: string, c
       if (medication.sourceDocumentId === documentId) tx.delete(ref.collection("medicationPlans").doc(medication.id));
     }
     return { snapshot: nextSnapshot, result: nextSnapshot };
-  }, true);
+  }, { affectsMedications: true });
 }
