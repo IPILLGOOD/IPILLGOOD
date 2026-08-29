@@ -2,7 +2,6 @@ import {
   ArrowRight,
   CalendarCheck2,
   ChevronRight,
-  ClipboardCheck,
   MessageCircleQuestion,
   TriangleAlert,
 } from "lucide-react";
@@ -46,24 +45,6 @@ export default async function DashboardPage() {
 
       <div className="dashboard-grid">
         <div className="dashboard-main">
-          <Card className="today-card">
-            <div className="today-card__content">
-              <div className="today-card__copy">
-                <span className="today-card__icon" aria-hidden="true">
-                  <ClipboardCheck size={24} />
-                </span>
-                <div>
-                  <Badge tone="success">약 1분</Badge>
-                  <h2>오늘의 안부를 확인할 시간이에요</h2>
-                  <p>복용 여부와 어지러움 같은 몸 상태를 짧게 물어볼게요.</p>
-                </div>
-              </div>
-              <Link className="button button--primary" href="/check-in">
-                확인 시작 <ArrowRight size={18} aria-hidden="true" />
-              </Link>
-            </div>
-          </Card>
-
           <Card>
             <div className="section-heading">
               <div>

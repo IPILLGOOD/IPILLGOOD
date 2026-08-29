@@ -1,9 +1,8 @@
-import { dateKeyInSeoul } from "@care-atlas/backend/dates";
 import {
   ArrowRight,
   CheckCircle2,
+  ClipboardCheck,
   FileText,
-  ListChecks,
 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -11,15 +10,11 @@ import Link from "next/link";
 import { MedicationReminderCard } from "@/components/notifications/MedicationReminderCard";
 import { TodayTaskList } from "@/components/today/TodayTaskList";
 import { TodayGettingStarted } from "@/components/today/TodayGettingStarted";
-import { TodayQuickCheckIn } from "@/components/today/TodayQuickCheckIn";
+import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { createMedicationSchedule } from "@/lib/presentation";
-import {
-  getCareSnapshot,
-  getQuestionSetAvailability,
-} from "@care-atlas/backend";
-import type { DailyCheckIn } from "@care-atlas/backend";
+import { getCareSnapshot } from "@care-atlas/backend";
 import { requireCareScope } from "@/lib/auth/care-scope";
 import { gettingStartedGuide } from "@/lib/getting-started";
 
@@ -44,32 +39,7 @@ export default async function TodayPage() {
       </>
     );
   }
-  const todayCheckIn = snapshot.todayCheckIn ?? null;
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
-  const questions = await getQuestionSetAvailability({
-    scope,
-    answerer: "caregiver",
-    snapshot,
-  });
-  const dateKey = dateKeyInSeoul();
-  const todaySymptoms = snapshot.symptomEvents.filter(
-    (event) => dateKeyInSeoul(event.occurredAt) === dateKey,
-  );
-  const fallbackCheckIn: DailyCheckIn | null = todaySymptoms[0]
-    ? {
-        id: dateKey,
-        completedAt: todaySymptoms[0].occurredAt,
-        completedBy:
-          todaySymptoms[0].reporterType === "caregiver_observed"
-            ? "caregiver"
-            : "recipient",
-        medicationResponses: [],
-        symptoms: [...new Set(todaySymptoms.map((event) => event.symptomType))],
-        severity: Math.max(...todaySymptoms.map((event) => event.severity)),
-        note: todaySymptoms[0].note ?? "",
-      }
-    : null;
-  const checkIn = todayCheckIn ?? fallbackCheckIn;
   const completed = tasks.filter((task) => task.response === "completed").length;
   const progress = tasks.length === 0 ? 0 : Math.round((completed / tasks.length) * 100);
 
@@ -85,6 +55,24 @@ export default async function TodayPage() {
 
       <div className="today-workspace">
         <div className="today-workspace__main">
+          <Card className="today-card">
+            <div className="today-card__content">
+              <div className="today-card__copy">
+                <span className="today-card__icon" aria-hidden="true">
+                  <ClipboardCheck size={24} />
+                </span>
+                <div>
+                  <Badge tone="success">약 1분</Badge>
+                  <h2>오늘의 안부를 확인할 시간이에요</h2>
+                  <p>복용 여부와 어지러움 같은 몸 상태를 짧게 물어볼게요.</p>
+                </div>
+              </div>
+              <Link className="button button--primary" href="/check-in">
+                확인 시작 <ArrowRight size={18} aria-hidden="true" />
+              </Link>
+            </div>
+          </Card>
+
           {tasks.length > 0 ? <Card className="today-progress-card">
             <div className="today-progress-card__header">
               <div>
@@ -128,19 +116,8 @@ export default async function TodayPage() {
               <span><strong>내원 기록 추가하기</strong><small>처방전·진단서 내용을 쉬운 말로 확인</small></span>
               <ArrowRight size={18} aria-hidden="true" />
             </Link>
-            <Link className="today-action-card" href="/dashboard">
-              <ListChecks size={21} aria-hidden="true" />
-              <span><strong>돌봄 대시보드</strong><small>최근 7일 기록과 상담 질문 확인</small></span>
-              <ArrowRight size={18} aria-hidden="true" />
-            </Link>
           </div>
         </div>
-
-        <aside className="today-checklist">
-          <Card tone="accent">
-            <TodayQuickCheckIn tasks={tasks} checkIn={checkIn} questionSet={questions.status === "ready" ? questions.questionSet : null} revision={snapshot.revision} />
-          </Card>
-        </aside>
       </div>
     </>
   );

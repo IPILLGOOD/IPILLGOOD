@@ -52,7 +52,7 @@
 
 .today-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(20rem, 23rem);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: var(--space-5);
 }
@@ -292,7 +292,7 @@
 
 .today-quick-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
 }
 
@@ -333,11 +333,6 @@
 .today-action-card small {
   color: var(--color-text-muted);
   font-size: 0.76rem;
-}
-
-.today-checklist {
-  position: sticky;
-  top: var(--space-6);
 }
 
 .quick-checkin-form {
@@ -2774,7 +2769,6 @@
     position: static;
   }
 
-  .today-checklist,
   .medication-detail-page__side {
     position: static;
   }
@@ -2800,34 +2794,6 @@
 
   .medication-reminder-card__status {
     grid-column: auto;
-  }
-
-  .today-workspace {
-    grid-template-areas:
-      "progress"
-      "checklist"
-      "tasks"
-      "actions";
-  }
-
-  .today-workspace__main {
-    display: contents;
-  }
-
-  .today-progress-card {
-    grid-area: progress;
-  }
-
-  .today-checklist {
-    grid-area: checklist;
-  }
-
-  .today-tasks-card {
-    grid-area: tasks;
-  }
-
-  .today-quick-actions {
-    grid-area: actions;
   }
 
   .today-card__content,

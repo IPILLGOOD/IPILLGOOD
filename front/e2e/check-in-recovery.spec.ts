@@ -4,7 +4,7 @@ import { SignJWT } from "jose";
 import { emulatorFixture } from "../../backend/test-support/emulator";
 import { seedCareAccount, syntheticMedication } from "../../backend/test-support/care-fixtures";
 
-for (const path of ["/today", "/check-in"]) {
+for (const path of ["/check-in"]) {
   test(`${path}: missing stored question preserves inputs and recovers without reload`, async ({ context, page }) => {
     const fixture = emulatorFixture("admin");
     const userId = `recovery-${randomUUID()}`;
