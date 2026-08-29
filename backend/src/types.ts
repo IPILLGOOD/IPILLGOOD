@@ -42,11 +42,16 @@ export interface MedicationPlan {
   commonEffects?: string[];
   precautions?: string[];
   storagePlain?: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  sourceDocumentRevision?: string;
+  stateChangedAt?: string;
 }
 
 export interface PrescriptionMedication {
   productName: string;
   ingredientName: string;
+  itemCode?: string;
   doseAmount: string;
   frequency: string;
   timing: string;
@@ -54,6 +59,81 @@ export interface PrescriptionMedication {
   endDate?: string;
   purposePlain: string;
   precautions: string[];
+  fieldEvidence?: MedicationFieldEvidence[];
+  verification?: MedicationVerification;
+  reviewStatus?: "verified" | "needs_review";
+}
+
+export type MedicationEvidenceField =
+  | "productName"
+  | "ingredientName"
+  | "itemCode"
+  | "doseAmount"
+  | "frequency"
+  | "timing"
+  | "startDate"
+  | "endDate";
+
+export interface MedicationFieldEvidence {
+  field: MedicationEvidenceField;
+  sourceText: string;
+  confidence: number;
+  region?: {
+    page: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface MedicationVerification {
+  status: "verified" | "mismatch" | "not_found" | "not_configured" | "unavailable";
+  sourceLabel: string;
+  officialItemCode?: string;
+  officialProductName?: string;
+  officialIngredientName?: string;
+  warnings: string[];
+}
+
+export type MedicationDraftState =
+  | "draft"
+  | "needs_review"
+  | "confirmed"
+  | "active"
+  | "expired"
+  | "cancelled";
+
+export interface MedicationPlanCandidate extends PrescriptionMedication {
+  id: string;
+  included: boolean;
+  state: "draft" | "needs_review" | "confirmed" | "active" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MedicationDraftTransition {
+  state: MedicationDraftState;
+  at: string;
+  by: string;
+}
+
+export interface MedicationPlanDraft {
+  id: string;
+  documentId: string;
+  sourceDocumentRevision: string;
+  revision: number;
+  state: MedicationDraftState;
+  candidates: MedicationPlanCandidate[];
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  activatedAt?: string;
+  confirmationIdempotencyKey?: string;
+  activeMedicationPlanIds?: string[];
+  transitionHistory: MedicationDraftTransition[];
 }
 
 export interface DoseEvent {
@@ -235,6 +315,8 @@ export interface ClinicalDocument {
   requestIdempotencyKey?: string;
   duplicateResolution?: "merge" | "separate";
   duplicateMedicationPlanIds?: string[];
+  revision?: string;
+  medicationDraftId?: string;
 }
 
 export type ClinicalDocumentType = "처방전" | "진단서";
@@ -268,6 +350,8 @@ export interface DiseaseLookupStatus {
 
 export interface DocumentAnalysis {
   documentType: ClinicalDocumentType;
+  prescriptionDate?: string;
+  totalSupplyDays?: number;
   summary: string;
   findings: Array<{
     label: string;

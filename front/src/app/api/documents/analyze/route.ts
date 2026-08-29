@@ -9,8 +9,10 @@ import {
   DocumentUploadValidationError,
   getCareSnapshot,
   getDocumentImportReview,
+  getMedicationPlanDraft,
+  isServiceHealthDataConsentConfirmed,
   MedicationDuplicateResolutionRequiredError,
-  registerDocumentAndSyncMedicationReminders,
+  registerDocument,
   saveDocumentImportReview,
   type ClinicalDocumentType,
   validateClinicalDocumentFile,
@@ -33,6 +35,14 @@ export async function POST(request: Request) {
   if (session.provider === "demo" && process.env.IPILLGOOD_DEMO_MODE !== "true") {
     return Response.json(
       { message: "현재는 읽기 전용 모드예요. 인증 연결 후 분석을 활성화해주세요." },
+      { status: 403 },
+    );
+  }
+
+  const scope = careScopeFor(session);
+  if (!await isServiceHealthDataConsentConfirmed(scope.recipientId)) {
+    return Response.json(
+      { message: "건강정보 처리에 동의한 뒤 문서를 분석할 수 있어요." },
       { status: 403 },
     );
   }
@@ -100,16 +110,37 @@ export async function POST(request: Request) {
     if (session.provider === "google" && !await isServiceAccountActive(session.id)) {
       return Response.json({ message: "회원 탈퇴 처리 중에는 분석할 수 없어요." }, { status: 403 });
     }
-    const scope = careScopeFor(session);
+    if (!await isServiceHealthDataConsentConfirmed(scope.recipientId)) {
+      return Response.json(
+        { message: "건강정보 처리 동의가 철회되어 분석을 중단했어요." },
+        { status: 403 },
+      );
+    }
     const existingDocument = (await getCareSnapshot(scope)).documents.find(
       (document) => document.contentHash === contentHash,
     );
     if (existingDocument) {
+      const storedDraft = existingDocument.medicationDraftId
+        ? await getMedicationPlanDraft(scope, existingDocument.medicationDraftId)
+        : null;
+      const draft = storedDraft?.state === "needs_review" ? storedDraft : null;
+      const requiresPeriodReview = draft?.candidates.some((candidate) =>
+        !candidate.startDate || !candidate.endDate) ?? false;
+      const reviewMedicationCount = typedDocumentType === "처방전"
+        ? (existingDocument.analysis?.medications ?? []).filter(
+            (medication) => medication.reviewStatus !== "verified",
+          ).length
+        : 0;
       return Response.json({
-        message: "이미 등록한 같은 문서예요. 기존 분석 결과를 불러왔어요.",
+        message: draft
+          ? "이미 등록한 같은 문서예요. 기존 복약 초안을 불러왔어요."
+          : "이미 등록한 같은 문서예요. 기존 분석 결과를 불러왔어요.",
         analysis: existingDocument.analysis,
         document: existingDocument,
+        draft,
         addedMedicationCount: 0,
+        reviewMedicationCount,
+        requiresPeriodReview,
         idempotentReplay: true,
         duplicateResolution: existingDocument.duplicateResolution,
       });
@@ -136,7 +167,7 @@ export async function POST(request: Request) {
         }));
     let document;
     try {
-      document = await registerDocumentAndSyncMedicationReminders(scope, {
+      document = await registerDocument(scope, {
         fileName,
         contentHash,
         documentType: typedDocumentType,
@@ -167,19 +198,32 @@ export async function POST(request: Request) {
       }, { status: 409 });
     }
 
-    const addedMedicationCount = typedDocumentType === "처방전" && document.duplicateResolution !== "merge"
-      ? (result.analysis.medications?.length ?? 0)
+    const draft = document.medicationDraftId
+      ? await getMedicationPlanDraft(scope, document.medicationDraftId)
+      : null;
+    const requiresPeriodReview = draft?.candidates.some((candidate) =>
+      !candidate.startDate || !candidate.endDate) ?? false;
+    const reviewMedicationCount = typedDocumentType === "처방전"
+      ? (result.analysis.medications ?? []).filter(
+          (medication) => medication.reviewStatus !== "verified",
+        ).length
       : 0;
     return Response.json({
-      message:
-        document.duplicateResolution === "merge"
-          ? `${result.message} 기존 복약 계획과 병합해 중복 일정은 만들지 않았어요.`
-          : addedMedicationCount > 0
-          ? `${result.message} 약 ${addedMedicationCount}개를 복약 일정에 추가했어요.`
-          : result.message,
+      message: document.duplicateResolution === "merge"
+        ? `${result.message} 기존 복약 계획과 병합해 중복 일정은 만들지 않았어요.`
+        : reviewMedicationCount > 0
+          ? `${result.message} OCR 또는 공식 정보 확인이 필요한 약 ${reviewMedicationCount}개는 선택할 수 없어요. 나머지 약도 검토하고 확정하기 전에는 반영하지 않아요.`
+          : draft
+            ? requiresPeriodReview
+              ? `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개의 처방 기간을 확인하고 확정해주세요.`
+              : `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개를 검토하고 확정해주세요.`
+            : result.message,
       analysis: result.analysis,
       document,
-      addedMedicationCount,
+      draft,
+      addedMedicationCount: 0,
+      reviewMedicationCount,
+      requiresPeriodReview,
       duplicateResolution: document.duplicateResolution,
     });
   } catch (error) {

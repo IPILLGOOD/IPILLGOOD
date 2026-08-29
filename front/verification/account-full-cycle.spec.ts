@@ -64,13 +64,13 @@ test("issued sessions: sign in → withdraw → cancel recovery → restore → 
       .setIssuer(`https://securetoken.google.com/${projectId}`).setAudience(options.audience ?? projectId)
       .setIssuedAt(seconds).setExpirationTime(seconds + 3600).sign(key);
   }
-  async function login(uid: string, redirect: "/today" | "/account/recovery") {
+  async function login(uid: string, redirect: "/today" | "/profile?onboarding=1" | "/account/recovery") {
     const idToken = await token(uid);
     const response = await context.request.post("/api/auth/google", { headers, data: { idToken } });
     expect(response.status(), await response.text()).toBe(200);
     expect((await response.json()).redirectTo).toBe(redirect);
     const names = (await context.cookies()).map((cookie) => cookie.name);
-    expect(names.includes("care_atlas_session")).toBe(redirect === "/today");
+    expect(names.includes("care_atlas_session")).toBe(redirect !== "/account/recovery");
     expect(names.includes("ipillgood_account_recovery")).toBe(redirect === "/account/recovery");
     return idToken;
   }
@@ -238,12 +238,14 @@ test("issued sessions: sign in → withdraw → cancel recovery → restore → 
     advance(60_000);
     const rejoined = await identity();
     expect(rejoined.localId).not.toBe(uid);
-    await login(rejoined.localId, "/today");
-    await page.goto("/documents");
-    await expect(page.getByText("아직 등록한 문서가 없어요")).toBeVisible();
+    await login(rejoined.localId, "/profile?onboarding=1");
+    await page.goto("/profile?onboarding=1");
+    await expect(page.getByRole("status")).toContainText("동의를 먼저 확인해 주세요");
+    const denied = await browserRequest("/api/documents/analyze", {});
+    expect(denied.status()).toBe(403);
     const cleanModel = (await f.admin.collection("careReadModels").doc(`google-${rejoined.localId}`).get()).data();
-    expect(cleanModel?.documents).toEqual([]);
-    expect(cleanModel?.medications).toEqual([]);
+    expect(cleanModel?.documents ?? []).toEqual([]);
+    expect(cleanModel?.medications ?? []).toEqual([]);
     await notificationsEmpty(rejoined.localId);
     expect(await job(rejoined.localId)).toBeUndefined();
     evidence.push({ step: "same-google-rejoin", newFirebaseUid: true, oldHealthNotRestored: true, oldPushNotRestored: true });

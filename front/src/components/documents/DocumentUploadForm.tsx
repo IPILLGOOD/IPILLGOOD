@@ -6,12 +6,16 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { DocumentAnalysisResult } from "@/components/documents/DocumentAnalysisResult";
-import type { ClinicalDocumentType, DocumentAnalysis } from "@care-atlas/backend";
+import { MedicationDraftReview } from "@/components/documents/MedicationDraftReview";
+import type { ClinicalDocumentType, DocumentAnalysis, MedicationPlanDraft } from "@care-atlas/backend";
 
 interface AnalysisResponse {
   message?: string;
   analysis?: DocumentAnalysis;
   addedMedicationCount?: number;
+  reviewMedicationCount?: number;
+  draft?: MedicationPlanDraft | null;
+  requiresPeriodReview?: boolean;
   duplicateResolutionRequired?: boolean;
   duplicateCandidates?: Array<{
     existingMedicationPlanId: string;
@@ -34,8 +38,10 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
+  const [draft, setDraft] = useState<MedicationPlanDraft | null>(null);
+  const [requiresPeriodReview, setRequiresPeriodReview] = useState(false);
   const [duplicateCandidates, setDuplicateCandidates] = useState<NonNullable<AnalysisResponse["duplicateCandidates"]>>([]);
-  const [medicationRegistration, setMedicationRegistration] = useState<"added" | "pending" | "merged">("added");
+  const [medicationRegistration, setMedicationRegistration] = useState<"draft" | "pending" | "merged">("draft");
   const retryFormData = useRef<FormData | null>(null);
   const previewUrl = useMemo(
     () => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : null),
@@ -58,8 +64,10 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         : "문서에서 중요한 내용을 찾고 쉬운 말로 정리하고 있어요.",
     );
     setAnalysis(null);
+    setDraft(null);
+    setRequiresPeriodReview(false);
     setDuplicateCandidates([]);
-    setMedicationRegistration("added");
+    setMedicationRegistration("draft");
 
     try {
       const response = await fetch("/api/documents/analyze", {
@@ -82,7 +90,9 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
       setStatus("success");
       setMessage(body.message ?? "문서 분석을 마쳤어요.");
       setAnalysis(body.analysis);
-      setMedicationRegistration(body.duplicateResolution === "merge" ? "merged" : "added");
+      setDraft(body.draft ?? null);
+      setRequiresPeriodReview(body.requiresPeriodReview === true);
+      setMedicationRegistration(body.duplicateResolution === "merge" ? "merged" : "draft");
       router.refresh();
     } catch (error) {
       setStatus("error");
@@ -214,7 +224,36 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         </p>
       ) : null}
 
-      {analysis ? <DocumentAnalysisResult analysis={analysis} medicationRegistration={medicationRegistration} /> : null}
+      {analysis ? (
+        <div className="document-verification-layout">
+          <figure className="document-verification-original">
+            <figcaption>
+              <strong>원본 {documentType}</strong>
+              <span>{file?.name ?? "비식별 데모 문서"}</span>
+            </figcaption>
+            {previewUrl ? (
+              <Image
+                src={previewUrl}
+                width={720}
+                height={960}
+                unoptimized
+                alt={`대조할 원본 ${documentType}`}
+              />
+            ) : (
+              <div className="document-verification-original__placeholder">
+                <FileImage size={36} aria-hidden="true" />
+                <p>{file?.type === "application/pdf" ? "PDF 원본은 파일을 열어 결과와 나란히 확인해주세요." : "데모 원본과 분석 결과를 비교하는 화면이에요."}</p>
+              </div>
+            )}
+          </figure>
+          <DocumentAnalysisResult
+            analysis={analysis}
+            requiresPeriodReview={requiresPeriodReview}
+            medicationRegistration={medicationRegistration}
+          />
+        </div>
+      ) : null}
+      {draft ? <MedicationDraftReview draft={draft} /> : null}
 
       {duplicateCandidates.length > 0 ? (
         <section className="duplicate-resolution" aria-labelledby="duplicate-resolution-title">
@@ -229,7 +268,10 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
             {duplicateCandidates.map((candidate) => (
               <li key={`${candidate.existingMedicationPlanId}-${candidate.productName}`}>
                 <strong>{candidate.productName}</strong>
-                <span>기존 복약 {candidate.existingMedicationPlanId}{candidate.existingDocumentId ? ` · 문서 ${candidate.existingDocumentId}` : ""}</span>
+                <span>
+                  기존 복약 {candidate.existingMedicationPlanId}
+                  {candidate.existingDocumentId ? ` · 문서 ${candidate.existingDocumentId}` : ""}
+                </span>
               </li>
             ))}
           </ul>
