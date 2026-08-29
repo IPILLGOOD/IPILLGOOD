@@ -22,6 +22,11 @@ export const profileSchema = z.object({
   ),
   allergies: z.string(),
   conditions: z.string(),
+  confirmedConditionIds: z.array(z.enum([
+    "condition-hypertension",
+    "condition-hyperlipidemia",
+    "condition-knee-osteoarthritis",
+  ])).max(3).default([]),
   mobilityNote: z.string().max(300, "300자 안으로 입력해주세요."),
   caregiverNote: z.string().max(500, "500자 안으로 입력해주세요."),
   consentConfirmed: z.literal("on", {
@@ -42,16 +47,35 @@ export function buildRecipientProfile(
   current: CareRecipient,
   values: ProfileFormValues,
 ): CareRecipient {
+  const confirmedAt = new Date().toISOString();
+  const conditionOptions = [
+    { id: "condition-hypertension", standardName: "고혈압", code: "I10" },
+    { id: "condition-hyperlipidemia", standardName: "고지혈증", code: "E78" },
+    { id: "condition-knee-osteoarthritis", standardName: "무릎 골관절염", code: "M17" },
+  ];
   const recipient: CareRecipient = {
     ...current,
     displayName: values.displayName,
     ageBand: values.ageBand,
     allergies: listFromCommaSeparated(values.allergies),
     conditions: listFromCommaSeparated(values.conditions),
+    confirmedConditions: [
+      ...(current.confirmedConditions ?? []).filter((condition) => condition.sourceDocumentId),
+      ...conditionOptions
+      .filter((condition) => values.confirmedConditionIds.includes(condition.id as never))
+      .map((condition) => {
+        const existing = current.confirmedConditions?.find((item) => item.id === condition.id);
+        return existing ?? {
+          ...condition,
+          sourceLabel: "프로필에서 의료진 확인 정보로 보호자가 확정",
+          confirmedAt,
+        };
+      }),
+    ].filter((condition, index, items) => items.findIndex((item) => item.id === condition.id) === index),
     mobilityNote: values.mobilityNote,
     caregiverNote: values.caregiverNote,
     consentConfirmed: true,
-    lastConfirmedAt: new Date().toISOString(),
+    lastConfirmedAt: confirmedAt,
   };
 
   delete recipient.heightCm;

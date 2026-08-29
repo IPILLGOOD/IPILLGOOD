@@ -9,6 +9,11 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import type { ActionState, CareRecipient } from "@care-atlas/backend";
 
 const initialState: ActionState = { status: "idle", message: "" };
+const confirmedConditionOptions = [
+  { id: "condition-hypertension", label: "고혈압", code: "I10" },
+  { id: "condition-hyperlipidemia", label: "고지혈증", code: "E78" },
+  { id: "condition-knee-osteoarthritis", label: "무릎 골관절염", code: "M17" },
+] as const;
 
 export function ProfileForm({ recipient, revision }: { recipient: CareRecipient; revision: number }) {
   const router = useRouter();
@@ -126,7 +131,7 @@ export function ProfileForm({ recipient, revision }: { recipient: CareRecipient;
         </div>
 
         <div className="field">
-          <label htmlFor="conditions">의료진에게 확인받은 건강 상태</label>
+          <label htmlFor="conditions">건강 상태 참고 메모</label>
           <input
             id="conditions"
             name="conditions"
@@ -135,9 +140,29 @@ export function ProfileForm({ recipient, revision }: { recipient: CareRecipient;
             aria-describedby="conditions-hint"
           />
           <p className="field-hint" id="conditions-hint">
-            현재 건강 상태를 한눈에 확인할 수 있도록 프로필에 정리해요.
+            참고용 자유 메모예요. 이 내용만으로 식사·영양 고려사항을 만들지는 않아요.
           </p>
         </div>
+
+        <fieldset className="field form-grid__wide profile-choice-fieldset">
+          <legend>식사·영양 안내에 사용할 확정 질환</legend>
+          <p className="field-hint">
+            의료진에게 확인받은 질환만 선택해주세요. 선택한 질환만 안내 생성에 사용해요.
+          </p>
+          <div className="profile-choice-grid">
+            {confirmedConditionOptions.map((condition) => (
+              <label className="profile-choice" key={condition.id}>
+                <input
+                  type="checkbox"
+                  name="confirmedConditionIds"
+                  value={condition.id}
+                  defaultChecked={recipient.confirmedConditions?.some((item) => item.id === condition.id)}
+                />
+                <span><strong>{condition.label}</strong><small>{condition.code}</small></span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
         <div className="field form-grid__wide">
           <label htmlFor="mobilityNote">걷기와 이동에 관한 메모</label>

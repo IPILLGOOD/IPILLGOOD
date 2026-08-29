@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
+import { confirmDiagnosesAction } from "@/app/actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { supportedNutritionDiagnoses } from "@/lib/nutrition-presentation";
 import type { DocumentAnalysis } from "@care-atlas/backend";
 
 const evidenceLabels = {
@@ -26,10 +29,12 @@ const evidenceLabels = {
 
 export function DocumentAnalysisResult({
   analysis,
+  documentId,
   requiresPeriodReview = false,
   medicationRegistration = "draft",
 }: {
   analysis: DocumentAnalysis;
+  documentId?: string;
   requiresPeriodReview?: boolean;
   medicationRegistration?: "draft" | "pending" | "merged";
 }) {
@@ -43,6 +48,7 @@ export function DocumentAnalysisResult({
     (medication) => medication.reviewStatus !== "verified",
   ).length ?? 0;
   const requiresMedicationVerification = medicationsNeedingReview > 0;
+  const nutritionDiagnoses = supportedNutritionDiagnoses(analysis);
 
   return (
     <section className="analysis-result" aria-labelledby="analysis-result-title">
@@ -186,6 +192,20 @@ export function DocumentAnalysisResult({
             {analysis.diseaseLookup.message}
           </p>
         </div>
+      ) : null}
+
+      {analysis.documentType === "진단서" && documentId && nutritionDiagnoses.length > 0 ? (
+        <form action={confirmDiagnosesAction} className="diagnosis-confirmation">
+          <input type="hidden" name="documentId" value={documentId} />
+          <div>
+            <strong>식사·영양 안내에 반영할까요?</strong>
+            <p>
+              {nutritionDiagnoses.map((diagnosis) => diagnosis.name).join(" · ")}을(를)
+              의료진에게 확인받은 질환으로 저장해요. 원본과 비교한 뒤 확정해주세요.
+            </p>
+          </div>
+          <SubmitButton pendingText="확정하는 중…">확정 질환으로 저장</SubmitButton>
+        </form>
       ) : null}
 
       {analysis.diseaseInformation && analysis.diseaseInformation.length > 0 ? (

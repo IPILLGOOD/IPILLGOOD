@@ -23,6 +23,7 @@ interface AnalysisResponse {
     productName: string;
   }>;
   duplicateResolution?: "merge" | "separate";
+  document?: { id: string };
 }
 
 function copyFormData(source: FormData) {
@@ -43,6 +44,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   const [duplicateCandidates, setDuplicateCandidates] = useState<NonNullable<AnalysisResponse["duplicateCandidates"]>>([]);
   const [medicationRegistration, setMedicationRegistration] = useState<"draft" | "pending" | "merged">("draft");
   const retryFormData = useRef<FormData | null>(null);
+  const [documentId, setDocumentId] = useState<string | null>(null);
   const previewUrl = useMemo(
     () => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : null),
     [file],
@@ -68,6 +70,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     setRequiresPeriodReview(false);
     setDuplicateCandidates([]);
     setMedicationRegistration("draft");
+    setDocumentId(null);
 
     try {
       const response = await fetch("/api/documents/analyze", {
@@ -93,6 +96,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
       setDraft(body.draft ?? null);
       setRequiresPeriodReview(body.requiresPeriodReview === true);
       setMedicationRegistration(body.duplicateResolution === "merge" ? "merged" : "draft");
+      setDocumentId(body.document?.id ?? null);
       router.refresh();
     } catch (error) {
       setStatus("error");
@@ -248,6 +252,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
           </figure>
           <DocumentAnalysisResult
             analysis={analysis}
+            documentId={documentId ?? undefined}
             requiresPeriodReview={requiresPeriodReview}
             medicationRegistration={medicationRegistration}
           />
