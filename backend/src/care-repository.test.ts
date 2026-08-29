@@ -40,10 +40,32 @@ test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복�
 
 const upload = (id: string) => ({ fileName: `${id}.pdf`, contentHash: id, documentType: "진단서" as const, size: 100, isSample: true, analysis: null });
 
+async function consentedSnapshot(scope: { recipientId: string; firestore: MemoryFirestore }) {
+  const current = await getCareSnapshot(scope);
+  await updateRecipientProfile(scope, {
+    ...current.recipient,
+    consentConfirmed: true,
+    lastConfirmedAt: "2026-08-23T00:00:00.000Z",
+  }, current);
+  return getCareSnapshot(scope);
+}
+
+test("미동의 계정의 문서 등록은 건강정보 원본과 read model을 변경하지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-without-consent", firestore };
+  await getCareSnapshot(scope);
+
+  await assert.rejects(registerDocument(scope, upload("blocked")), /동의/);
+
+  assert.equal(firestore.store.has(`careRecipients/${scope.recipientId}/clinicalDocuments/blocked`), false);
+  assert.equal(firestore.store.has(`careRecipients/${scope.recipientId}/medicationPlans/rx-blocked-1`), false);
+  assert.deepEqual((await getCareSnapshot(scope)).documents, []);
+});
+
 test("서로 다른 문서의 동시 등록과 오래된 프로필 저장이 기존 데이터를 덮어쓰지 않는다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-concurrent", firestore };
-  const original = await getCareSnapshot(scope);
+  const original = await consentedSnapshot(scope);
   await Promise.all([registerDocument(scope, upload("a")), registerDocument(scope, upload("b"))]);
   await updateRecipientProfile(scope, { ...original.recipient, displayName: "수정된 이름" }, original);
   const result = await getCareSnapshot(scope);
@@ -54,7 +76,7 @@ test("서로 다른 문서의 동시 등록과 오래된 프로필 저장이 기
 test("읽기 오류를 빈 계정으로 반환하지 않고 fallback snapshot 쓰기를 거부한다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-read-error", firestore };
-  const original = await getCareSnapshot(scope);
+  const original = await consentedSnapshot(scope);
   await registerDocument(scope, upload("kept"));
   firestore.failReads = 1;
   await assert.rejects(getCareSnapshot(scope), /INJECTED_READ_FAILURE/);
@@ -65,6 +87,7 @@ test("읽기 오류를 빈 계정으로 반환하지 않고 fallback snapshot �
 test("부분 commit 실패는 문서와 read model을 모두 보존하며 canonical 데이터로 복구한다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-rebuild", firestore };
+  await consentedSnapshot(scope);
   await registerDocument(scope, upload("kept"));
   firestore.failCommits = 1;
   await assert.rejects(registerDocument(scope, upload("failed")), /INJECTED_COMMIT_FAILURE/);
@@ -143,6 +166,7 @@ test("read model의 체크인은 서울 날짜가 오늘과 일치할 때만 반
 test("기존 문서 삭제와 새 문서 등록의 동시 요청에서 새 데이터가 유실되지 않는다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-delete-race", firestore };
+  await consentedSnapshot(scope);
   await registerDocument(scope, upload("old"));
   const stale = await getCareSnapshot(scope);
   await Promise.all([deleteDocument(scope, "old", stale), registerDocument(scope, upload("new"))]);
@@ -152,7 +176,7 @@ test("기존 문서 삭제와 새 문서 등록의 동시 요청에서 새 데�
 test("원본 변경과 복구 작업은 같은 commit에 저장되고 실패 시 둘 다 남지 않는다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-outbox", firestore };
-  await getCareSnapshot(scope);
+  await consentedSnapshot(scope);
   await firestore.collection("pushSubscriptions").doc("sub").set({ recipientId: scope.recipientId, active: true });
   firestore.beforeCommit = (operations) => {
     if (operations.some((item) => item.path.startsWith("medicationReminderSync/"))) throw new Error("OUTBOX_FAILURE");

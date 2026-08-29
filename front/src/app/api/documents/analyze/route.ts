@@ -7,6 +7,7 @@ import {
   DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   DocumentUploadValidationError,
+  isServiceHealthDataConsentConfirmed,
   registerDocumentAndSyncMedicationReminders,
   type ClinicalDocumentType,
   validateClinicalDocumentFile,
@@ -29,6 +30,14 @@ export async function POST(request: Request) {
   if (session.provider === "demo" && process.env.IPILLGOOD_DEMO_MODE !== "true") {
     return Response.json(
       { message: "현재는 읽기 전용 모드예요. 인증 연결 후 분석을 활성화해주세요." },
+      { status: 403 },
+    );
+  }
+
+  const scope = careScopeFor(session);
+  if (!await isServiceHealthDataConsentConfirmed(scope.recipientId)) {
+    return Response.json(
+      { message: "건강정보 처리에 동의한 뒤 문서를 분석할 수 있어요." },
       { status: 403 },
     );
   }
@@ -87,13 +96,19 @@ export async function POST(request: Request) {
     if (session.provider === "google" && !await isServiceAccountActive(session.id)) {
       return Response.json({ message: "회원 탈퇴 처리 중에는 분석할 수 없어요." }, { status: 403 });
     }
-    const result = await withCareAccountProcessing(careScopeFor(session).recipientId, () => analyzeMedicationDocument({
+    if (!await isServiceHealthDataConsentConfirmed(scope.recipientId)) {
+      return Response.json(
+        { message: "건강정보 처리 동의가 철회되어 분석을 중단했어요." },
+        { status: 403 },
+      );
+    }
+    const result = await withCareAccountProcessing(scope.recipientId, () => analyzeMedicationDocument({
       documentType: typedDocumentType,
       fileName,
       contentType,
       contentBase64,
     }));
-    const document = await registerDocumentAndSyncMedicationReminders(careScopeFor(session), {
+    const document = await registerDocumentAndSyncMedicationReminders(scope, {
       fileName,
       contentHash,
       documentType: typedDocumentType,

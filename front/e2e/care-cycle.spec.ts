@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { SignJWT, decodeJwt } from "jose";
 import { randomUUID } from "node:crypto";
 import { emulatorFixture } from "../../backend/test-support/emulator";
+import { seedCareAccount } from "../../backend/test-support/care-fixtures";
 
 const browserEvents = new WeakMap<object, string[]>();
 
@@ -111,6 +112,11 @@ test("synthetic account: isolated normal session, read-only Push status, forged 
     for (const collection of ["careAnalyses", "questionSets", "agentRuns"]) {
       expect((await fixture.admin.collection("careRecipients").doc(recipientId).collection(collection).get()).empty).toBe(true);
     }
+    const deniedAnalysis = await context.request.post("/api/documents/analyze", {
+      multipart: { documentType: "처방전", sample: "true" },
+    });
+    expect(deniedAnalysis.status()).toBe(403);
+    expect((await deniedAnalysis.json()).message).toContain("동의");
     const status = await context.request.get("/api/push/subscriptions?deviceId=test-device-000001");
     expect(status.status()).toBe(200);
     expect((await status.json()).subscribed).toBe(false);
@@ -141,6 +147,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
   let demoRecipientId: string | undefined;
   try {
     expect((await request.post("/api/documents/analyze", { multipart: { documentType: "처방전", sample: "true" } })).status()).toBe(401);
+    await seedCareAccount(fixture.firestore, recipientId, { consent: true });
     await context.addCookies([sessionCookie]);
     await page.goto("/documents");
     await expect(page.getByText("아직 등록한 문서가 없어요")).toBeVisible();

@@ -7,6 +7,10 @@ import { careInputRevision, runCareAgent, type CareAgentResult } from "./ai/care
 import { buildPatientQuestionSet, questionSetIdFor } from "./ai/questions/generate-question-set.ts";
 import { getCareSnapshot, type CareDataScope } from "./care-repository.ts";
 import { getAdminFirestore } from "./firebase-admin.ts";
+import {
+  assertHealthDataConsentConfirmed,
+  isHealthDataConsentConfirmed,
+} from "./health-data-consent.ts";
 import type { CareSnapshot, PatientQuestionSet } from "./types.ts";
 
 const GENERATION_LEASE_MS = 150_000;
@@ -57,9 +61,10 @@ export async function getOrCreateQuestionSet(input: {
   if (snapshot.recipient.id !== input.scope.recipientId || snapshot.dataSource !== "firestore") {
     throw new Error("질문 생성에 필요한 서버 데이터를 다시 확인해 주세요.");
   }
+  const firestore = input.scope.firestore ?? await getAdminFirestore();
+  await assertHealthDataConsentConfirmed(firestore, input.scope.recipientId);
   const inputRevision = careInputRevision(snapshot, targetDate);
   const id = questionSetIdFor({ recipientId: input.scope.recipientId, targetDate, answerer: input.answerer, inputRevision });
-  const firestore = input.scope.firestore ?? await getAdminFirestore();
   const recipient = firestore.collection("careRecipients").doc(input.scope.recipientId);
   const questionRef = recipient.collection("questionSets").doc(id);
   const generationRef = recipient.collection("questionGenerations").doc(id);
@@ -78,6 +83,9 @@ export async function getOrCreateQuestionSet(input: {
         input.scope.useDemoData ? tx.get(firestore.collection("demoSessions").doc(input.scope.recipientId)) : null,
       ]);
       if (!account.exists) throw new Error("돌봄 계정을 다시 확인해 주세요.");
+      if ((account.data() as { consentConfirmed?: boolean }).consentConfirmed !== true) {
+        throw new Error("건강정보 처리 동의가 필요합니다.");
+      }
       if (demo && (!demo.exists || (demo.data() as { status: string }).status !== "active" || Date.parse((demo.data() as { expiresAt: string }).expiresAt) <= clock().getTime())) {
         throw new Error("데모 세션이 만료되었습니다.");
       }
@@ -112,11 +120,13 @@ export async function getOrCreateQuestionSet(input: {
   try {
     if (!saved) {
       await assertCareAccountActive(firestore, input.scope.recipientId);
+      await assertHealthDataConsentConfirmed(firestore, input.scope.recipientId);
       let result: CareAgentResult;
       try {
         result = await withCareAccountProcessing(input.scope.recipientId, () => (dependencies.runAgent ?? runCareAgent)({ snapshot, targetDate, requestId: id }), firestore);
       } catch {
         await assertCareAccountActive(firestore, input.scope.recipientId);
+        await assertHealthDataConsentConfirmed(firestore, input.scope.recipientId);
         result = await runCareAgent({ snapshot, targetDate, apiKey: "", requestId: id });
         result.run.status = "failed";
         result.run.errorCode = "CARE_AGENT_FAILED";
@@ -129,6 +139,7 @@ export async function getOrCreateQuestionSet(input: {
         try {
           await firestore.runTransaction(async (tx) => {
             await assertCareAccountActive(firestore, input.scope.recipientId, tx);
+            await assertHealthDataConsentConfirmed(firestore, input.scope.recipientId, tx);
             const generation = await tx.get(generationRef);
             if ((generation.data() as Generation | undefined)?.owner !== owner) throw new Error("질문 생성 권한이 만료되었습니다.");
             tx.set(generationRef, { status: "result_ready", result: saved }, { merge: true });
@@ -151,7 +162,10 @@ export async function getOrCreateQuestionSet(input: {
       if (question.exists) return question.data() as PatientQuestionSet;
       if ((generation.data() as Generation | undefined)?.owner !== owner) throw new Error("질문 생성 권한이 만료되었습니다.");
       if (demo && (!demo.exists || (demo.data() as { status: string }).status !== "active" || Date.parse((demo.data() as { expiresAt: string }).expiresAt) <= clock().getTime())) throw new Error("데모 세션이 만료되었습니다.");
-      if (!account.exists || sources.some((doc) => !doc.exists)) throw new Error("질문 근거가 변경되어 다시 확인해야 합니다.");
+      if (!account.exists || (account.data() as { consentConfirmed?: boolean }).consentConfirmed !== true) {
+        throw new Error("건강정보 처리 동의가 필요합니다.");
+      }
+      if (sources.some((doc) => !doc.exists)) throw new Error("질문 근거가 변경되어 다시 확인해야 합니다.");
       tx.set(questionRef, { ...completed.questionSet, sourceDocumentIds });
       tx.set(recipient.collection("careAnalyses").doc(completed.agent.output.analysis_id), {
         ...completed.agent.output, promptVersion: completed.questionSet.prompt_version, inputRevision, sourceDocumentIds,
@@ -166,8 +180,14 @@ export async function getOrCreateQuestionSet(input: {
     // Preserve a durable result but relinquish ownership so the next request can finish publication.
     await firestore.runTransaction(async (tx) => {
       if (!await isCareAccountActive(firestore, input.scope.recipientId, tx)) return;
+      const consentConfirmed = await isHealthDataConsentConfirmed(firestore, input.scope.recipientId, tx);
       const generation = await tx.get(generationRef);
       if ((generation.data() as Generation | undefined)?.owner !== owner) return;
+      if (!consentConfirmed) {
+        tx.delete(generationRef);
+        tx.delete(attemptRef);
+        return;
+      }
       tx.set(generationRef, { status: "failed", leaseUntil: clock().toISOString(), errorCode: "GENERATION_NOT_PUBLISHED" }, { merge: true });
       tx.set(attemptRef, { status: "failed", attempt, generationId: id, errorCode: "GENERATION_NOT_PUBLISHED", completedAt: clock().toISOString() });
     }).catch(() => undefined);
