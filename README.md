@@ -31,7 +31,7 @@ IPILLGOOD는 이미 존재하는 처방 정보와 공식 의약품 안전 정보
 4. **문서 분석** — 처방전·진단서 이미지 또는 PDF를 분석 API로 보내고 쉬운 말 결과를 즉시 확인. 원본 파일은 저장하지 않음
 5. **어르신 프로필** — 연령대, 신체 정보, 알레르기, 확인받은 건강 상태와 보호자 메모 관리
 6. **Care Report** — 약 변경과 증상을 인과관계로 단정하지 않고 시간순 기록과 상담 질문으로 정리
-7. **식약처 공식 정보 검색** — 약물명을 검색해 식약처 약물 유전 정보 Open API의 일반·유전·제품 정보를 확인
+7. **식약처 공식 정보 검색** — 제품명·성분명을 제품 허가정보에서 통합 검색하고, 일반의약품은 e약은요, 전문의약품은 제품 허가 상세의 효능·용법·주의사항을 연결해 확인. 공식 원문이 있으면 OpenAI가 보호자용 쉬운 말 설명을 함께 제공하고 약물유전정보를 선택적으로 보강
 8. **진단서 질병 정보 보강** — 진단명·KCD/ICD 코드를 추출해 건강보험심사평가원 질병정보 API를 우선 조회하고, 미설정·장애·불일치일 때 OpenAI 웹 검색으로 공신력 있는 출처를 보강
 9. **설치형 PWA 복약 알림** — 로그인 후 현재 기기를 등록하면 Chrome·Safari의 Web Push로 복약 시각을 알리고, 운영자 테스트 발송의 기기 표시 여부까지 확인
 
@@ -73,8 +73,13 @@ flowchart LR
   AD -->|"Cloudflare: REST + Service Account"| FS
   CA --> OAI["OpenAI Responses API<br/>Structured Outputs · store:false"]
   MA --> EXT["외부 분석 API 우선<br/>또는 OpenAI 이미지·PDF 분석"]
-  RSC --> MFDS["식약처 원문 API"]
-  MFDS -->|"공식 원문만 전달"| OAI
+  RSC --> MFDS["식약처 제품 허가정보<br/>제품명 · 성분명 · itemSeq"]
+  MFDS --> EASY["e약은요<br/>소비자용 복약정보"]
+  MFDS --> DETAIL["제품 허가 상세<br/>효능 · 용법 · 주의사항"]
+  MFDS --> PGX["약물유전정보<br/>선택 보강"]
+  EASY --> PLAIN["OpenAI 쉬운 설명<br/>공식 원문만 사용"]
+  DETAIL --> PLAIN
+  PGX --> PLAIN
   MA --> HIRA["HIRA 질병정보 API"]
   HIRA -. "미설정 · 장애 · 불일치" .-> WEB["OpenAI Web Search<br/>허용 도메인 제한"]
   CA -. "키 없음 · 호출 실패" .-> SAFE["기록 기반 safe fallback"]
@@ -89,7 +94,7 @@ flowchart LR
 | 맞춤 안부 질문 | `/today`, `/check-in` | 최근 14일 기록만 구조화 분석 → event ref 검증 → 승인된 템플릿으로 최대 3개 구성 | `careAnalyses`, `questionSets`, `agentRuns` |
 | 프로필·안부 기록 | Server Action | 세션·소유 범위·데모 모드 확인 → Zod/도메인 검증 → 질문 답변과 복약·증상 기록을 원자적으로 저장 | `questionResponses`, 원본 이벤트, read model |
 | 문서 분석 | `POST /api/documents/analyze` | 세션·5MB·형식 검증 → 분석 어댑터 → 응답 스키마 확인 | 원본이 아닌 메타데이터와 결과 |
-| 약물 쉬운 설명 | `/medications` | 식약처 원문 조회 → 원문 범위 안에서만 구조화된 쉬운 설명 생성 | 없음 |
+| 공식 약 정보 검색 | `/medications` | 제품명·성분명 통합 조회 → `itemSeq` 기준 e약은요 또는 제품 허가 상세 결합 → 해당 성분의 약물유전정보 보강 → 공식 원문이 있을 때만 쉬운 말 생성 | 없음 |
 | 진단서 질병 보강 | 문서 분석 후처리 | HIRA 정확 일치 우선 → 실패한 항목만 허용 도메인 웹 검색 | 분석 결과에 출처 URL 저장 |
 | 복약 알림 | `/today`, Cloudflare Cron | 명시적 권한 요청 → 기기별 Push 구독 → 서울 시간 복약 일정 생성 → 매분 도래 일정 조회·중복 방지 발송 | `pushSubscriptions`, `medicationReminderSchedules`, `pushDeliveries` |
 
@@ -191,17 +196,27 @@ npx wrangler secret put CONNECTION_CODE_SECRET
 식약처 공식 약물 정보를 검색하려면 `front/.env.local`에 공공데이터포털 인증키를 설정합니다. 이 값은 서버에서만 사용되며 `.env*`는 `.gitignore`로 커밋 대상에서 제외됩니다.
 
 ```bash
+MFDS_PRODUCT_API_URL=https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07
+MFDS_EASY_DRUG_API_URL=https://apis.data.go.kr/1471000/DrbEasyDrugInfoService
 MFDS_PARMGEN_API_URL=https://apis.data.go.kr/1471000/ParmgenService
-MFDS_PARMGEN_API_KEY=공공데이터포털_일반_인증키
+MFDS_MEDICATION_API_KEY=공공데이터포털_일반_인증키
+# 약물 유전 정보가 별도 키로 승인된 경우
+MFDS_PARMGEN_API_KEY=약물유전정보_인증키
 ```
 
-문서 분석, 질병 정보 조회, 식약처 약물 정보의 쉬운 설명을 활성화하려면 같은 파일에 다음 서버 전용 값을 설정합니다.
+공공데이터포털에서 의약품 제품 허가정보와 의약품개요정보(e약은요) 활용 신청을 완료한 프로젝트 키를 `MFDS_MEDICATION_API_KEY`에 저장합니다. 약물 유전 정보가 다른 프로젝트 키로 승인된 경우 `MFDS_PARMGEN_API_KEY`를 함께 설정합니다. 제품·e약 키가 없을 때는 기존 배포의 약물유전 키를 전환 호환용으로 읽습니다.
+
+전문의약품은 e약은요 수록 대상이 아니므로 같은 제품 허가정보 서비스의 상세 조회에서 효능·효과, 용법·용량, 사용상 주의사항, 보관방법을 가져옵니다. 별도 키는 필요하지 않으며 `MFDS_MEDICATION_API_KEY`를 함께 사용합니다.
+
+문서 분석과 질병 정보 조회를 활성화하려면 같은 파일에 다음 서버 전용 값을 설정합니다.
 
 ```bash
 OPENAI_API_KEY=OpenAI_API_키
 OPENAI_MODEL=gpt-5.6-luna
 HIRA_DISEASE_API_KEY=공공데이터포털_일반_인증키
 ```
+
+`OPENAI_API_KEY`가 있으면 공식 약 원문을 `store:false` 구조화 응답으로 쉬운 말로 바꿉니다. 공식 원문이 없는 항목은 모델이 내용을 만들어내지 않으며, OpenAI가 미설정이거나 실패해도 식약처 원문과 의약품안전나라 상세 링크는 계속 표시합니다.
 
 검증 명령:
 
@@ -212,10 +227,10 @@ npm test
 npm run build
 ```
 
-실제 OpenAI·식약처 키로 비식별 처방전/진단서 이미지, 약물 쉬운 설명, Care Agent를 연쇄 검증하려면:
+실제 OpenAI·식약처 키로 비식별 처방전/진단서 이미지, 공식 제품·성분 검색, Care Agent를 연쇄 검증하려면:
 
 ```bash
-OPENAI_API_KEY=... MFDS_PARMGEN_API_KEY=... npm run verify:live --workspace @care-atlas/backend
+OPENAI_API_KEY=... MFDS_MEDICATION_API_KEY=... npm run verify:live --workspace @care-atlas/backend
 ```
 
 Cloudflare Workers 빌드·프리뷰·배포:
@@ -293,14 +308,13 @@ npm run firebase:deploy
 
 ## AI 연결 지점
 
-현재 생성형 AI는 네 군데에서 사용합니다. 모든 OpenAI 요청은 Responses API에 `store: false`, 낮은 reasoning effort, 30초 timeout을 적용하며 기본 모델은 `OPENAI_MODEL` 또는 `gpt-5.6-luna`입니다.
+현재 생성형 AI는 세 군데에서 사용합니다. 모든 OpenAI 요청은 Responses API에 `store: false`, 낮은 reasoning effort, 30초 timeout을 적용하며 기본 모델은 `OPENAI_MODEL` 또는 `gpt-5.6-luna`입니다.
 
 | 기능 | AI 입력 | AI 출력과 후처리 | 실패 시 동작 |
 |---|---|---|---|
 | Care Agent 맞춤 안부 | 최소 프로필, 활성 약, 목표일 이전 최근 14일 복약·증상 이벤트 | `care-agent.v1` Structured Output → Zod 검증 → 존재하는 event ID만 허용 → 코드의 승인 템플릿으로 질문 최대 3개 생성 | 같은 기록을 결정적 규칙으로 분석하는 `safe_fallback`; 안부 기능은 계속 동작 |
 | 처방전·진단서 분석 | 요청 중 메모리에만 둔 이미지/PDF | 문서 사실, 돌봄 확인점, 의료진 질문, 진단명·코드를 JSON Schema로 추출 | 외부 분석 API가 설정되면 그 제공자를 우선 사용; 어떤 분석기도 없으면 실제 파일 분석은 503, 비식별 샘플은 데모 결과 제공 |
 | 진단서 질병 정보 | 문서에서 추출한 진단명·KCD/ICD 코드 | HIRA 정확 일치를 우선 사용하고, 실패한 항목만 OpenAI 웹 검색으로 보강해 출처 URL과 함께 반환 | 공식·웹 결과가 없다는 상태를 명시하고 추측하지 않음 |
-| 식약처 약물 쉬운 설명 | 식약처 API에서 받은 공개 원문만 전달하며 환자 프로필은 전달하지 않음 | `overview`, `geneInfo`, `productInfo`, `caregiverNote` Structured Output | 쉬운 설명만 생략하고 식약처 원문은 그대로 유지 |
 
 ### Care Agent 실행 흐름
 
@@ -317,7 +331,7 @@ npm run firebase:deploy
 
 진단서는 문서 분석 후 HIRA 질병정보를 먼저 확인합니다. 정확한 코드·이름 매칭이 없거나 API가 설정되지 않았거나 일시적으로 실패한 항목만 OpenAI 웹 검색으로 전환하며, 검색 도메인은 질병관리청·HIRA·국민건강보험·대학병원·WHO·CDC·MedlinePlus로 제한합니다. 검색 출처를 받지 못하면 결과를 폐기합니다.
 
-약 검색은 [official-medication-api.ts](backend/src/official-medication-api.ts)가 식약처 원문을 먼저 조회한 뒤 공개 원문만 GPT에 전달해 보호자용 쉬운 설명을 만듭니다. 키가 없거나 GPT 호출이 실패해도 공식 원문은 유지됩니다.
+약 검색은 [official-medication-search.ts](backend/src/official-medication-search.ts)가 식약처 의약품 제품 허가정보에서 제품명과 성분명을 각각 조회하고 `itemSeq`로 중복을 제거합니다. 일반의약품은 e약은요 소비자용 설명을 우선하고, e약은요가 없는 전문의약품은 제품 허가 상세의 효능·효과, 용법·용량, 사용상 주의사항, 보관방법을 폴백으로 연결합니다. 약물유전정보는 공식 제품 결과의 성분과 일치할 때만 보강하고, OpenAI 쉬운 설명도 이 공식 원문 범위 안에서만 생성합니다. 키 미설정·API 장애·무결과는 서로 다른 상태로 반환하며, 고정 예시나 웹 검색 결과로 약품 식별을 대체하지 않습니다.
 
 AI를 연결하더라도 다음 경계는 유지합니다.
 

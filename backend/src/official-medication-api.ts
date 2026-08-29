@@ -24,8 +24,7 @@ export interface PharmacogenomicInfo {
   generalInfo: string;
   productInfo: string;
   plainExplanation?: PlainMedicationExplanation;
-  source?: "mfds_pharmacogenomic" | "verified_example" | "openai_web";
-  references?: Array<{ title: string; url: string }>;
+  source?: "mfds_pharmacogenomic";
 }
 
 export interface PlainMedicationExplanation {
@@ -50,20 +49,6 @@ export type PharmacogenomicLookupResult =
       totalCount: 0;
       sourceUrl: string;
       message: string;
-    }
-  | {
-      status: "local_fallback";
-      items: PharmacogenomicInfo[];
-      totalCount: number;
-      sourceUrl: string;
-      message: string;
-    }
-  | {
-      status: "openai_fallback";
-      items: PharmacogenomicInfo[];
-      totalCount: number;
-      sourceUrl: string;
-      message: string;
     };
 
 interface SearchOptions {
@@ -73,13 +58,7 @@ interface SearchOptions {
   format?: DataFormat;
   openAiApiKey?: string;
   simplifier?: MedicationSimplifier;
-  webSearcher?: MedicationWebSearcher;
 }
-
-type MedicationWebSearcher = (
-  query: string,
-  options?: { apiKey?: string; model?: string },
-) => Promise<PharmacogenomicInfo>;
 
 type MedicationSimplifier = (
   items: PharmacogenomicInfo[],
@@ -109,86 +88,6 @@ function asString(value: unknown): string {
 function asNumber(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-const localMedicationAliases: Record<string, string[]> = {
-  "med-amlodipine": ["amlodipine", "norvasc"],
-  "med-celecoxib": ["celecoxib", "celebrex"],
-  "med-atorvastatin": ["atorvastatin", "lipitor"],
-};
-
-const localMedicationEnglishNames: Record<string, string> = {
-  "med-amlodipine": "Amlodipine",
-  "med-celecoxib": "Celecoxib",
-  "med-atorvastatin": "Atorvastatin",
-};
-
-const localMedicationCatalog = [
-  {
-    id: "med-amlodipine",
-    productName: "노바스크정 5mg",
-    ingredientName: "암로디핀",
-    categoryPlain: "혈압약",
-    descriptionPlain: "혈관을 편안하게 넓혀 심장과 혈관의 부담을 덜어주는 데 사용되는 약이에요.",
-    doseAmount: "한 번에 1정",
-    frequency: "하루 1회",
-    timing: "아침 식사 후",
-  },
-  {
-    id: "med-celecoxib",
-    productName: "쎄레브렉스캡슐 100mg",
-    ingredientName: "세레콕시브",
-    categoryPlain: "진통·소염제",
-    descriptionPlain: "아프고 붓는 반응을 줄여 움직일 때의 불편함을 덜어주는 약이에요.",
-    doseAmount: "한 번에 1캡슐",
-    frequency: "하루 2회",
-    timing: "아침·저녁 식사 후",
-  },
-  {
-    id: "med-atorvastatin",
-    productName: "리피토정 10mg",
-    ingredientName: "아토르바스타틴",
-    categoryPlain: "고지혈증약",
-    descriptionPlain: "혈관 건강을 위해 혈액 속 기름 성분이 쌓이지 않도록 돕는 약이에요.",
-    doseAmount: "한 번에 1정",
-    frequency: "하루 1회",
-    timing: "저녁 식사 후",
-  },
-] as const;
-
-function normalizeSearchValue(value: string) {
-  return value.toLocaleLowerCase("ko-KR").replace(/[\s_-]/g, "");
-}
-
-function searchLocalMedicationInfo(query: string): PharmacogenomicInfo[] {
-  const normalizedQuery = normalizeSearchValue(query);
-  if (!normalizedQuery) return [];
-
-  return localMedicationCatalog.flatMap((medication) => {
-    const candidates = [
-      medication.productName,
-      medication.ingredientName,
-      ...(localMedicationAliases[medication.id] ?? []),
-    ].map(normalizeSearchValue);
-    if (!candidates.some((candidate) => candidate.includes(normalizedQuery))) return [];
-
-    return [
-      {
-        koreanName: medication.ingredientName,
-        englishName: localMedicationEnglishNames[medication.id] ?? "",
-        categoryPlain: medication.categoryPlain,
-        pharmacogenomicInfo: "",
-        generalInfo: medication.descriptionPlain,
-          productInfo: [
-          medication.productName,
-          medication.doseAmount,
-          medication.frequency,
-          medication.timing,
-          ].join(" · "),
-          source: "verified_example",
-      },
-    ];
-  });
 }
 
 function parsePayload(payload: string, format: DataFormat): unknown {
@@ -251,60 +150,6 @@ export function parsePharmacogenomicResponse(
   };
 }
 
-type FallbackReason = "not_configured" | "no_match" | "unavailable";
-
-async function searchMedicationFallback(
-  query: string,
-  reason: FallbackReason,
-  options: SearchOptions,
-): Promise<Extract<
-  PharmacogenomicLookupResult,
-  { status: "local_fallback" | "openai_fallback" }
-> | null> {
-  const localItems = searchLocalMedicationInfo(query);
-  if (localItems.length > 0) {
-    const reasonMessage =
-      reason === "not_configured"
-        ? "식약처 API 키가 없어"
-        : reason === "unavailable"
-          ? "식약처 API를 불러오지 못해"
-          : "식약처 약물 유전 정보에 일치하는 항목이 없어";
-    return {
-      status: "local_fallback",
-      items: localItems,
-      totalCount: localItems.length,
-      sourceUrl: SOURCE_URL,
-      message: `${reasonMessage} 검증된 예시 약 정보에서 검색했어요.`,
-    };
-  }
-
-  const openAiApiKey = options.openAiApiKey ?? process.env.OPENAI_API_KEY;
-  if (!openAiApiKey) return null;
-
-  try {
-    const searcher = options.webSearcher ??
-      (await import("./ai/openai-medical")).searchMedicationWithOpenAI;
-    const item = await searcher(query, { apiKey: openAiApiKey });
-    const reasonMessage =
-      reason === "not_configured"
-        ? "식약처 API 키가 없어"
-        : reason === "unavailable"
-          ? "식약처 API 호출에 실패해"
-          : "식약처 약물 유전 정보에 없어";
-    return {
-      status: "openai_fallback",
-      items: [item],
-      totalCount: 1,
-      sourceUrl: item.references?.[0]?.url ?? SOURCE_URL,
-      message: `${reasonMessage} OpenAI가 공신력 있는 웹 출처를 검색했어요.`,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "알 수 없는 오류";
-    console.error("OpenAI medication web search unavailable", message);
-    return null;
-  }
-}
-
 export async function searchPharmacogenomicInfo(
   medicationName: string,
   options: SearchOptions = {},
@@ -322,14 +167,12 @@ export async function searchPharmacogenomicInfo(
 
   const apiKey = options.apiKey ?? process.env.MFDS_PARMGEN_API_KEY;
   if (!apiKey) {
-    const fallback = await searchMedicationFallback(query, "not_configured", options);
-    if (fallback) return fallback;
     return {
       status: "unavailable",
       items: [],
       totalCount: 0,
       sourceUrl: SOURCE_URL,
-      message: "식약처와 OpenAI 약물 검색을 사용할 수 없어요.",
+      message: "식약처 약물유전정보 API 키가 설정되지 않았어요.",
     };
   }
 
@@ -361,10 +204,6 @@ export async function searchPharmacogenomicInfo(
 
     const payload = await readOfficialApiResponse(response, format);
     const parsed = parsePharmacogenomicResponse(payload, format);
-    if (parsed.items.length === 0) {
-      const fallback = await searchMedicationFallback(query, "no_match", options);
-      if (fallback) return fallback;
-    }
     const openAiApiKey = options.openAiApiKey ?? process.env.OPENAI_API_KEY;
     if (!openAiApiKey || parsed.items.length === 0) {
       return {
@@ -387,14 +226,12 @@ export async function searchPharmacogenomicInfo(
     }
   } catch (error) {
     console.error("MFDS pharmacogenomic API unavailable", safeOfficialApiErrorCode(error));
-    const fallback = await searchMedicationFallback(query, "unavailable", options);
-    if (fallback) return fallback;
     return {
       status: "unavailable",
       items: [],
       totalCount: 0,
       sourceUrl: SOURCE_URL,
-      message: "식약처와 OpenAI 약물 정보를 모두 불러오지 못했어요. 잠시 후 다시 검색해주세요.",
+      message: "식약처 약물유전정보를 불러오지 못했어요. 잠시 후 다시 검색해주세요.",
     };
   }
 }

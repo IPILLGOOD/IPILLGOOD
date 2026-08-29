@@ -1,100 +1,168 @@
-import { Sparkles } from "lucide-react";
+import { ShieldCheck, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
-import type { PharmacogenomicInfo } from "@care-atlas/backend";
+import type {
+  OfficialMedicationConsumerInfo,
+  OfficialMedicationSearchItem,
+} from "@care-atlas/backend";
+
+function ConsumerInformation({ consumer }: { consumer: OfficialMedicationConsumerInfo }) {
+  return (
+    <div className="plain-drug-explanation__content">
+      {consumer.efficacy ? (
+        <div>
+          <strong>어떤 효능이 있나요?</strong>
+          <p>{consumer.efficacy}</p>
+        </div>
+      ) : null}
+      {consumer.usage ? (
+        <div>
+          <strong>공식 허가 용법</strong>
+          <p>{consumer.usage}</p>
+        </div>
+      ) : null}
+      {consumer.warning || consumer.precautions ? (
+        <div>
+          <strong>사용 전 확인할 점</strong>
+          {consumer.warning ? <p>{consumer.warning}</p> : null}
+          {consumer.precautions ? <p>{consumer.precautions}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function MedicationResultExplanation({
   item,
   resultId,
 }: {
-  item: PharmacogenomicInfo;
+  item: OfficialMedicationSearchItem;
   resultId: string;
 }) {
-  const explanation = item.plainExplanation;
-  const category = explanation?.categoryPlain || item.categoryPlain || "분류 확인 필요";
-  const sourceSummary =
-    item.source === "openai_web"
-      ? "OpenAI 웹 검색 출처 확인"
-      : item.source === "verified_example"
-        ? "예시 정보 확인"
-        : "식약처 공식 원문 확인";
+  const consumer = item.consumerInfo;
+  const pharmacogenomic = item.pharmacogenomicInfo;
+  const plain = item.plainExplanation;
+  const isEasyDrug = consumer?.source === "easy_drug";
+  const officialTitle = isEasyDrug ? "e약은요 소비자용 정보" : "전문의약품 공식 허가정보";
+  const detailUrl = `https://nedrug.mfds.go.kr/pbp/CCBBB01/getItemDetail?itemSeq=${encodeURIComponent(item.itemSeq)}`;
 
   return (
     <div className="official-drug-result__details">
-      {explanation ? (
+      <div className="official-drug-result__category">
+        <span>공식 매칭</span>
+        <Badge tone={item.matchType === "product_name" ? "success" : "info"}>
+          {item.matchType === "product_name" ? "제품명" : "성분명"}
+        </Badge>
+        <Badge tone="neutral">{item.classification || "전문·일반 구분 확인 필요"}</Badge>
+        {plain?.categoryPlain ? <Badge tone="info">{plain.categoryPlain}</Badge> : null}
+        {item.productType ? <Badge tone="neutral">{item.productType}</Badge> : null}
+      </div>
+
+      {plain ? (
         <section className="plain-drug-explanation" aria-labelledby={`${resultId}-plain-title`}>
           <div className="plain-drug-explanation__heading">
             <Sparkles size={18} aria-hidden="true" />
-            <h4 id={`${resultId}-plain-title`}>보호자가 이해하기 쉽게</h4>
-            <Badge tone="success">대분류 · {category}</Badge>
-            <Badge tone="info">GPT 쉬운 설명</Badge>
+            <h4 id={`${resultId}-plain-title`}>공식 원문을 쉽게 풀어쓴 설명</h4>
+            <Badge tone="info">OpenAI 요약</Badge>
           </div>
           <div className="plain-drug-explanation__content">
-            {explanation.overview ? (
+            {plain.overview ? (
               <div>
-                <strong>어떤 정보인가요?</strong>
-                <p>{explanation.overview}</p>
+                <strong>이 약은 무엇을 도와주나요?</strong>
+                <p>{plain.overview}</p>
               </div>
             ) : null}
-            {explanation.geneInfo ? (
+            {plain.usagePlain ? (
               <div>
-                <strong>유전자 정보는 무슨 뜻인가요?</strong>
-                <p>{explanation.geneInfo}</p>
+                <strong>어떻게 사용하는 약인가요?</strong>
+                <p>{plain.usagePlain}</p>
               </div>
             ) : null}
-            {explanation.productInfo ? (
+            {plain.safetyPlain ? (
               <div>
-                <strong>제품 정보는 무슨 뜻인가요?</strong>
-                <p>{explanation.productInfo}</p>
+                <strong>무엇을 조심해야 하나요?</strong>
+                <p>{plain.safetyPlain}</p>
+              </div>
+            ) : null}
+            {plain.genePlain ? (
+              <div>
+                <strong>타고난 약물 반응 차이</strong>
+                <p>{plain.genePlain}</p>
               </div>
             ) : null}
           </div>
-          {explanation.caregiverNote ? (
-            <p className="plain-drug-explanation__note">{explanation.caregiverNote}</p>
-          ) : null}
+          <p className="plain-drug-explanation__note">{plain.caregiverNote}</p>
         </section>
+      ) : consumer ? (
+        <section className="plain-drug-explanation" aria-labelledby={`${resultId}-official-title`}>
+          <div className="plain-drug-explanation__heading">
+            <ShieldCheck size={18} aria-hidden="true" />
+            <h4 id={`${resultId}-official-title`}>{officialTitle}</h4>
+            <Badge tone="success">식약처 공식 원문</Badge>
+          </div>
+          <ConsumerInformation consumer={consumer} />
+          <p className="plain-drug-explanation__note">
+            개인 처방의 복용량·횟수·시간은 처방전과 의료진의 안내를 우선하세요.
+          </p>
+        </section>
+      ) : (
+        <div className="official-drug-message">
+          <strong>제품·성분 허가정보를 확인했어요.</strong>
+          <p>
+            쉬운 설명에 필요한 상세 원문을 불러오지 못했어요. {" "}
+            <a href={detailUrl} rel="noreferrer" target="_blank">의약품안전나라 상세정보</a>에서 확인할 수 있어요.
+          </p>
+        </div>
+      )}
+
+      {plain && consumer ? (
+        <details className="official-drug-result__original">
+          <summary>{officialTitle} 원문 확인</summary>
+          <ConsumerInformation consumer={consumer} />
+        </details>
       ) : null}
 
-      {!explanation ? (
-        <div className="official-drug-result__category">
-          <span>약 대분류</span>
-          <Badge tone={item.categoryPlain ? "success" : "neutral"}>{category}</Badge>
-        </div>
+      {consumer?.interactions || consumer?.adverseEffects || consumer?.storage ? (
+        <details className="official-drug-result__original">
+          <summary>상호작용·이상반응·보관법 확인</summary>
+          <div>
+            {consumer.interactions ? (
+              <section><strong>함께 주의할 약이나 음식</strong><p>{consumer.interactions}</p></section>
+            ) : null}
+            {consumer.adverseEffects ? (
+              <section><strong>나타날 수 있는 이상반응</strong><p>{consumer.adverseEffects}</p></section>
+            ) : null}
+            {consumer.storage ? (
+              <section><strong>보관법</strong><p>{consumer.storage}</p></section>
+            ) : null}
+          </div>
+        </details>
       ) : null}
 
-      <details className="official-drug-result__original" open={!explanation}>
-        <summary>{sourceSummary}</summary>
-        <div>
-          {item.generalInfo ? (
-            <section>
-              <strong>일반 약물 정보</strong>
-              <p>{item.generalInfo}</p>
-            </section>
-          ) : null}
-          {item.pharmacogenomicInfo ? (
-            <section>
-              <strong>약물 유전 정보</strong>
-              <p>{item.pharmacogenomicInfo}</p>
-            </section>
-          ) : null}
-          {item.productInfo ? (
-            <section>
-              <strong>제품 정보</strong>
-              <p>{item.productInfo}</p>
-            </section>
-          ) : null}
-        </div>
-        {item.references && item.references.length > 0 ? (
-          <ul>
-            {item.references.map((reference) => (
-              <li key={reference.url}>
-                <a href={reference.url} rel="noreferrer" target="_blank">
-                  {reference.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+      {pharmacogenomic ? (
+        <details className="official-drug-result__original">
+          <summary>해당 성분의 약물유전정보 확인</summary>
+          <div>
+            {pharmacogenomic.generalInfo ? (
+              <section><strong>일반 약물 정보</strong><p>{pharmacogenomic.generalInfo}</p></section>
+            ) : null}
+            {pharmacogenomic.geneInfo ? (
+              <section><strong>약물 유전 정보</strong><p>{pharmacogenomic.geneInfo}</p></section>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
+
+      <details className="official-drug-result__original">
+        <summary>공식 데이터 출처 확인</summary>
+        <ul className="official-drug-source-list">
+          {item.sources.map((source) => (
+            <li key={source.kind}>
+              <a href={source.url} rel="noreferrer" target="_blank">{source.label}</a>
+            </li>
+          ))}
+          <li><a href={detailUrl} rel="noreferrer" target="_blank">의약품안전나라 품목 상세</a></li>
+        </ul>
       </details>
     </div>
   );

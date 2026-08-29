@@ -13,6 +13,8 @@
     "IPILLGOOD_DEMO_MODE": "true",
     "IPILLGOOD_PUBLIC_DEMO_MODE": "isolated",
     "IPILLGOOD_DEMO_ALLOWED_HOSTS": "ipillgood.wkddudgk4869.workers.dev",
+    "MFDS_PRODUCT_API_URL": "https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07",
+    "MFDS_EASY_DRUG_API_URL": "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService",
     "MFDS_PARMGEN_API_URL": "https://apis.data.go.kr/1471000/ParmgenService",
     "HIRA_DISEASE_API_URL": "https://apis.data.go.kr/B551182/diseaseInfoService"
   },
