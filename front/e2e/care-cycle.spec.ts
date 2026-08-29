@@ -53,7 +53,13 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     for (const documentType of ["처방전", "진단서"]) {
       await page.getByRole("radio", { name: new RegExp(`^${documentType}`) }).check();
       await page.getByRole("button", { name: `비식별 샘플 ${documentType}으로 체험` }).click();
-      await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+      if (documentType === "처방전") {
+        await expect(page.getByRole("heading", { name: "기존 복약과 겹치는 항목이 있어요" })).toBeVisible();
+        await page.getByRole("button", { name: "기존 복약과 병합" }).click();
+        await expect(page.getByText("기존 복약 계획과 병합해 중복 일정은 만들지 않았어요.")).toBeVisible();
+      } else {
+        await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+      }
       await expect(page.locator(".document-item")).toHaveCount(before + 1);
       page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: `“비식별_샘플_${documentType}.jpg” 문서 삭제` }).first().click();

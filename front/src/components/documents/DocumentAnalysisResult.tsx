@@ -13,7 +13,13 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import type { DocumentAnalysis } from "@care-atlas/backend";
 
-export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysis }) {
+export function DocumentAnalysisResult({
+  analysis,
+  medicationRegistration = "added",
+}: {
+  analysis: DocumentAnalysis;
+  medicationRegistration?: "added" | "pending" | "merged";
+}) {
   const analysisSource =
     analysis.source === "api"
       ? "외부 API 문서 분석"
@@ -49,8 +55,12 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
         <div className="disease-lookup-status disease-lookup-status--official_match" role="status">
           <CalendarCheck2 size={18} aria-hidden="true" />
           <p>
-            <strong>복약 일정에 반영됨</strong>
-            처방전에서 확인한 약 {analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.
+            <strong>{medicationRegistration === "merged" ? "기존 복약과 병합됨" : medicationRegistration === "pending" ? "중복 확인 필요" : "복약 일정에 반영됨"}</strong>
+            {medicationRegistration === "merged"
+              ? "기존 복약 계획을 유지하고 중복 일정과 알림은 만들지 않았어요."
+              : medicationRegistration === "pending"
+                ? "등록 방식을 선택하기 전에는 새 복약 일정이나 알림을 만들지 않아요."
+                : `처방전에서 확인한 약 ${analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.`}
           </p>
         </div>
       ) : null}

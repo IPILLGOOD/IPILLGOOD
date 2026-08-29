@@ -232,6 +232,9 @@ export interface ClinicalDocument {
   redacted: boolean;
   sourceLabel: string;
   analysis?: DocumentAnalysis;
+  requestIdempotencyKey?: string;
+  duplicateResolution?: "merge" | "separate";
+  duplicateMedicationPlanIds?: string[];
 }
 
 export type ClinicalDocumentType = "처방전" | "진단서";

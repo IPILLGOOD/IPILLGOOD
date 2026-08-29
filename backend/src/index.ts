@@ -1,15 +1,22 @@
 export {
   deleteDocument,
+  findMedicationDuplicateCandidates,
+  getDocumentImportReview,
   getCareSnapshot,
   rebuildCareReadModel,
   getPatientQuestionSet,
   getTodayDailyCheckIn,
   medicationPlansFromPrescription,
+  medicationPlanFingerprint,
   registerDocument,
+  saveDocumentImportReview,
   saveDailyCheckIn,
   updateRecipientProfile,
   type CareDataScope,
+  type DocumentImportReview,
+  type MedicationDuplicateCandidate,
   type RegisterDocumentInput,
+  MedicationDuplicateResolutionRequiredError,
 } from "./care-repository";
 export {
   DEMO_SESSION_DURATION_SECONDS,

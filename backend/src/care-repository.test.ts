@@ -8,9 +8,12 @@ import {
 } from "./care-read-model.ts";
 import {
   createInitialCareSnapshot,
+  getDocumentImportReview,
+  MedicationDuplicateResolutionRequiredError,
   medicationPlansFromPrescription,
   getCareSnapshot,
   registerDocument,
+  saveDocumentImportReview,
   updateRecipientProfile,
   rebuildCareReadModel,
   deleteDocument,
@@ -211,4 +214,159 @@ test("진단서 분석 결과는 복약 계획으로 만들지 않는다", () =>
     }),
     [],
   );
+});
+
+const prescriptionUpload = (
+  contentHash: string,
+  productName = "중복검증정 5mg",
+  requestIdempotencyKey = `request-${contentHash}`,
+) => ({
+  fileName: `${contentHash}.png`,
+  contentHash,
+  requestIdempotencyKey,
+  documentType: "처방전" as const,
+  size: 1000,
+  isSample: false,
+  analysis: {
+    documentType: "처방전" as const,
+    summary: "약 1개",
+    findings: [],
+    carePoints: [],
+    questionsForProfessional: [],
+    disclaimer: "원본 확인",
+    source: "openai" as const,
+    medications: [{
+      productName,
+      ingredientName: "중복검증성분",
+      doseAmount: "1정",
+      frequency: "하루 2회",
+      timing: "아침·저녁 식사 후",
+      startDate: "2026-08-20",
+      endDate: "2026-08-26",
+      purposePlain: "증상 관리",
+      precautions: [],
+    }],
+  },
+});
+
+test("동일 파일과 네트워크 중복 요청은 문서·복약을 한 번만 생성한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-exact-idempotency", firestore };
+  const input = prescriptionUpload("same-file", "중복검증정 5mg", "network-request-001");
+
+  const [first, concurrent] = await Promise.all([
+    registerDocument(scope, input),
+    registerDocument(scope, input),
+  ]);
+  const repeatedWithNewRequest = await registerDocument(scope, {
+    ...input,
+    requestIdempotencyKey: "network-request-002",
+  });
+  const result = await getCareSnapshot(scope);
+
+  assert.equal(first.id, concurrent.id);
+  assert.equal(first.id, repeatedWithNewRequest.id);
+  assert.equal(result.documents.length, 1);
+  assert.equal(result.medications.length, 1);
+  assert.equal(firestore.store.has(`careRecipients/${scope.recipientId}/documentImportRequests/network-request-001`), true);
+  assert.equal(firestore.store.has(`careRecipients/${scope.recipientId}/documentImportRequests/network-request-002`), true);
+});
+
+test("같은 요청 식별자를 다른 파일에 재사용할 수 없다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-request-key", firestore };
+  await registerDocument(scope, prescriptionUpload("request-first", "첫째약", "same-request-key"));
+  await assert.rejects(
+    registerDocument(scope, prescriptionUpload("request-second", "둘째약", "same-request-key")),
+    /다른 문서/,
+  );
+  assert.equal((await getCareSnapshot(scope)).documents.length, 1);
+});
+
+test("같은 처방의 이미지·PDF 변형은 사용자 결정 전 차단하고 병합하면 중복 일정을 만들지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-semantic-merge", firestore };
+  await registerDocument(scope, prescriptionUpload("photo-variant", "중복검증정 5mg", "photo-request"));
+  const pdf = prescriptionUpload("pdf-variant", "중복 검증정 5mg", "pdf-request");
+
+  let duplicateError: MedicationDuplicateResolutionRequiredError | undefined;
+  try {
+    await registerDocument(scope, pdf);
+  } catch (error) {
+    if (error instanceof MedicationDuplicateResolutionRequiredError) duplicateError = error;
+    else throw error;
+  }
+  assert.equal(duplicateError?.candidates.length, 1);
+  assert.equal((await getCareSnapshot(scope)).documents.length, 1);
+
+  const merged = await registerDocument(scope, { ...pdf, duplicateAction: "merge" });
+  const result = await getCareSnapshot(scope);
+  assert.equal(merged.duplicateResolution, "merge");
+  assert.equal(merged.duplicateMedicationPlanIds?.length, 1);
+  assert.equal(result.documents.length, 2);
+  assert.equal(result.medications.length, 1);
+});
+
+test("사용자가 별도 처방을 선택한 경우에만 의미상 같은 복약을 별도 등록한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-semantic-separate", firestore };
+  await registerDocument(scope, prescriptionUpload("first-rx", "중복검증정 5mg", "first-rx-request"));
+  const second = await registerDocument(scope, {
+    ...prescriptionUpload("second-rx", "중복 검증정 5mg", "second-rx-request"),
+    duplicateAction: "separate",
+  });
+
+  assert.equal(second.duplicateResolution, "separate");
+  assert.equal((await getCareSnapshot(scope)).medications.length, 2);
+});
+
+test("약명 또는 처방 기간이 다른 처방은 중복으로 오인하지 않고 별도 등록한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-distinct-rx", firestore };
+  await registerDocument(scope, prescriptionUpload("distinct-first", "첫째약 5mg", "distinct-request-1"));
+  await registerDocument(scope, prescriptionUpload("distinct-second", "둘째약 5mg", "distinct-request-2"));
+  const shifted = prescriptionUpload("distinct-third", "첫째약 5mg", "distinct-request-3");
+  shifted.analysis.medications[0]!.startDate = "2026-09-01";
+  shifted.analysis.medications[0]!.endDate = "2026-09-07";
+  await registerDocument(scope, shifted);
+
+  const result = await getCareSnapshot(scope);
+  assert.equal(result.documents.length, 3);
+  assert.equal(result.medications.length, 3);
+});
+
+test("중복 선택 대기 분석을 같은 요청에서 재사용해 AI 재실행 없이 결정할 수 있다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-review-retry", firestore };
+  const reviewInput = prescriptionUpload("pending-pdf", "중복검증정 5mg", "pending-review-key");
+  const duplicateCandidates = [{
+    incomingMedicationId: "incoming-1",
+    existingMedicationPlanId: "existing-1",
+    existingDocumentId: "source-1",
+    productName: "중복검증정 5mg",
+    fingerprint: "fingerprint",
+  }];
+  const first = await saveDocumentImportReview(scope, {
+    idempotencyKey: reviewInput.requestIdempotencyKey,
+    contentHash: reviewInput.contentHash,
+    fileName: reviewInput.fileName,
+    documentType: reviewInput.documentType,
+    size: reviewInput.size,
+    isSample: reviewInput.isSample,
+    analysis: reviewInput.analysis,
+    duplicateCandidates,
+  });
+  const replay = await saveDocumentImportReview(scope, {
+    idempotencyKey: reviewInput.requestIdempotencyKey,
+    contentHash: reviewInput.contentHash,
+    fileName: reviewInput.fileName,
+    documentType: reviewInput.documentType,
+    size: reviewInput.size,
+    isSample: reviewInput.isSample,
+    analysis: reviewInput.analysis,
+    duplicateCandidates,
+  });
+
+  assert.equal(first.createdAt, replay.createdAt);
+  assert.deepEqual((await getDocumentImportReview(scope, reviewInput.requestIdempotencyKey, reviewInput.contentHash))?.duplicateCandidates, duplicateCandidates);
 });
