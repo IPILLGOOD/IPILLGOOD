@@ -1,4 +1,5 @@
 export {
+  confirmDocumentDiagnoses,
   deleteDocument,
   findMedicationDuplicateCandidates,
   getDocumentImportReview,
@@ -133,6 +134,7 @@ export type {
   CareAgentOutput,
   CareFindingType,
   CareRecipient,
+  ConfirmedCondition,
   CareSnapshot,
   ClinicalDocument,
   ClinicalDocumentType,
@@ -149,6 +151,11 @@ export type {
   MedicationDraftTransition,
   MedicationPlanCandidate,
   MedicationPlanDraft,
+  NutritionEvidence,
+  NutritionInsight,
+  NutritionInsightStatus,
+  NutritionKnowledgeRule,
+  NutritionSafetyMatch,
   PrescriptionMedication,
   PatientQuestion,
   PatientQuestionResponse,
@@ -156,7 +163,14 @@ export type {
   QuestionAnswerType,
   QuestionPriority,
   SymptomEvent,
+  SupplementIntake,
 } from "./types";
+export {
+  buildNutritionInsights,
+  conditionFromDiagnosis,
+  NUTRITION_CONDITIONS,
+} from "./nutrition";
+export { searchNutritionWithOpenAI } from "./ai/openai-medical";
 export { getAccountDeletionPolicy, accountDeletionDeadline, assertRecentAccountAuthentication, type AccountDeletionPolicy } from "./account-deletion-policy";
 export {
   CONNECTION_CODE_DURATION_SECONDS,

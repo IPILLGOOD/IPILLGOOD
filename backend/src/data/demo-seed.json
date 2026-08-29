@@ -7,6 +7,16 @@
     "weightKg": 57,
     "allergies": ["페니실린계 항생제"],
     "conditions": ["고혈압", "이상지질혈증", "무릎 골관절염"],
+    "confirmedConditions": [
+      {
+        "id": "condition-hypertension",
+        "standardName": "고혈압",
+        "code": "I10",
+        "sourceLabel": "프로필에서 의료진 확인 정보로 보호자가 확정",
+        "confirmedAt": "2026-08-16T09:20:00+09:00"
+      }
+    ],
+    "supplementIntakes": [],
     "mobilityNote": "집 안에서는 혼자 걷고, 장시간 외출할 때는 지팡이를 사용해요.",
     "accessibilityPreferences": ["큰 글씨", "쉬운 설명"],
     "caregiverNote": "혼자 생활하며, 보호자가 아침 복약 여부와 어지러움 변화를 전화로 확인해요.",

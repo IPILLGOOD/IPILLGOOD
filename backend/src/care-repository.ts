@@ -22,6 +22,7 @@ import { getAdminFirestore } from "./firebase-admin.ts";
 import { isEphemeralDemoSessionActive } from "./demo-session.ts";
 import type { FirestoreLike, TransactionLike, DocumentReferenceLike } from "./firestore-rest.ts";
 import { stableJson } from "./stable-json.ts";
+import { conditionFromDiagnosis } from "./nutrition.ts";
 import {
   addCalendarDays,
   dateKeyInSeoul,
@@ -112,6 +113,8 @@ export function createInitialCareSnapshot(scope: CareDataScope): CareSnapshot {
       ageBand: "67",
       allergies: [],
       conditions: [],
+      confirmedConditions: [],
+      supplementIntakes: [],
       mobilityNote: "",
       accessibilityPreferences: [],
       caregiverNote: "",
@@ -327,6 +330,40 @@ export async function updateRecipientProfile(scope: CareDataScope, recipient: Ca
     tx.set(ref, recipient);
     return { snapshot: { ...snapshot, recipient }, result: undefined };
   }, { expectedRevision });
+}
+
+export async function confirmDocumentDiagnoses(
+  scope: CareDataScope,
+  documentId: string,
+) {
+  if (!/^[^/]{1,256}$/.test(documentId)) throw new Error("올바르지 않은 문서 식별자입니다.");
+  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
+    const document = snapshot.documents.find((item) => item.id === documentId);
+    if (!document || document.documentType !== "진단서") {
+      throw new Error("확인할 진단서를 찾지 못했어요.");
+    }
+    const diagnoses = document.analysis?.diagnoses ?? [];
+    const confirmedAt = new Date().toISOString();
+    const additions = diagnoses.flatMap((diagnosis) => {
+      const condition = conditionFromDiagnosis(diagnosis, {
+        documentId,
+        sourceLabel: "진단서에서 확인 후 보호자가 확정",
+        confirmedAt,
+      });
+      return condition ? [condition] : [];
+    });
+    if (additions.length === 0) throw new Error("MVP에서 지원하는 확정 질환을 찾지 못했어요.");
+    const existingIds = new Set((snapshot.recipient.confirmedConditions ?? []).map((condition) => condition.id));
+    if (additions.every((condition) => existingIds.has(condition.id))) {
+      return { snapshot, result: additions, unchanged: true };
+    }
+    const merged = new Map(
+      [...(snapshot.recipient.confirmedConditions ?? []), ...additions].map((condition) => [condition.id, condition]),
+    );
+    const recipient = { ...snapshot.recipient, confirmedConditions: [...merged.values()], lastConfirmedAt: confirmedAt };
+    tx.set(ref, recipient);
+    return { snapshot: { ...snapshot, recipient }, result: additions };
+  }, { requiresConsent: true });
 }
 
 export async function getTodayDailyCheckIn(scope: CareDataScope): Promise<DailyCheckIn | null> {
@@ -973,12 +1010,20 @@ export async function deleteDocument(scope: CareDataScope, documentId: string, c
   return mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
     const document = await tx.get(ref.collection("clinicalDocuments").doc(documentId));
     if (!document.exists) return { snapshot, result: snapshot, unchanged: true };
+    const confirmedConditions = (snapshot.recipient.confirmedConditions ?? []).filter(
+      (condition) => condition.sourceDocumentId !== documentId,
+    );
+    const recipient = confirmedConditions.length === (snapshot.recipient.confirmedConditions ?? []).length
+      ? snapshot.recipient
+      : { ...snapshot.recipient, confirmedConditions };
     const nextSnapshot: CareSnapshot = {
       ...snapshot,
+      recipient,
       medications: snapshot.medications.filter((item) => item.sourceDocumentId !== documentId),
       documents: snapshot.documents.filter((item) => item.id !== documentId),
     };
     tx.delete(document.ref);
+    if (recipient !== snapshot.recipient) tx.set(ref, recipient);
     const storedDocument = document.data() as ClinicalDocument;
     if (storedDocument.medicationDraftId) {
       tx.delete(ref.collection("medicationPlanDrafts").doc(storedDocument.medicationDraftId));

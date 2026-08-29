@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import {
   buildPatientQuestionResponse,
   CareConflictError,
+  confirmDocumentDiagnoses,
   createCareConnectionCode,
   dateKeyInSeoul,
   deactivatePushSubscriptionsForUser,
@@ -127,7 +129,10 @@ export async function saveProfileAction(
 ): Promise<ActionState> {
   const guard = await demoWriteGuard();
   if (guard) return guard;
-  const result = profileSchema.safeParse(Object.fromEntries(formData));
+  const result = profileSchema.safeParse({
+    ...Object.fromEntries(formData),
+    confirmedConditionIds: formData.getAll("confirmedConditionIds"),
+  });
   const expectedRevision = Number(formData.get("expectedRevision"));
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
     return { status: "error", message: "최신 프로필을 다시 불러와주세요.", conflict: true };
@@ -157,6 +162,7 @@ export async function saveProfileAction(
     revalidatePath("/today");
     revalidatePath("/dashboard");
     revalidatePath("/profile");
+    revalidatePath("/nutrition");
     return { status: "success", message: "어르신 프로필을 업데이트했어요." };
   } catch (error) {
     if (error instanceof CareConflictError) {
@@ -168,6 +174,23 @@ export async function saveProfileAction(
       message: "프로필을 저장하지 못했어요. 잠시 후 다시 시도해주세요.",
     };
   }
+}
+
+export async function confirmDiagnosesAction(formData: FormData): Promise<void> {
+  const guard = await demoWriteGuard();
+  if (guard) throw new Error(guard.message);
+  const documentId = formData.get("documentId");
+  if (typeof documentId !== "string" || !/^[^/]{1,256}$/.test(documentId)) {
+    throw new Error("확인할 진단서를 찾지 못했어요.");
+  }
+  const session = await getSession();
+  if (!session) throw new Error("로그인 정보가 만료되었어요.");
+  await confirmDocumentDiagnoses(careScopeFor(session), documentId);
+  revalidatePath("/dashboard");
+  revalidatePath("/documents");
+  revalidatePath("/nutrition");
+  revalidatePath("/profile");
+  redirect("/nutrition");
 }
 
 export async function saveCheckInAction(

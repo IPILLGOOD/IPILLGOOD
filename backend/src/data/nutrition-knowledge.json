@@ -1,0 +1,96 @@
+{
+  "rules": [
+    {
+      "id": "hypertension-lower-sodium",
+      "conditionIds": ["condition-hypertension"],
+      "kind": "food",
+      "defaultStatus": "consider",
+      "title": "혈압 관리를 위한 싱거운 식사",
+      "summary": "국·찌개 국물과 양념을 줄이는 식사 습관은 나트륨 섭취를 낮추는 데 도움이 되는 생활 관리 방법이에요.",
+      "foodExamples": ["국이나 찌개는 건더기 위주로 먹기", "간장·소스는 부어 먹지 않고 따로 찍기", "가공식품의 영양표시에서 나트륨 확인하기"],
+      "relatedSupplementIngredientIds": [],
+      "evidence": [{
+        "title": "NICE 고혈압 진단과 관리 가이드라인",
+        "url": "https://www.nice.org.uk/guidance/ng136/chapter/recommendations",
+        "sourceVersion": "NG136, updated 2026-02-26",
+        "evidenceLevel": "official_guideline",
+        "lastReviewedAt": "2026-08-29",
+        "reviewer": "IPILLGOOD MVP 콘텐츠 검토 · 전문가 검수 전"
+      }]
+    },
+    {
+      "id": "hypertension-supplements-not-treatment",
+      "conditionIds": ["condition-hypertension"],
+      "kind": "food",
+      "defaultStatus": "consider",
+      "title": "칼륨은 다양한 식품에서 균형 있게 섭취하기",
+      "summary": "채소·과일·콩류 등 칼륨이 있는 식품은 균형 잡힌 식사의 일부예요. 다만 신장 기능과 일부 혈압약에 따라 칼륨을 의도적으로 늘리는 것이 맞지 않을 수 있어요.",
+      "foodExamples": ["한 가지 식품에 집중하지 않고 채소와 과일을 다양하게 먹기", "칼륨 대체소금은 현재 약과 건강 상태를 확인한 뒤 선택하기"],
+      "relatedSupplementIngredientIds": ["potassium"],
+      "evidence": [{
+        "title": "NICE 고혈압 진단과 관리 가이드라인",
+        "url": "https://www.nice.org.uk/guidance/ng136/chapter/recommendations",
+        "sourceVersion": "NG136, updated 2026-02-26",
+        "evidenceLevel": "official_guideline",
+        "lastReviewedAt": "2026-08-29",
+        "reviewer": "IPILLGOOD MVP 콘텐츠 검토 · 전문가 검수 전"
+      }]
+    },
+    {
+      "id": "hypertension-fiber-rich-foods",
+      "conditionIds": ["condition-hypertension"],
+      "kind": "food",
+      "defaultStatus": "consider",
+      "title": "식이섬유가 있는 식품을 식사에 더하기",
+      "summary": "채소·과일·통곡물·콩류를 포함한 균형 잡힌 식사는 혈압을 관리하는 생활 습관과 관련 있어요. 특정 영양제보다 평소 식품 구성을 먼저 살펴보세요.",
+      "foodExamples": ["매 끼니 채소 반찬 한 가지 더하기", "흰쌀 일부를 잡곡이나 보리로 바꾸기", "간식으로 과자 대신 생과일을 적당량 고르기"],
+      "relatedSupplementIngredientIds": [],
+      "professionalQuestion": "현재 건강 상태에서 식사로 더 챙기면 좋은 식품군이 있을까요?",
+      "evidence": [{
+        "title": "NICE 고혈압 진단과 관리 가이드라인",
+        "url": "https://www.nice.org.uk/guidance/ng136/chapter/recommendations",
+        "sourceVersion": "NG136, updated 2026-02-26",
+        "evidenceLevel": "official_guideline",
+        "lastReviewedAt": "2026-08-29",
+        "reviewer": "IPILLGOOD MVP 콘텐츠 검토 · 전문가 검수 전"
+      }]
+    },
+    {
+      "id": "hyperlipidemia-balanced-fat-fiber",
+      "conditionIds": ["condition-hyperlipidemia"],
+      "kind": "food",
+      "defaultStatus": "consider",
+      "title": "지방의 종류와 식이섬유를 함께 살펴보기",
+      "summary": "기름진 가공식품을 줄이고 통곡물·콩·채소처럼 식이섬유가 있는 식품을 식사에 포함하는 생활 습관을 고려해보세요.",
+      "foodExamples": ["흰밥 일부를 잡곡밥으로 바꾸기", "튀김보다 굽거나 찐 반찬 고르기", "콩·두부·채소 반찬을 한 가지 더하기"],
+      "relatedSupplementIngredientIds": [],
+      "evidence": [{
+        "title": "NICE 심혈관질환 위험 평가와 감소 가이드라인",
+        "url": "https://www.nice.org.uk/guidance/ng238/chapter/Recommendations",
+        "sourceVersion": "NG238",
+        "evidenceLevel": "official_guideline",
+        "lastReviewedAt": "2026-08-29",
+        "reviewer": "IPILLGOOD MVP 콘텐츠 검토 · 전문가 검수 전"
+      }]
+    },
+    {
+      "id": "osteoarthritis-glucosamine-check",
+      "conditionIds": ["condition-knee-osteoarthritis"],
+      "kind": "safety",
+      "defaultStatus": "professional_confirmation",
+      "title": "글루코사민 제품은 현재 약과 함께 확인",
+      "summary": "관절 건강을 위해 글루코사민을 먹고 있거나 새로 시작하려면 현재 복용약과 함께 약사나 의료진에게 알려주세요.",
+      "foodExamples": [],
+      "relatedSupplementIngredientIds": ["glucosamine"],
+      "professionalQuestion": "현재 복용약과 함께 글루코사민 원료를 섭취해도 괜찮을까요?",
+      "evidence": [{
+        "title": "식약처 건강기능식품 의약품 병용 섭취정보",
+        "url": "https://data.mfds.go.kr/hid/opeaa01/drugUsjntIntkAttnMttrLst.do?menu_grp=MENU_NEW01&menu_no=5313",
+        "sourceVersion": "의약품 병용 섭취정보",
+        "evidenceLevel": "official_safety",
+        "lastReviewedAt": "2026-08-29",
+        "reviewer": "IPILLGOOD MVP 콘텐츠 검토 · 전문가 검수 전"
+      }]
+    }
+  ]
+}

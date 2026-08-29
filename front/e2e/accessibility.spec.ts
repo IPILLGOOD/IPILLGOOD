@@ -164,6 +164,10 @@ test.describe("mobile Push status semantics (simulated user agent, no delivery)"
     await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
     await expect(page.getByText("이 기기의 알림 가능 여부를 확인하고 있어요.")).toBeVisible();
+    const installPrompt = page.getByRole("dialog", { name: "IPILLGOOD를 앱으로 사용해 보세요" });
+    await expect(installPrompt).toBeVisible();
+    await installPrompt.getByRole("button", { name: "닫기", exact: true }).click();
+    await expect(installPrompt).toBeHidden();
     await audit(page, "push-loading", info);
     release();
     const alert = page.getByRole("alert").filter({ hasText: "알림 연결을 확인하지 못했어요" });

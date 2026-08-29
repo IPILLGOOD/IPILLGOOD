@@ -10,6 +10,7 @@ const protectedPagePaths = [
   "/today",
   "/dashboard",
   "/medications",
+  "/nutrition",
   "/check-in",
   "/documents",
   "/profile",

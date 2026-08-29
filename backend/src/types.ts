@@ -13,11 +13,87 @@ export interface CareRecipient {
   weightKg?: number;
   allergies: string[];
   conditions: string[];
+  confirmedConditions?: ConfirmedCondition[];
+  supplementIntakes?: SupplementIntake[];
   mobilityNote: string;
   accessibilityPreferences: string[];
   caregiverNote: string;
   consentConfirmed: boolean;
   lastConfirmedAt: string;
+}
+
+export interface ConfirmedCondition {
+  id: string;
+  standardName: string;
+  code: string;
+  sourceDocumentId?: string;
+  sourceLabel: string;
+  confirmedAt: string;
+}
+
+export interface SupplementIntake {
+  ingredientId: string;
+  ingredientName: string;
+  status: "active" | "stopped";
+  lastConfirmedAt: string;
+}
+
+export type NutritionInsightStatus =
+  | "consider"
+  | "caution"
+  | "avoid"
+  | "professional_confirmation";
+
+export interface NutritionEvidence {
+  title: string;
+  url: string;
+  sourceVersion: string;
+  evidenceLevel: "official_guideline" | "official_safety" | "ai_web_source";
+  lastReviewedAt: string;
+  reviewer: string;
+}
+
+export interface NutritionSafetyMatch {
+  ingredientId: string;
+  ingredientName: string;
+  severity: "caution" | "avoid" | "professional_confirmation";
+  medicationPlanIds: string[];
+  medicationNames: string[];
+  action: string;
+  evidence: NutritionEvidence;
+}
+
+export interface NutritionInsight {
+  id: string;
+  kind: "food" | "safety";
+  status: NutritionInsightStatus;
+  title: string;
+  source: "curated" | "ai_web";
+  nutrientName?: string;
+  summary: string;
+  supplementGuidance?: string;
+  foodExamples: string[];
+  triggerConditions: ConfirmedCondition[];
+  relatedSupplementIngredientIds: string[];
+  matchedMedicationIds: string[];
+  matchedMedicationNames: string[];
+  currentSupplementNames: string[];
+  professionalQuestion?: string;
+  evidence: NutritionEvidence[];
+  lastReviewedAt: string;
+}
+
+export interface NutritionKnowledgeRule {
+  id: string;
+  conditionIds: string[];
+  kind: "food" | "safety";
+  defaultStatus: NutritionInsightStatus;
+  title: string;
+  summary: string;
+  foodExamples: string[];
+  relatedSupplementIngredientIds: string[];
+  professionalQuestion?: string;
+  evidence: NutritionEvidence[];
 }
 
 export interface MedicationPlan {
