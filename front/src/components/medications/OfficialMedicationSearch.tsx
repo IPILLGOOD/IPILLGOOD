@@ -1,8 +1,9 @@
-import { Database, Search, ShieldCheck } from "lucide-react";
+import { Database, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { MedicationResultExplanation } from "@/components/medications/MedicationResultExplanation";
+import { MedicationSearchForm } from "@/components/medications/MedicationSearchForm";
 import type { OfficialMedicationLookupResult } from "@care-atlas/backend";
 
 export function OfficialMedicationSearch({
@@ -45,34 +46,7 @@ export function OfficialMedicationSearch({
         </div>
       </div>
 
-      <form className="official-drug-search" role="search" method="get">
-        <div className="field">
-          <label htmlFor="official-drug-query">
-            약물명 <span aria-hidden="true">*</span>
-          </label>
-          <div className="official-drug-search__controls">
-            <input
-              id="official-drug-query"
-              name="q"
-              type="search"
-              maxLength={100}
-              minLength={1}
-              pattern=".*\S.*"
-              required
-              defaultValue={query}
-              placeholder="예: 노바스크 또는 암로디핀"
-              autoComplete="off"
-            />
-            <button className="button button--primary" type="submit">
-              <Search size={18} aria-hidden="true" />
-              약 정보 검색
-            </button>
-          </div>
-          <p className="field-hint">
-            일반의약품은 e약은요, 전문의약품은 상세 허가정보를 확인하고 공식 원문이 있으면 쉬운 설명을 함께 보여드려요. 어르신의 개인정보는 보내지 않아요.
-          </p>
-        </div>
-      </form>
+      <MedicationSearchForm key={query} query={query} />
 
       {!query ? (
         <div className="official-drug-card__guide">
