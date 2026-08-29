@@ -13,6 +13,17 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import type { DocumentAnalysis } from "@care-atlas/backend";
 
+const evidenceLabels = {
+  productName: "제품명",
+  ingredientName: "성분명",
+  itemCode: "품목코드",
+  doseAmount: "1회 복용량",
+  frequency: "복용 횟수",
+  timing: "복용 시점",
+  startDate: "시작일",
+  endDate: "종료일",
+} as const;
+
 export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysis }) {
   const analysisSource =
     analysis.source === "api"
@@ -20,6 +31,9 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
       : analysis.source === "openai"
         ? "OpenAI 문서 분석"
         : "데모 분석 결과";
+  const medicationsNeedingReview = analysis.medications?.filter(
+    (medication) => medication.reviewStatus !== "verified",
+  ).length ?? 0;
 
   return (
     <section className="analysis-result" aria-labelledby="analysis-result-title">
@@ -46,13 +60,71 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
       </dl>
 
       {analysis.documentType === "처방전" && analysis.medications?.length ? (
-        <div className="disease-lookup-status disease-lookup-status--official_match" role="status">
-          <CalendarCheck2 size={18} aria-hidden="true" />
+        <div
+          className={`disease-lookup-status disease-lookup-status--${medicationsNeedingReview > 0 ? "failed" : "official_match"}`}
+          role="status"
+        >
+          {medicationsNeedingReview > 0
+            ? <TriangleAlert size={18} aria-hidden="true" />
+            : <CalendarCheck2 size={18} aria-hidden="true" />}
           <p>
-            <strong>복약 일정에 반영됨</strong>
-            처방전에서 확인한 약 {analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.
+            <strong>{medicationsNeedingReview > 0 ? "원본 대조 필요" : "복약 일정에 반영됨"}</strong>
+            {medicationsNeedingReview > 0
+              ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 복약 일정에 추가하지 않았어요.`
+              : `처방전에서 확인한 약 ${analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.`}
           </p>
         </div>
+      ) : null}
+
+      {analysis.documentType === "처방전" && analysis.medications?.length ? (
+        <section className="medication-evidence" aria-labelledby="medication-evidence-title">
+          <div className="medication-evidence__heading">
+            <h4 id="medication-evidence-title">약별 OCR 근거와 공식 정보 대조</h4>
+            <p>원문의 같은 부분을 보면서 제품명·복용법을 확인해주세요.</p>
+          </div>
+          <div className="medication-evidence__list">
+            {analysis.medications.map((medication, index) => (
+              <article className="medication-evidence__item" key={`${medication.productName}-${index}`}>
+                <header>
+                  <div>
+                    <span>약 {index + 1}</span>
+                    <h5>{medication.productName}</h5>
+                  </div>
+                  <Badge tone={medication.reviewStatus === "verified" ? "success" : "warning"}>
+                    {medication.reviewStatus === "verified" ? "대조 완료" : "확인 필요"}
+                  </Badge>
+                </header>
+                <dl>
+                  {(medication.fieldEvidence ?? []).map((evidence) => (
+                    <div key={`${evidence.field}-${evidence.sourceText}`}>
+                      <dt>{evidenceLabels[evidence.field]}</dt>
+                      <dd>
+                        <q>{evidence.sourceText}</q>
+                        <small>
+                          신뢰도 {Math.round(evidence.confidence * 100)}%
+                          {evidence.region ? ` · ${evidence.region.page}쪽 위치 ${Math.round(evidence.region.x * 100)}, ${Math.round(evidence.region.y * 100)}%` : ""}
+                        </small>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                {medication.verification?.officialProductName ? (
+                  <p className="medication-evidence__official">
+                    식약처 {medication.verification.officialItemCode}: {medication.verification.officialProductName}
+                    {medication.verification.officialIngredientName
+                      ? ` · ${medication.verification.officialIngredientName}`
+                      : ""}
+                  </p>
+                ) : null}
+                {medication.verification?.warnings.length ? (
+                  <ul className="medication-evidence__warnings">
+                    {medication.verification.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                  </ul>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       <div className="analysis-columns">

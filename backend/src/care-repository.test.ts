@@ -188,6 +188,7 @@ test("처방전에서 추출한 약을 복약 일정용 활성 계획으로 변�
           startDate: "날짜 확인 필요",
           purposePlain: "증상 관리",
           precautions: ["어지러움 확인"],
+          reviewStatus: "verified",
         },
       ],
     },
@@ -199,6 +200,36 @@ test("처방전에서 추출한 약을 복약 일정용 활성 계획으로 변�
   assert.equal(medications[0]?.frequency, "하루 2회");
   assert.equal(medications[0]?.sourceDocumentId, "doc-rx-1");
   assert.equal(medications[0]?.status, "active");
+});
+
+test("OCR 근거나 공식 코드 대조가 필요한 약은 복약 일정으로 활성화하지 않는다", () => {
+  const medications = medicationPlansFromPrescription({
+    id: "doc-rx-review",
+    documentType: "처방전",
+    uploadedAt: "2026-08-16T10:00:00+09:00",
+    analysis: {
+      documentType: "처방전",
+      summary: "약 1개",
+      findings: [],
+      carePoints: [],
+      questionsForProfessional: [],
+      disclaimer: "원본 확인",
+      source: "openai",
+      medications: [{
+        productName: "테스트정 5mg",
+        ingredientName: "테스트 성분",
+        doseAmount: "1정",
+        frequency: "하루 1회",
+        timing: "아침 식사 후",
+        startDate: "2026-08-16",
+        purposePlain: "증상 관리",
+        precautions: [],
+        reviewStatus: "needs_review",
+      }],
+    },
+  });
+
+  assert.deepEqual(medications, []);
 });
 
 test("진단서 분석 결과는 복약 계획으로 만들지 않는다", () => {

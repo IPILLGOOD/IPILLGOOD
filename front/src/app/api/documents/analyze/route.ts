@@ -102,16 +102,23 @@ export async function POST(request: Request) {
       analysis: result.analysis,
     });
 
-    const addedMedicationCount =
-      typedDocumentType === "처방전" ? (result.analysis.medications?.length ?? 0) : 0;
+    const addedMedicationCount = typedDocumentType === "처방전"
+      ? (result.analysis.medications ?? []).filter((medication) => medication.reviewStatus === "verified").length
+      : 0;
+    const reviewMedicationCount = typedDocumentType === "처방전"
+      ? (result.analysis.medications ?? []).filter((medication) => medication.reviewStatus !== "verified").length
+      : 0;
     return Response.json({
       message:
-        addedMedicationCount > 0
+        reviewMedicationCount > 0
+          ? `${result.message} 확인이 필요한 약 ${reviewMedicationCount}개는 복약 일정에 추가하지 않았어요.`
+          : addedMedicationCount > 0
           ? `${result.message} 약 ${addedMedicationCount}개를 복약 일정에 추가했어요.`
           : result.message,
       analysis: result.analysis,
       document,
       addedMedicationCount,
+      reviewMedicationCount,
     });
   } catch (error) {
     if (error instanceof DocumentUploadValidationError) {

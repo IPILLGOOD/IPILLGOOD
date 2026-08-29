@@ -1,5 +1,15 @@
-import type { ClinicalDocumentType, DiseaseInformation, DocumentAnalysis } from "../types.ts";
+import type {
+  ClinicalDocumentType,
+  DiseaseInformation,
+  DocumentAnalysis,
+  MedicationEvidenceField,
+  PrescriptionMedication,
+} from "../types.ts";
 import { searchOfficialDiseaseInfo } from "../official-disease-api.ts";
+import {
+  verifyOfficialMedicationCode,
+  type OfficialMedicationCodeVerification,
+} from "../official-medication-search.ts";
 
 import {
   analyzeClinicalDocumentWithOpenAI,
@@ -39,7 +49,125 @@ export class DocumentAnalysisIncompleteError extends Error {
 
 type MedicationAnalyzerDependencies = {
   analyzeClinicalDocumentWithOpenAI: typeof analyzeClinicalDocumentWithOpenAI;
+  verifyOfficialMedicationCode?: typeof verifyOfficialMedicationCode;
 };
+
+const requiredMedicationEvidence = [
+  "productName",
+  "ingredientName",
+  "doseAmount",
+  "frequency",
+  "timing",
+] satisfies MedicationEvidenceField[];
+
+function normalizedMedicationIdentity(value: string) {
+  return value.toLocaleLowerCase("ko-KR").replace(/[^0-9a-z가-힣]/g, "");
+}
+
+function medicationNamesOverlap(first: string, second: string) {
+  const a = normalizedMedicationIdentity(first);
+  const b = normalizedMedicationIdentity(second);
+  return Boolean(a && b && (a.includes(b) || b.includes(a)));
+}
+
+function lowConfidenceWarnings(medication: PrescriptionMedication) {
+  return requiredMedicationEvidence.flatMap((field) => {
+    const evidence = medication.fieldEvidence?.find((candidate) => candidate.field === field);
+    if (!evidence) return [`${field} 필드의 원문 근거가 없어요.`];
+    if (evidence.confidence < 0.8) {
+      return [`${field} 필드의 OCR 신뢰도가 ${Math.round(evidence.confidence * 100)}%예요.`];
+    }
+    return [];
+  });
+}
+
+function officialVerificationWarnings(
+  medication: PrescriptionMedication,
+  official: OfficialMedicationCodeVerification,
+) {
+  if (official.status !== "matched") {
+    if (official.status === "not_found") return ["읽은 품목코드를 식약처 허가정보에서 찾지 못했어요."];
+    if (official.status === "not_configured") return ["식약처 의약품 코드 조회가 설정되지 않았어요."];
+    return ["식약처 의약품 코드 조회를 일시적으로 완료하지 못했어요."];
+  }
+
+  const warnings: string[] = [];
+  if (!medicationNamesOverlap(medication.productName, official.item.productName)) {
+    warnings.push(`제품명이 식약처 정보(${official.item.productName})와 일치하지 않아요.`);
+  }
+  if (
+    medication.ingredientName.trim() &&
+    official.item.ingredientName.trim() &&
+    !medicationNamesOverlap(medication.ingredientName, official.item.ingredientName)
+  ) {
+    warnings.push(`성분명이 식약처 정보(${official.item.ingredientName})와 일치하지 않아요.`);
+  }
+  return warnings;
+}
+
+async function enrichMedicationVerification(
+  analysis: DocumentAnalysis,
+  verifyCode: typeof verifyOfficialMedicationCode,
+): Promise<DocumentAnalysis> {
+  if (analysis.documentType !== "처방전") return analysis;
+  if (analysis.source === "demo") {
+    return {
+      ...analysis,
+      medications: analysis.medications?.map((medication) => ({
+        ...medication,
+        reviewStatus: "verified",
+        verification: {
+          status: "verified",
+          sourceLabel: "비식별 데모 데이터",
+          warnings: [],
+        },
+      })),
+    };
+  }
+
+  return {
+    ...analysis,
+    medications: await Promise.all((analysis.medications ?? []).map(async (medication) => {
+      const evidenceWarnings = lowConfidenceWarnings(medication);
+      if (!medication.itemCode) {
+        const warnings = [...evidenceWarnings, "문서에서 품목코드를 확인하지 못했어요."];
+        return {
+          ...medication,
+          reviewStatus: "needs_review" as const,
+          verification: {
+            status: "not_found" as const,
+            sourceLabel: "식약처 의약품 제품 허가정보",
+            warnings,
+          },
+        };
+      }
+
+      const official = await verifyCode(medication.itemCode);
+      const officialWarnings = officialVerificationWarnings(medication, official);
+      const warnings = [...evidenceWarnings, ...officialWarnings];
+      const matched = official.status === "matched";
+      const verified = matched && warnings.length === 0;
+      return {
+        ...medication,
+        reviewStatus: verified ? "verified" as const : "needs_review" as const,
+        verification: {
+          status: verified
+            ? "verified" as const
+            : matched
+              ? "mismatch" as const
+              : official.status,
+          sourceLabel: "식약처 의약품 제품 허가정보",
+          ...(matched ? {
+            officialItemCode: official.item.itemSeq,
+            officialProductName: official.item.productName,
+            officialIngredientName: official.item.ingredientName,
+          } : {}),
+          warnings,
+        },
+      };
+    })),
+  };
+}
 
 function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
   if (documentType === "진단서") {
@@ -310,6 +438,7 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
             typeof medication === "object" &&
             typeof medication.productName === "string" &&
             typeof medication.ingredientName === "string" &&
+            (medication.itemCode === undefined || typeof medication.itemCode === "string") &&
             typeof medication.doseAmount === "string" &&
             typeof medication.frequency === "string" &&
             typeof medication.timing === "string" &&
@@ -317,7 +446,18 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
             (medication.endDate === undefined || typeof medication.endDate === "string") &&
             typeof medication.purposePlain === "string" &&
             Array.isArray(medication.precautions) &&
-            medication.precautions.every((item) => typeof item === "string"),
+            medication.precautions.every((item) => typeof item === "string") &&
+            (medication.fieldEvidence === undefined ||
+              (Array.isArray(medication.fieldEvidence) &&
+                medication.fieldEvidence.every((evidence) =>
+                  evidence &&
+                  typeof evidence === "object" &&
+                  typeof evidence.field === "string" &&
+                  typeof evidence.sourceText === "string" &&
+                  typeof evidence.confidence === "number" &&
+                  evidence.confidence >= 0 &&
+                  evidence.confidence <= 1,
+                ))),
         ))) &&
     typeof analysis.disclaimer === "string"
   );
@@ -329,7 +469,10 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
  */
 export async function analyzeMedicationDocument(
   input: MedicationAnalyzerInput,
-  dependencies: MedicationAnalyzerDependencies = { analyzeClinicalDocumentWithOpenAI },
+  dependencies: MedicationAnalyzerDependencies = {
+    analyzeClinicalDocumentWithOpenAI,
+    verifyOfficialMedicationCode,
+  },
 ): Promise<MedicationAnalyzerResult> {
   const endpoint = process.env.AI_ANALYSIS_ENDPOINT;
   const apiKey = process.env.AI_API_KEY;
@@ -338,7 +481,10 @@ export async function analyzeMedicationDocument(
     return {
       status: "complete",
       message: "비식별 데모 분석을 마쳤어요. 실제 API를 연결하면 업로드한 문서를 분석해요.",
-      analysis: demoAnalysis(input.documentType),
+      analysis: await enrichMedicationVerification(
+        demoAnalysis(input.documentType),
+        dependencies.verifyOfficialMedicationCode ?? verifyOfficialMedicationCode,
+      ),
     };
   }
 
@@ -370,7 +516,12 @@ export async function analyzeMedicationDocument(
     if (analysisNeedsRetry(structuredAnalysis)) {
       throw new DocumentAnalysisIncompleteError(input.documentType);
     }
-    const analysis = await enrichDiagnosisAnalysis(structuredAnalysis);
+    const analysis = await enrichDiagnosisAnalysis(
+      await enrichMedicationVerification(
+        structuredAnalysis,
+        dependencies.verifyOfficialMedicationCode ?? verifyOfficialMedicationCode,
+      ),
+    );
     return {
       status: "complete",
       message:
@@ -396,7 +547,10 @@ export async function analyzeMedicationDocument(
       throw new DocumentAnalysisIncompleteError(input.documentType);
     }
     const analysis = await enrichDiagnosisAnalysis(
-      withStructuredEvidenceFindings(structuredAnalysis),
+      await enrichMedicationVerification(
+        withStructuredEvidenceFindings(structuredAnalysis),
+        dependencies.verifyOfficialMedicationCode ?? verifyOfficialMedicationCode,
+      ),
     );
     return {
       status: "complete",

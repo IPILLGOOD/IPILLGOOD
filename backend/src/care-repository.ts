@@ -338,12 +338,15 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
     const documentRef = ref.collection("clinicalDocuments").doc(input.contentHash);
     const existing = await tx.get(documentRef);
     if (existing.exists) return { snapshot, result: existing.data() as ClinicalDocument & { size: number }, unchanged: true };
+    const requiresMedicationReview = input.documentType === "처방전" &&
+      (input.analysis?.medications ?? []).some((medication) => medication.reviewStatus !== "verified");
     const document: ClinicalDocument & { size: number } = {
       id: documentRef.id, fileName: input.fileName, contentHash: input.contentHash,
       documentType: input.documentType, uploadedAt: new Date().toISOString(),
-      status: "confirmed", redacted: input.isSample,
-      sourceLabel: input.analysis?.source === "api" ? "API 분석 완료 · 보호자 확인 필요"
-        : input.analysis?.source === "openai" ? "OpenAI 분석 완료 · 보호자 확인 필요" : "비식별 데모 분석 · 원본과 확인 필요",
+      status: requiresMedicationReview ? "needs_review" : "confirmed", redacted: input.isSample,
+      sourceLabel: requiresMedicationReview ? "OCR·공식 정보 대조 필요 · 복약 일정 미반영"
+        : input.analysis?.source === "api" ? "API 분석 완료 · 원본 대조 완료"
+          : input.analysis?.source === "openai" ? "OpenAI 분석 완료 · 원본 대조 완료" : "비식별 데모 분석 · 원본과 확인 필요",
       size: input.size, analysis: input.analysis,
     };
     const medications = medicationPlansFromPrescription(document);
@@ -366,7 +369,11 @@ export function medicationPlansFromPrescription(
   const uploadedDate = dateKeyInSeoul(new Date(document.uploadedAt));
 
   return sourceMedications
-    .filter((medication) => medication.productName.trim() && medication.frequency.trim())
+    .filter((medication) =>
+      medication.reviewStatus === "verified" &&
+      medication.productName.trim() &&
+      medication.frequency.trim(),
+    )
     .map((medication, index) => {
       const startDate = isoDatePattern.test(medication.startDate)
         ? medication.startDate

@@ -178,7 +178,31 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         </p>
       ) : null}
 
-      {analysis ? <DocumentAnalysisResult analysis={analysis} /> : null}
+      {analysis ? (
+        <div className="document-verification-layout">
+          <figure className="document-verification-original">
+            <figcaption>
+              <strong>원본 {documentType}</strong>
+              <span>{file?.name ?? "비식별 데모 문서"}</span>
+            </figcaption>
+            {previewUrl ? (
+              <Image
+                src={previewUrl}
+                width={720}
+                height={960}
+                unoptimized
+                alt={`대조할 원본 ${documentType}`}
+              />
+            ) : (
+              <div className="document-verification-original__placeholder">
+                <FileImage size={36} aria-hidden="true" />
+                <p>{file?.type === "application/pdf" ? "PDF 원본은 파일을 열어 결과와 나란히 확인해주세요." : "데모 원본과 분석 결과를 비교하는 화면이에요."}</p>
+              </div>
+            )}
+          </figure>
+          <DocumentAnalysisResult analysis={analysis} />
+        </div>
+      ) : null}
     </div>
   );
 }
