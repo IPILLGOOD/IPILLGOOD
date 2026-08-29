@@ -11,15 +11,19 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
+import { confirmDiagnosesAction } from "@/app/actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { supportedNutritionDiagnoses } from "@/lib/nutrition-presentation";
 import type { DocumentAnalysis } from "@care-atlas/backend";
 
-export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysis }) {
+export function DocumentAnalysisResult({ analysis, documentId }: { analysis: DocumentAnalysis; documentId?: string }) {
   const analysisSource =
     analysis.source === "api"
       ? "외부 API 문서 분석"
       : analysis.source === "openai"
         ? "OpenAI 문서 분석"
         : "데모 분석 결과";
+  const nutritionDiagnoses = supportedNutritionDiagnoses(analysis);
 
   return (
     <section className="analysis-result" aria-labelledby="analysis-result-title">
@@ -89,6 +93,20 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
             {analysis.diseaseLookup.message}
           </p>
         </div>
+      ) : null}
+
+      {analysis.documentType === "진단서" && documentId && nutritionDiagnoses.length > 0 ? (
+        <form action={confirmDiagnosesAction} className="diagnosis-confirmation">
+          <input type="hidden" name="documentId" value={documentId} />
+          <div>
+            <strong>식사·영양 안내에 반영할까요?</strong>
+            <p>
+              {nutritionDiagnoses.map((diagnosis) => diagnosis.name).join(" · ")}을(를)
+              의료진에게 확인받은 질환으로 저장해요. 원본과 비교한 뒤 확정해주세요.
+            </p>
+          </div>
+          <SubmitButton pendingText="확정하는 중…">확정 질환으로 저장</SubmitButton>
+        </form>
       ) : null}
 
       {analysis.diseaseInformation && analysis.diseaseInformation.length > 0 ? (

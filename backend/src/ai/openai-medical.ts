@@ -4,7 +4,7 @@ import type {
   ResponseInputContent,
 } from "openai/resources/responses/responses";
 
-import type { DiseaseInformation, DiseaseReference, DocumentAnalysis } from "../types.ts";
+import type { ConfirmedCondition, DiseaseInformation, DiseaseReference, DocumentAnalysis, NutritionInsight } from "../types.ts";
 import type {
   PharmacogenomicInfo,
   PlainMedicationExplanation,
@@ -27,6 +27,17 @@ interface DiseaseSearchPayload {
   overview: string;
   practicalPoints: string[];
   warningSigns: string[];
+}
+
+interface NutritionSearchPayload {
+  topics: Array<{
+    nutrientName: string;
+    title: string;
+    summary: string;
+    foodExamples: string[];
+    supplementGuidance: string;
+    professionalQuestion: string;
+  }>;
 }
 
 interface PlainMedicationPayload {
@@ -121,6 +132,31 @@ const diseaseSearchSchema = {
     warningSigns: { type: "array", items: { type: "string" } },
   },
   required: ["matchedName", "code", "overview", "practicalPoints", "warningSigns"],
+} as const;
+
+const nutritionSearchSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    topics: {
+      type: "array",
+      maxItems: 3,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          nutrientName: { type: "string" },
+          title: { type: "string" },
+          summary: { type: "string" },
+          foodExamples: { type: "array", items: { type: "string" }, maxItems: 4 },
+          supplementGuidance: { type: "string" },
+          professionalQuestion: { type: "string" },
+        },
+        required: ["nutrientName", "title", "summary", "foodExamples", "supplementGuidance", "professionalQuestion"],
+      },
+    },
+  },
+  required: ["topics"],
 } as const;
 
 const plainMedicationSchema = {
@@ -392,6 +428,71 @@ export async function searchDiseaseWithOpenAI(
     sourceLabel: "OpenAI 웹 검색 · 의료기관/공공기관 출처",
     references,
   };
+}
+
+export async function searchNutritionWithOpenAI(
+  condition: ConfirmedCondition,
+  medicationIngredients: string[] = [],
+): Promise<NutritionInsight[]> {
+  const response = await getClient().responses.create({
+    model: modelName(),
+    store: false,
+    reasoning: { effort: "low" },
+    tools: [{
+      type: "web_search",
+      search_context_size: "medium",
+      filters: { allowed_domains: [
+        "kdca.go.kr", "hira.or.kr", "nhis.or.kr", "mfds.go.kr", "foodsafetykorea.go.kr",
+        "nice.org.uk", "ods.od.nih.gov", "who.int", "medlineplus.gov",
+      ] },
+      user_location: { type: "approximate", country: "KR", timezone: "Asia/Seoul" },
+    }],
+    tool_choice: "required",
+    include: ["web_search_call.action.sources"],
+    input: [
+      "다음 확정 질환과 관련해 환자가 식사에서 고려할 영양 주제를 공식 출처에서 검색하세요.",
+      `질환: ${condition.standardName} (${condition.code})`,
+      medicationIngredients.length > 0
+        ? `현재 복용약 성분: ${medicationIngredients.join(", ")}`
+        : "현재 복용약 성분: 등록된 정보 없음",
+      "근거가 확인되는 영양소 또는 식품군만 최대 3개 제시하세요. 한국 식생활에서 가능한 음식 예시를 쓰세요.",
+      "현재 복용약과의 음식·영양 상호작용도 공식 출처로 확인하고, 안전성을 판단할 정보가 부족하거나 충돌 가능성이 있는 주제는 제안에서 제외하세요.",
+      "결핍을 진단하거나 치료 효과를 약속하지 마세요. 용량, 제품, 브랜드를 추천하지 마세요.",
+      "보충제는 식품보다 우선하지 말고, 복용약·신장/간 기능·검사 결과를 모르므로 반드시 전문가 확인 문구를 포함하세요.",
+      "출처에서 질환별 영양 권고를 찾지 못하면 topics를 빈 배열로 반환하세요. 결과는 한국어로 작성하세요.",
+    ].join("\n"),
+    text: { verbosity: "low", format: { type: "json_schema", name: "nutrition_guidance", strict: true, schema: nutritionSearchSchema } },
+  });
+  const parsed = parseJson<NutritionSearchPayload>(response.output_text, "영양 정보 검색");
+  const references = citationReferences(response);
+  if (references.length === 0) throw new Error("AI 영양 정보 검색에서 확인 가능한 출처를 받지 못했습니다.");
+  const reviewedAt = new Date().toISOString().slice(0, 10);
+  const evidence = references.map((reference) => ({
+    ...reference,
+    sourceVersion: "검색 시점의 공식 웹 문서",
+    evidenceLevel: "ai_web_source" as const,
+    lastReviewedAt: reviewedAt,
+    reviewer: "AI 검색 결과 · 전문가 검수 전",
+  }));
+  return parsed.topics.map((topic, index) => ({
+    id: `ai-${condition.id}-${index}`,
+    kind: "food",
+    status: "professional_confirmation",
+    source: "ai_web",
+    nutrientName: topic.nutrientName,
+    title: topic.title,
+    summary: topic.summary,
+    supplementGuidance: topic.supplementGuidance,
+    foodExamples: topic.foodExamples,
+    triggerConditions: [condition],
+    relatedSupplementIngredientIds: [],
+    matchedMedicationIds: [],
+    matchedMedicationNames: [],
+    currentSupplementNames: [],
+    professionalQuestion: topic.professionalQuestion,
+    evidence,
+    lastReviewedAt: reviewedAt,
+  }));
 }
 
 export async function simplifyMedicationInformationWithOpenAI(

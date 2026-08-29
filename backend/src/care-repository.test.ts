@@ -8,6 +8,7 @@ import {
 } from "./care-read-model.ts";
 import {
   CareConflictError,
+  confirmDocumentDiagnoses,
   createInitialCareSnapshot,
   medicationPlansFromPrescription,
   getCareSnapshot,
@@ -225,4 +226,39 @@ test("진단서 분석 결과는 복약 계획으로 만들지 않는다", () =>
     }),
     [],
   );
+});
+
+test("진단서 질환은 보호자 확정 뒤에만 저장되고 원본 문서 삭제 시 함께 제거된다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-diagnosis-confirmation", firestore };
+  await registerDocument(scope, {
+    fileName: "진단서.pdf",
+    contentHash: "diagnosis-confirmed",
+    documentType: "진단서",
+    size: 100,
+    isSample: true,
+    analysis: {
+      documentType: "진단서",
+      summary: "고혈압 확인",
+      findings: [],
+      carePoints: [],
+      questionsForProfessional: [],
+      disclaimer: "원본 확인",
+      source: "demo",
+      diagnoses: [{ name: "본태성 고혈압", code: "I10" }],
+    },
+  });
+  assert.deepEqual((await getCareSnapshot(scope)).recipient.confirmedConditions, []);
+
+  await confirmDocumentDiagnoses(scope, "diagnosis-confirmed");
+  const confirmed = await getCareSnapshot(scope);
+  assert.equal(confirmed.recipient.confirmedConditions?.[0]?.id, "condition-hypertension");
+  assert.equal(confirmed.recipient.confirmedConditions?.[0]?.sourceDocumentId, "diagnosis-confirmed");
+  const revision = confirmed.revision;
+
+  await confirmDocumentDiagnoses(scope, "diagnosis-confirmed");
+  assert.equal((await getCareSnapshot(scope)).revision, revision);
+
+  await deleteDocument(scope, "diagnosis-confirmed");
+  assert.deepEqual((await getCareSnapshot(scope)).recipient.confirmedConditions, []);
 });

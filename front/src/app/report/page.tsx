@@ -120,6 +120,7 @@ export default async function ReportPage() {
               </p>
             </div>
           </Card>
+
         </aside>
       </div>
     </>

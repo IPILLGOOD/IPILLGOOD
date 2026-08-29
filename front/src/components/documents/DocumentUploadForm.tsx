@@ -12,6 +12,7 @@ interface AnalysisResponse {
   message?: string;
   analysis?: DocumentAnalysis;
   addedMedicationCount?: number;
+  document?: { id: string };
 }
 
 export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) {
@@ -21,6 +22,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
+  const [documentId, setDocumentId] = useState<string | null>(null);
   const previewUrl = useMemo(
     () => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : null),
     [file],
@@ -40,6 +42,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         : "문서에서 중요한 내용을 찾고 쉬운 말로 정리하고 있어요.",
     );
     setAnalysis(null);
+    setDocumentId(null);
 
     try {
       const response = await fetch("/api/documents/analyze", {
@@ -54,6 +57,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
       setStatus("success");
       setMessage(body.message ?? "문서 분석을 마쳤어요.");
       setAnalysis(body.analysis);
+      setDocumentId(body.document?.id ?? null);
       router.refresh();
     } catch (error) {
       setStatus("error");
@@ -178,7 +182,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         </p>
       ) : null}
 
-      {analysis ? <DocumentAnalysisResult analysis={analysis} /> : null}
+      {analysis ? <DocumentAnalysisResult analysis={analysis} documentId={documentId ?? undefined} /> : null}
     </div>
   );
 }

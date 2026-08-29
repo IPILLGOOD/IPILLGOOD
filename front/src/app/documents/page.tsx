@@ -9,6 +9,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot } from "@care-atlas/backend";
 import { formatDate } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
+import { confirmDiagnosesAction } from "@/app/actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { supportedNutritionDiagnoses } from "@/lib/nutrition-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +88,18 @@ export default async function DocumentsPage() {
                               </div>
                             ))}
                           </dl>
+                          {document.documentType === "진단서" &&
+                          supportedNutritionDiagnoses(document.analysis).some((diagnosis) =>
+                            !snapshot.recipient.confirmedConditions?.some((condition) =>
+                              condition.sourceDocumentId === document.id &&
+                              (condition.code === diagnosis.code || condition.standardName === diagnosis.name),
+                            ),
+                          ) ? (
+                            <form action={confirmDiagnosesAction} className="saved-analysis__confirm">
+                              <input type="hidden" name="documentId" value={document.id} />
+                              <SubmitButton pendingText="확정하는 중…">확정 질환으로 저장</SubmitButton>
+                            </form>
+                          ) : null}
                         </details>
                       ) : null}
                     </li>
