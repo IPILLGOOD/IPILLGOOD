@@ -165,10 +165,6 @@
   gap: var(--space-3);
 }
 
-.landing-hero__actions form {
-  margin: 0;
-}
-
 .landing-button {
   display: inline-flex;
   min-height: 3.25rem;
@@ -649,7 +645,7 @@
   word-break: keep-all;
 }
 
-.landing-features__lead form {
+.landing-features__lead .demo-login-control {
   margin-top: var(--space-6);
 }
 
@@ -1064,8 +1060,28 @@
   background: var(--color-primary-800);
 }
 
-.login-choice form {
-  margin: 0;
+.login-demo-button:disabled,
+.landing-button:disabled,
+.landing-feature-link:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.demo-login-control {
+  min-width: 0;
+}
+
+.login-choice .demo-login-control {
+  width: 100%;
+}
+
+.demo-login-error {
+  max-width: 22rem;
+  margin: var(--space-2) 0 0;
+  color: var(--color-danger);
+  font-size: 0.74rem;
+  font-weight: 650;
+  line-height: 1.5;
 }
 
 .login-divider {
