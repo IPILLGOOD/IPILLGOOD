@@ -10,13 +10,13 @@ import {
 
 import { createSession } from "@/lib/auth/session";
 import { isDemoLoginAllowed } from "@/lib/auth/session-security";
-import { isSameOriginRequest } from "@/lib/api-security";
+import { isSameOriginBrowserRequest } from "@/lib/request-origin";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { rateLimitResponse } from "@/lib/rate-limit-core";
 
 export async function POST(request: Request) {
   const wantsJson = request.headers.get("accept")?.includes("application/json") === true;
-  if (!isSameOriginRequest(request)) {
+  if (!isSameOriginBrowserRequest(request)) {
     return NextResponse.json({ error: "invalid_origin" }, { status: 403 });
   }
   const requestUrl = new URL(request.url);
