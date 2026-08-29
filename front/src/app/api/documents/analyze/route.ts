@@ -117,16 +117,22 @@ export async function POST(request: Request) {
       analysis: result.analysis,
     });
 
+    const requiresPeriodReview = typedDocumentType === "처방전" && document.status === "needs_review";
     const addedMedicationCount =
-      typedDocumentType === "처방전" ? (result.analysis.medications?.length ?? 0) : 0;
+      typedDocumentType === "처방전" && !requiresPeriodReview
+        ? (result.analysis.medications?.length ?? 0)
+        : 0;
     return Response.json({
       message:
-        addedMedicationCount > 0
+        requiresPeriodReview
+          ? `${result.message} 처방일 또는 총 투약일수를 원본에서 확인하기 전에는 복약 일정에 추가하지 않아요.`
+          : addedMedicationCount > 0
           ? `${result.message} 약 ${addedMedicationCount}개를 복약 일정에 추가했어요.`
           : result.message,
       analysis: result.analysis,
       document,
       addedMedicationCount,
+      requiresPeriodReview,
     });
   } catch (error) {
     if (error instanceof DocumentUploadValidationError) {

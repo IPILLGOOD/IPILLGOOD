@@ -20,10 +20,13 @@ import { isEphemeralDemoSessionActive } from "./demo-session.ts";
 import type { FirestoreLike, TransactionLike, DocumentReferenceLike } from "./firestore-rest.ts";
 import { stableJson } from "./stable-json.ts";
 import {
+  addCalendarDays,
+  dateKeyInSeoul,
+} from "./dates.ts";
+import {
   applyDailyCheckInToSnapshot,
   byDateDescending,
   currentDailyCheckIn,
-  dateKeyInSeoul,
   MAX_DOCUMENTS,
   MAX_DOSE_EVENTS,
   MAX_SYMPTOM_EVENTS,
@@ -351,6 +354,13 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
       size: input.size, analysis: input.analysis,
     };
     const medications = medicationPlansFromPrescription(document);
+    const eligibleMedicationCount = document.documentType === "처방전"
+      ? (document.analysis?.medications ?? []).filter((item) => item.productName.trim() && item.frequency.trim()).length
+      : 0;
+    if (medications.length < eligibleMedicationCount) {
+      document.status = "needs_review";
+      document.sourceLabel = `${document.sourceLabel} · 처방 기간 확인 필요`;
+    }
     tx.create(documentRef, document);
     for (const medication of medications) tx.create(ref.collection("medicationPlans").doc(medication.id), medication);
     return {
@@ -360,24 +370,40 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
   }, { affectsMedications: true, requiresConsent: true });
 }
 
-const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+function validCalendarDate(value: string | undefined) {
+  if (!value) return undefined;
+  try {
+    return dateKeyInSeoul(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function validSupplyDays(value: number | undefined) {
+  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 3_650
+    ? Number(value)
+    : undefined;
+}
 
 export function medicationPlansFromPrescription(
   document: Pick<ClinicalDocument, "id" | "documentType" | "uploadedAt" | "analysis">,
+  today = dateKeyInSeoul(),
 ): MedicationPlan[] {
   if (document.documentType !== "처방전") return [];
   const sourceMedications = document.analysis?.medications ?? [];
-  const uploadedDate = dateKeyInSeoul(new Date(document.uploadedAt));
+  const prescriptionDate = validCalendarDate(document.analysis?.prescriptionDate);
+  const totalSupplyDays = validSupplyDays(document.analysis?.totalSupplyDays);
 
   return sourceMedications
     .filter((medication) => medication.productName.trim() && medication.frequency.trim())
-    .map((medication, index) => {
-      const startDate = isoDatePattern.test(medication.startDate)
-        ? medication.startDate
-        : uploadedDate;
-      const endDate = medication.endDate && isoDatePattern.test(medication.endDate)
-        ? medication.endDate
-        : undefined;
+    .flatMap((medication, index) => {
+      const startDate = validCalendarDate(medication.startDate) ?? prescriptionDate;
+      if (!startDate) return [];
+      const explicitEndDate = validCalendarDate(medication.endDate);
+      const endDate = explicitEndDate ?? (totalSupplyDays
+        ? addCalendarDays(startDate, totalSupplyDays - 1)
+        : undefined);
+      if (!endDate || endDate < startDate) return [];
       return {
         id: `rx-${document.id}-${index + 1}`,
         productName: medication.productName.trim(),
@@ -389,8 +415,8 @@ export function medicationPlansFromPrescription(
         frequency: medication.frequency.trim(),
         timing: medication.timing.trim() || "복용 시간 확인 필요",
         startDate,
-        ...(endDate ? { endDate } : {}),
-        status: "active" as const,
+        endDate,
+        status: endDate < today ? "ended" as const : "active" as const,
         isNew: true,
         sourceLabel: "처방전 분석에서 자동 등록 · 보호자 확인 필요",
         sourceDocumentId: document.id,
