@@ -23,6 +23,10 @@ await checkIn.getByLabel("어지러움", { exact: true }).check();
 await checkIn
   .getByLabel("보호자 메모")
   .fill("자동 검증: 첫 화면에서 확인했고 잠깐 쉰 뒤 괜찮아졌어요.");
+const doseResponses = checkIn.locator('input[name^="dose_"][value="completed"]');
+for (let index = 0; index < (await doseResponses.count()); index += 1) {
+  await doseResponses.nth(index).check();
+}
 const dynamicQuestions = checkIn.locator('select[name^="question_"]');
 for (let index = 0; index < (await dynamicQuestions.count()); index += 1) {
   const question = dynamicQuestions.nth(index);

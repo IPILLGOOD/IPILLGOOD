@@ -44,6 +44,10 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     const form = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
     await form.getByLabel("어지러움", { exact: true }).check();
     await form.getByLabel("보호자 메모").fill("격리된 자동 검증 기록");
+    const doseResponses = form.locator('input[name^="dose_"][value="completed"]');
+    for (let index = 0; index < await doseResponses.count(); index++) {
+      await doseResponses.nth(index).check();
+    }
     const questions = form.locator('select[name^="question_"]');
     for (let index = 0; index < await questions.count(); index++) {
       const question = questions.nth(index);

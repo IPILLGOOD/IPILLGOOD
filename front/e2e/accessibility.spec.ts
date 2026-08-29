@@ -84,8 +84,18 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await page.keyboard.press("Enter");
   await expect(page.getByRole("main")).toBeFocused();
   await expect(page.getByRole("main")).toHaveCSS("outline-style", "none");
-  await typeWithKeyboard(page, page.getByLabel("보호자 메모"), "접근성 키보드 검증");
-  const questions = page.locator('select[name^="question_"]');
+  await tabTo(page, page.getByRole("link", { name: /확인 시작/ }));
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/check-in$/);
+  const form = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
+  await typeWithKeyboard(page, form.getByLabel("보호자 메모"), "접근성 키보드 검증");
+  const doseResponses = form.locator('input[name^="dose_"][value="completed"]');
+  for (let index = 0; index < await doseResponses.count(); index++) {
+    await tabTo(page, doseResponses.nth(index));
+    await page.keyboard.press("Space");
+    await expect(doseResponses.nth(index)).toBeChecked();
+  }
+  const questions = form.locator('select[name^="question_"]');
   for (let index = 0; index < await questions.count(); index++) {
     await tabTo(page, questions.nth(index));
     if (process.platform === "darwin") {
@@ -98,9 +108,9 @@ test("core flows: accessible names, targets, keyboard, error and success states"
     await expect(questions.nth(index)).not.toHaveValue("");
   }
   await info.attach("native-select-keyboard", { body: JSON.stringify({ platform: process.platform, usedSelectionHelper: process.platform === "darwin" }), contentType: "application/json" });
-  await tabTo(page, page.getByRole("button", { name: "안부 기록 저장" }));
+  await tabTo(page, form.getByRole("button", { name: "오늘의 답변 저장" }));
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("status")).toContainText("오늘의 몸 상태를 기록했어요.");
+  await expect(page.getByRole("status")).toContainText("오늘의 복약과 몸 상태를 기록했어요.");
   await audit(page, "desktop-check-in-success", info);
   for (const path of ["/profile", "/documents", "/check-in"]) {
     await page.goto(path);
