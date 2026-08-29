@@ -162,7 +162,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
 
     for (const width of [320, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      await expect(page.locator(".sample-button, .sample-divider, .demo-document-samples")).toHaveCount(0);
+      await expect(page.locator(".sample-button, .sample-divider")).toHaveCount(0);
       await expect(page.getByRole("button", { name: "처방전 첨부하고 분석하기" })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       if (width === 320 || width === 1440) {
@@ -211,12 +211,11 @@ test("documents: samples stay demo-only across API requests, uploads and account
     demoRecipientId = decodeJwt((await context.cookies()).find((entry) => entry.name === "care_atlas_session")!.value).sub;
     await page.goto("/documents");
     await expect(page.getByRole("button", { name: "비식별 샘플 처방전으로 체험" })).toBeVisible();
-    await expect(page.locator(".demo-document-samples")).toBeVisible();
     await page.getByRole("button", { name: "로그아웃" }).click();
     await expect(page).toHaveURL(/\/$/);
     await context.addCookies([sessionCookie]);
     await page.goto("/documents");
-    await expect(page.locator(".sample-button, .sample-divider, .demo-document-samples")).toHaveCount(0);
+    await expect(page.locator(".sample-button, .sample-divider")).toHaveCount(0);
     await expect(page.getByText("처방전이나 진단서를 첨부하고 분석해보세요.")).toBeVisible();
   } finally {
     for (const id of [recipientId, demoRecipientId].filter((id): id is string => Boolean(id))) {

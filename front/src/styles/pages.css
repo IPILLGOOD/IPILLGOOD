@@ -2326,93 +2326,6 @@
   gap: var(--space-4);
 }
 
-.demo-document-samples {
-  margin-bottom: var(--space-6);
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: var(--space-6);
-}
-
-.demo-document-samples__heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-
-.demo-document-samples__heading span {
-  color: var(--color-primary-700);
-  font-size: 0.7rem;
-  font-weight: 800;
-}
-
-.demo-document-samples__heading h3 {
-  margin: var(--space-1) 0 0;
-}
-
-.demo-document-samples__heading p {
-  max-width: 24rem;
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 0.76rem;
-  text-align: right;
-}
-
-.demo-document-samples__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-.demo-document-sample {
-  overflow: hidden;
-  margin: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-subtle);
-}
-
-.demo-document-sample__image {
-  display: grid;
-  height: 15rem;
-  place-items: start center;
-  overflow: hidden;
-  background: var(--color-sage-50);
-  padding: var(--space-3) var(--space-3) 0;
-}
-
-.demo-document-sample__image img {
-  width: auto;
-  height: 100%;
-  object-fit: contain;
-  object-position: center top;
-}
-
-.demo-document-sample figcaption {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-top: 1px solid var(--color-border);
-  background: white;
-  color: var(--color-primary-700);
-  padding: var(--space-3);
-}
-
-.demo-document-sample figcaption strong,
-.demo-document-sample figcaption small {
-  display: block;
-}
-
-.demo-document-sample figcaption strong {
-  color: var(--color-primary-900);
-  font-size: 0.82rem;
-}
-
-.demo-document-sample figcaption small {
-  color: var(--color-text-muted);
-  font-size: 0.66rem;
-}
-
 .upload-preview {
   width: 100%;
   max-height: 18rem;
@@ -2656,24 +2569,6 @@
 
   .medication-reminder-card__status {
     grid-column: auto;
-  }
-
-  .demo-document-samples__heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .demo-document-samples__heading p {
-    max-width: none;
-    text-align: left;
-  }
-
-  .demo-document-samples__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .demo-document-sample__image {
-    height: 20rem;
   }
 
   .today-workspace {

@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Check, HeartPulse, PlayCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
+import { DemoLoginButton } from "./DemoLoginButton";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { GoogleLogo } from "./GoogleLogo";
 
@@ -48,9 +49,9 @@ export function LoginPanel({ errorMessage, successMessage }: { errorMessage?: st
               <span className="login-choice__icon"><PlayCircle size={22} aria-hidden="true" /></span>
               <span><strong>데모 로그인</strong><small>가입 없이 비식별 샘플로 모든 흐름을 둘러봐요.</small></span>
             </div>
-            <form action="/api/auth/demo" method="post">
-              <button className="login-demo-button" type="submit">데모로 둘러보기 <ArrowRight size={17} aria-hidden="true" /></button>
-            </form>
+            <DemoLoginButton className="login-demo-button">
+              데모로 둘러보기 <ArrowRight size={17} aria-hidden="true" />
+            </DemoLoginButton>
           </div>
 
           <p className="login-panel__notice">
