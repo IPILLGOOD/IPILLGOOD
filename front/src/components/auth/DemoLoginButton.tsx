@@ -9,12 +9,10 @@ type DemoLoginResponse = {
 };
 
 export function DemoLoginButton({
-  ariaLabel,
   children,
   className,
   pendingLabel = "데모 준비 중…",
 }: {
-  ariaLabel?: string;
   children: ReactNode;
   className: string;
   pendingLabel?: string;
@@ -47,7 +45,6 @@ export function DemoLoginButton({
   return (
     <div className="demo-login-control">
       <button
-        aria-label={ariaLabel}
         className={className}
         type="button"
         disabled={pending}

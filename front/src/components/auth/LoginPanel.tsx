@@ -81,7 +81,7 @@ export function LoginPanel({ errorMessage, successMessage }: { errorMessage?: st
           <div className="login-demo-entry">
             <span className="login-demo-entry__icon"><PlayCircle size={20} aria-hidden="true" /></span>
             <span><strong>체험 모드</strong><small>가입 없이 비식별 샘플로 둘러봐요.</small></span>
-            <DemoLoginButton ariaLabel="데모로 둘러보기" className="login-demo-button">
+            <DemoLoginButton className="login-demo-button">
               둘러보기 <ArrowRight size={16} aria-hidden="true" />
             </DemoLoginButton>
           </div>
