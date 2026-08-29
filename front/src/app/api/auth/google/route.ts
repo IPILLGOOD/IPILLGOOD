@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getAccountDeletion } from "@care-atlas/backend";
+import { getAccountDeletion, isServiceHealthDataConsentConfirmed } from "@care-atlas/backend";
 import { cookies } from "next/headers";
 
 import { verifyFirebaseGoogleIdToken } from "@/lib/auth/firebase-token";
@@ -37,7 +37,10 @@ export async function POST(request: Request) {
     }
 
     await createSession({ ...user, provider: "google" });
-    return NextResponse.json({ redirectTo: "/today" });
+    const consentConfirmed = await isServiceHealthDataConsentConfirmed(`google-${user.id}`);
+    return NextResponse.json({
+      redirectTo: consentConfirmed ? "/today" : "/profile?onboarding=1",
+    });
   } catch {
     return NextResponse.json({ error: "google_login_failed" }, { status: 401 });
   }

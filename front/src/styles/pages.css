@@ -2331,6 +2331,150 @@
   margin-top: 0.15rem;
 }
 
+.medication-draft-review {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid var(--color-sage-200);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-5);
+}
+
+.medication-draft-review__heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.medication-draft-review__heading span {
+  color: var(--color-primary-700);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.medication-draft-review__heading h3 {
+  margin: var(--space-1) 0;
+}
+
+.medication-draft-review__heading p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.medication-draft-review__heading > strong {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--color-sage-50);
+  color: var(--color-primary-800);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.76rem;
+}
+
+.medication-draft-review__list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.medication-draft-candidate {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+}
+
+.medication-draft-candidate legend {
+  color: var(--color-primary-800);
+  padding: 0 var(--space-2);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.medication-draft-candidate__include {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.medication-draft-candidate__include input {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.medication-draft-candidate__include strong,
+.medication-draft-candidate__include small {
+  display: block;
+}
+
+.medication-draft-candidate__include small {
+  margin-top: 0.1rem;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+.medication-draft-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.medication-draft-fields label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.medication-draft-fields input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius-sm) / 2);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 0.7rem 0.75rem;
+}
+
+.medication-draft-candidate__notice {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-warning);
+  font-size: 0.72rem;
+}
+
+.medication-draft-candidate__notice svg {
+  flex: 0 0 auto;
+}
+
+.medication-draft-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-sage-50);
+  padding: var(--space-4);
+}
+
+.medication-draft-summary > svg {
+  color: var(--color-primary-700);
+}
+
+.medication-draft-summary p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+}
+
+.medication-draft-summary strong {
+  display: block;
+  color: var(--color-primary-900);
+}
+
 .upload-stack form:first-of-type {
   display: grid;
   gap: var(--space-4);
@@ -2632,8 +2776,22 @@
   }
 
   .today-quick-actions,
-  .document-type-options {
+  .document-type-options,
+  .medication-draft-fields {
     grid-template-columns: 1fr;
+  }
+
+  .medication-draft-review__heading {
+    display: grid;
+  }
+
+  .medication-draft-summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .medication-draft-summary .button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .today-task {

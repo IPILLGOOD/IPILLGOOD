@@ -24,7 +24,13 @@ const evidenceLabels = {
   endDate: "종료일",
 } as const;
 
-export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysis }) {
+export function DocumentAnalysisResult({
+  analysis,
+  requiresPeriodReview = false,
+}: {
+  analysis: DocumentAnalysis;
+  requiresPeriodReview?: boolean;
+}) {
   const analysisSource =
     analysis.source === "api"
       ? "외부 API 문서 분석"
@@ -34,6 +40,7 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
   const medicationsNeedingReview = analysis.medications?.filter(
     (medication) => medication.reviewStatus !== "verified",
   ).length ?? 0;
+  const requiresMedicationVerification = medicationsNeedingReview > 0;
 
   return (
     <section className="analysis-result" aria-labelledby="analysis-result-title">
@@ -61,17 +68,19 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
 
       {analysis.documentType === "처방전" && analysis.medications?.length ? (
         <div
-          className={`disease-lookup-status disease-lookup-status--${medicationsNeedingReview > 0 ? "failed" : "official_match"}`}
+          className={`disease-lookup-status disease-lookup-status--${requiresMedicationVerification ? "failed" : requiresPeriodReview ? "not_configured" : "official_match"}`}
           role="status"
         >
-          {medicationsNeedingReview > 0
+          {requiresMedicationVerification || requiresPeriodReview
             ? <TriangleAlert size={18} aria-hidden="true" />
             : <CalendarCheck2 size={18} aria-hidden="true" />}
           <p>
-            <strong>{medicationsNeedingReview > 0 ? "원본 대조 필요" : "복약 일정에 반영됨"}</strong>
-            {medicationsNeedingReview > 0
-              ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 복약 일정에 추가하지 않았어요.`
-              : `처방전에서 확인한 약 ${analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.`}
+            <strong>{requiresMedicationVerification ? "OCR·공식 정보 확인이 필요한 초안" : requiresPeriodReview ? "처방 기간 확인이 필요한 초안" : "복약 후보 초안 생성"}</strong>
+            {requiresMedicationVerification
+              ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 선택할 수 없어요. 대조 완료된 약도 아래에서 검토하고 확정해야 반영돼요.`
+              : requiresPeriodReview
+              ? "처방일과 총 투약일수를 원본에서 확인하고 확정하기 전에는 약을 활성화하지 않아요."
+              : `처방전에서 약 ${analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.`}
           </p>
         </div>
       ) : null}

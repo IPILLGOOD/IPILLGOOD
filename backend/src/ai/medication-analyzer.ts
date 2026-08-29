@@ -431,6 +431,9 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
     analysis.carePoints.every((point) => typeof point === "string") &&
     Array.isArray(analysis.questionsForProfessional) &&
     analysis.questionsForProfessional.every((question) => typeof question === "string") &&
+    (analysis.prescriptionDate === undefined || typeof analysis.prescriptionDate === "string") &&
+    (analysis.totalSupplyDays === undefined ||
+      (typeof analysis.totalSupplyDays === "number" && Number.isInteger(analysis.totalSupplyDays))) &&
     (analysis.diagnoses === undefined ||
       (Array.isArray(analysis.diagnoses) &&
         analysis.diagnoses.every(

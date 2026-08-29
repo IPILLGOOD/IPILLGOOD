@@ -7,7 +7,9 @@ import {
   DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   DocumentUploadValidationError,
-  registerDocumentAndSyncMedicationReminders,
+  getMedicationPlanDraft,
+  isServiceHealthDataConsentConfirmed,
+  registerDocument,
   type ClinicalDocumentType,
   validateClinicalDocumentFile,
 } from "@care-atlas/backend";
@@ -29,6 +31,14 @@ export async function POST(request: Request) {
   if (session.provider === "demo" && process.env.IPILLGOOD_DEMO_MODE !== "true") {
     return Response.json(
       { message: "현재는 읽기 전용 모드예요. 인증 연결 후 분석을 활성화해주세요." },
+      { status: 403 },
+    );
+  }
+
+  const scope = careScopeFor(session);
+  if (!await isServiceHealthDataConsentConfirmed(scope.recipientId)) {
+    return Response.json(
+      { message: "건강정보 처리에 동의한 뒤 문서를 분석할 수 있어요." },
       { status: 403 },
     );
   }
@@ -87,13 +97,19 @@ export async function POST(request: Request) {
     if (session.provider === "google" && !await isServiceAccountActive(session.id)) {
       return Response.json({ message: "회원 탈퇴 처리 중에는 분석할 수 없어요." }, { status: 403 });
     }
-    const result = await withCareAccountProcessing(careScopeFor(session).recipientId, () => analyzeMedicationDocument({
+    if (!await isServiceHealthDataConsentConfirmed(scope.recipientId)) {
+      return Response.json(
+        { message: "건강정보 처리 동의가 철회되어 분석을 중단했어요." },
+        { status: 403 },
+      );
+    }
+    const result = await withCareAccountProcessing(scope.recipientId, () => analyzeMedicationDocument({
       documentType: typedDocumentType,
       fileName,
       contentType,
       contentBase64,
     }));
-    const document = await registerDocumentAndSyncMedicationReminders(careScopeFor(session), {
+    const document = await registerDocument(scope, {
       fileName,
       contentHash,
       documentType: typedDocumentType,
@@ -101,24 +117,29 @@ export async function POST(request: Request) {
       isSample,
       analysis: result.analysis,
     });
-
-    const addedMedicationCount = typedDocumentType === "처방전"
-      ? (result.analysis.medications ?? []).filter((medication) => medication.reviewStatus === "verified").length
-      : 0;
+    const draft = document.medicationDraftId
+      ? await getMedicationPlanDraft(scope, document.medicationDraftId)
+      : null;
+    const requiresPeriodReview = draft?.candidates.some((candidate) =>
+      !candidate.startDate || !candidate.endDate) ?? false;
     const reviewMedicationCount = typedDocumentType === "처방전"
       ? (result.analysis.medications ?? []).filter((medication) => medication.reviewStatus !== "verified").length
       : 0;
     return Response.json({
       message:
         reviewMedicationCount > 0
-          ? `${result.message} 확인이 필요한 약 ${reviewMedicationCount}개는 복약 일정에 추가하지 않았어요.`
-          : addedMedicationCount > 0
-          ? `${result.message} 약 ${addedMedicationCount}개를 복약 일정에 추가했어요.`
+          ? `${result.message} OCR 또는 공식 정보 확인이 필요한 약 ${reviewMedicationCount}개는 선택할 수 없어요. 나머지 약도 검토하고 확정하기 전에는 반영하지 않아요.`
+          : draft
+          ? requiresPeriodReview
+            ? `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개의 처방 기간을 확인하고 확정해주세요.`
+            : `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개를 검토하고 확정해주세요.`
           : result.message,
       analysis: result.analysis,
       document,
-      addedMedicationCount,
+      draft,
+      addedMedicationCount: 0,
       reviewMedicationCount,
+      requiresPeriodReview,
     });
   } catch (error) {
     if (error instanceof DocumentUploadValidationError) {
