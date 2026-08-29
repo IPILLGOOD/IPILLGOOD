@@ -931,6 +931,30 @@
   font-size: 0.78rem;
 }
 
+.official-drug-result__meta {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+}
+
+.official-drug-result__meta div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.official-drug-result__meta dt {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.official-drug-result__meta dd {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
 .official-drug-result__details {
   display: grid;
   align-content: start;
@@ -1037,6 +1061,21 @@
   color: var(--color-text-secondary);
   font-size: 0.82rem;
   white-space: pre-line;
+}
+
+.official-drug-source-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  list-style: disc;
+}
+
+.official-drug-source-list a {
+  color: var(--color-primary-800);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-underline-offset: 0.18em;
 }
 
 .official-drug-results__notice {

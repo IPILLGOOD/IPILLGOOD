@@ -7,7 +7,7 @@ import sharp from "sharp";
 
 import { runCareAgent } from "../src/ai/care-agent.ts";
 import { analyzeMedicationDocument } from "../src/ai/medication-analyzer.ts";
-import { searchPharmacogenomicInfo } from "../src/official-medication-api.ts";
+import { searchOfficialMedicationInfo } from "../src/official-medication-search.ts";
 
 function requireSecret(name) {
   if (!process.env[name]) throw new Error(`${name} is required for live verification.`);
@@ -85,7 +85,10 @@ function careSnapshot() {
 }
 
 requireSecret("OPENAI_API_KEY");
-requireSecret("MFDS_PARMGEN_API_KEY");
+const medicationApiKey = process.env.MFDS_MEDICATION_API_KEY ?? process.env.MFDS_PARMGEN_API_KEY;
+if (!medicationApiKey) {
+  throw new Error("MFDS_MEDICATION_API_KEY is required for live verification.");
+}
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "care-atlas-live-"));
 
 try {
@@ -122,17 +125,17 @@ try {
     contentType: "image/png",
     contentBase64: diagnosisBytes.toString("base64"),
   });
-  const medication = await searchPharmacogenomicInfo("와파린", {
-    apiKey: process.env.MFDS_PARMGEN_API_KEY,
-    openAiApiKey: process.env.OPENAI_API_KEY,
-  });
+  const [productMedication, ingredientMedication, easyMedication] = await Promise.all([
+    searchOfficialMedicationInfo("노바스크", { apiKey: medicationApiKey }),
+    searchOfficialMedicationInfo("암로디핀", { apiKey: medicationApiKey }),
+    searchOfficialMedicationInfo("타이레놀정160밀리그람", { apiKey: medicationApiKey }),
+  ]);
   const careAgent = await runCareAgent({
     snapshot: careSnapshot(),
     targetDate: "2026-08-16",
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  const medicationItem = medication.items[0];
   const extractedMedication = /노바스크|세레브렉스/.test(
     JSON.stringify(prescription.analysis.findings),
   );
@@ -141,17 +144,19 @@ try {
       (item) => item.code === "I10" || item.name.includes("고혈압"),
     ),
   );
-  const hasPlainExplanation = Boolean(medicationItem?.plainExplanation?.overview);
+  const productItem = productMedication.items[0];
+  const ingredientItem = ingredientMedication.items[0];
+  const easyItem = easyMedication.items.find((item) => item.consumerInfo);
   assert.equal(prescription.analysis.source, "openai");
   assert.equal(extractedMedication, true);
   assert.equal(diagnosis.analysis.source, "openai");
   assert.equal(diagnosisMatched, true);
-  assert.equal(medication.status, "connected");
-  assert.equal(
-    medication.status === "connected" ? medication.plainLanguageStatus : "not_run",
-    "complete",
-  );
-  assert.equal(hasPlainExplanation, true);
+  assert.equal(productMedication.status, "connected");
+  assert.equal(Boolean(productItem?.itemSeq), true);
+  assert.equal(ingredientMedication.status, "connected");
+  assert.equal(Boolean(ingredientItem?.ingredientName), true);
+  assert.equal(easyMedication.status, "connected");
+  assert.equal(Boolean(easyItem?.consumerInfo?.efficacy), true);
   assert.equal(careAgent.source, "agent");
   assert.equal(careAgent.run.status, "completed");
   console.log(
@@ -170,11 +175,21 @@ try {
           diseaseLookupStatus: diagnosis.analysis.diseaseLookup?.status ?? "not_run",
         },
         medication: {
-          status: medication.status,
-          itemCount: medication.items.length,
-          plainLanguageStatus:
-            medication.status === "connected" ? medication.plainLanguageStatus : "not_run",
-          hasPlainExplanation,
+          productSearch: {
+            status: productMedication.status,
+            itemCount: productMedication.items.length,
+            itemSeq: productItem?.itemSeq ?? null,
+          },
+          ingredientSearch: {
+            status: ingredientMedication.status,
+            itemCount: ingredientMedication.items.length,
+            ingredientName: ingredientItem?.ingredientName ?? null,
+          },
+          easyDrugSearch: {
+            status: easyMedication.status,
+            itemCount: easyMedication.items.length,
+            hasConsumerInformation: Boolean(easyItem?.consumerInfo),
+          },
         },
         careAgent: {
           source: careAgent.source,

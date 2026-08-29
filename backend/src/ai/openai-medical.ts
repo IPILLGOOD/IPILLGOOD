@@ -29,15 +29,6 @@ interface PlainMedicationPayload {
   items: Array<PlainMedicationExplanation & { index: number }>;
 }
 
-interface MedicationSearchPayload {
-  matchedName: string;
-  englishName: string;
-  categoryPlain: string;
-  overview: string;
-  productInfo: string;
-  caregiverNote: string;
-}
-
 const documentAnalysisSchema = {
   type: "object",
   additionalProperties: false,
@@ -153,27 +144,6 @@ const plainMedicationSchema = {
     },
   },
   required: ["items"],
-} as const;
-
-const medicationSearchSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    matchedName: { type: "string" },
-    englishName: { type: "string" },
-    categoryPlain: { type: "string" },
-    overview: { type: "string" },
-    productInfo: { type: "string" },
-    caregiverNote: { type: "string" },
-  },
-  required: [
-    "matchedName",
-    "englishName",
-    "categoryPlain",
-    "overview",
-    "productInfo",
-    "caregiverNote",
-  ],
 } as const;
 
 function getClient(apiKey = process.env.OPENAI_API_KEY): OpenAI {
@@ -380,83 +350,6 @@ export async function searchDiseaseWithOpenAI(
     source: "openai_web",
     sourceLabel: "OpenAI 웹 검색 · 의료기관/공공기관 출처",
     references,
-  };
-}
-
-export async function searchMedicationWithOpenAI(
-  query: string,
-  options: { apiKey?: string; model?: string } = {},
-): Promise<PharmacogenomicInfo> {
-  const response = await getClient(options.apiKey).responses.create({
-    model: modelName(options.model),
-    store: false,
-    reasoning: { effort: "low" },
-    tools: [
-      {
-        type: "web_search",
-        search_context_size: "medium",
-        filters: {
-          allowed_domains: [
-            "nedrug.mfds.go.kr",
-            "mfds.go.kr",
-            "dailymed.nlm.nih.gov",
-            "medlineplus.gov",
-            "fda.gov",
-            "ema.europa.eu",
-            "nhs.uk",
-          ],
-        },
-        user_location: {
-          type: "approximate",
-          country: "KR",
-          timezone: "Asia/Seoul",
-        },
-      },
-    ],
-    tool_choice: "required",
-    include: ["web_search_call.action.sources"],
-    input: [
-      "다음 약물명 또는 제품명을 공신력 있는 의약품 출처에서 검색하세요.",
-      `검색어: ${query}`,
-      "검색어와 일치하는 약의 성분명과 일반적인 쓰임만 설명하세요.",
-      "categoryPlain에는 이 약의 대표적인 대분류를 '감기약', '혈압약', '소화제', '진통제', '항생제'처럼 짧고 쉬운 말 하나로 적으세요.",
-      "개인별 복용량, 복용 변경, 진단, 대체 약 추천은 하지 마세요.",
-      "확실히 일치하는 약을 찾지 못하면 matchedName을 빈 문자열로 반환하세요.",
-      "결과는 보호자가 이해하기 쉬운 한국어로 짧게 작성하세요.",
-    ].join("\n"),
-    text: {
-      verbosity: "low",
-      format: {
-        type: "json_schema",
-        name: "medication_web_search",
-        strict: true,
-        schema: medicationSearchSchema,
-      },
-    },
-  });
-
-  const parsed = parseJson<MedicationSearchPayload>(response.output_text, "약물 웹 검색");
-  const references = citationReferences(response);
-  if (!parsed.matchedName.trim() || references.length === 0) {
-    throw new Error("OpenAI 웹 검색에서 일치하는 약물과 출처를 확인하지 못했습니다.");
-  }
-
-  return {
-    koreanName: parsed.matchedName.trim(),
-    englishName: parsed.englishName.trim(),
-    categoryPlain: parsed.categoryPlain.trim() || "분류 확인 필요",
-    pharmacogenomicInfo: "",
-    generalInfo: parsed.overview.trim(),
-    productInfo: parsed.productInfo.trim(),
-    source: "openai_web",
-    references,
-    plainExplanation: {
-      categoryPlain: parsed.categoryPlain.trim() || "분류 확인 필요",
-      overview: parsed.overview.trim(),
-      geneInfo: "",
-      productInfo: parsed.productInfo.trim(),
-      caregiverNote: parsed.caregiverNote.trim(),
-    },
   };
 }
 
