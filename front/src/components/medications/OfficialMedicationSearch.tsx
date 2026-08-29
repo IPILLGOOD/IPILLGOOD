@@ -46,7 +46,7 @@ export function OfficialMedicationSearch({
         </div>
       </div>
 
-      <MedicationSearchForm key={query} query={query} />
+      <MedicationSearchForm key={query} query={query}>
 
       {!query ? (
         <div className="official-drug-card__guide">
@@ -174,6 +174,7 @@ export function OfficialMedicationSearch({
           </p>
         </div>
       ) : null}
+      </MedicationSearchForm>
     </Card>
   );
 }
