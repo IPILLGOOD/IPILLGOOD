@@ -37,3 +37,19 @@ test("soft-deletion revocation leaves Firebase enabled for a fresh recovery logi
   assert.equal(body.disableUser, undefined);
   assert.ok(Number(body.validSince) > 0);
 });
+
+test("local ADC quota project is forwarded to Identity Toolkit", async () => {
+  let headers = new Headers();
+  const auth = createFirebaseAccountAdmin({
+    projectId: "resource-project",
+    quotaProjectId: "quota-project",
+    accessToken: async () => "synthetic",
+    fetcher: async (_url, init) => {
+      headers = new Headers(init?.headers);
+      return Response.json({});
+    },
+  });
+
+  await auth.lookup("uid-a");
+  assert.equal(headers.get("x-goog-user-project"), "quota-project");
+});
