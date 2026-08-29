@@ -39,16 +39,22 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     await expect(page).toHaveURL(/\/today$/);
     const cookie = (await context.cookies()).find((entry) => entry.name === "care_atlas_session")!;
     recipientId = decodeJwt(cookie.value).sub;
-    const form = page.getByRole("form", { name: "오늘의 안부 바로 기록" });
+    await page.getByRole("link", { name: /확인 시작/ }).click();
+    await expect(page).toHaveURL(/\/check-in$/);
+    const form = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
     await form.getByLabel("어지러움", { exact: true }).check();
     await form.getByLabel("보호자 메모").fill("격리된 자동 검증 기록");
+    const doseResponses = form.locator('input[name^="dose_"][value="completed"]');
+    for (let index = 0; index < await doseResponses.count(); index++) {
+      await doseResponses.nth(index).check();
+    }
     const questions = form.locator('select[name^="question_"]');
     for (let index = 0; index < await questions.count(); index++) {
       const question = questions.nth(index);
       await question.selectOption((await question.locator("option:not([disabled])").first().getAttribute("value"))!);
     }
-    await form.getByRole("button", { name: "안부 기록 저장" }).click();
-    await expect(page.getByText("오늘의 몸 상태를 기록했어요.")).toBeVisible();
+    await form.getByRole("button", { name: "오늘의 답변 저장" }).click();
+    await expect(page.getByText("오늘의 복약과 몸 상태를 기록했어요.")).toBeVisible();
     await page.goto("/documents");
     const before = await page.locator(".document-item").count();
     const recipient = fixture.admin.collection("careRecipients").doc(recipientId!);
@@ -83,7 +89,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
         expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount);
       }
     }
-    await page.goto("/today");
+    await page.goto("/check-in");
     await expect(page.getByLabel("보호자 메모")).toHaveValue("격리된 자동 검증 기록");
     await expect(page.getByLabel("어지러움", { exact: true })).toBeChecked();
     for (const path of ["/dashboard", "/report", "/medications"]) {

@@ -1,5 +1,5 @@
 import { formatInSeoul } from "@care-atlas/backend/dates";
-import { Accessibility, History, ShieldCheck } from "lucide-react";
+import { History, ShieldCheck } from "lucide-react";
 
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { AccountDeletionCard } from "@/components/profile/AccountDeletionCard";
@@ -47,11 +47,6 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
             <ShieldCheck size={24} aria-hidden="true" />
             <h2>건강정보는 민감한 정보예요</h2>
             <p>실제 서비스에서는 별도 동의, 암호화, 보관 기간과 삭제 기능이 필요해요.</p>
-          </Card>
-          <Card tone="soft">
-            <Accessibility size={22} aria-hidden="true" />
-            <h2>선호하는 안내 방식</h2>
-            <p>{snapshot.recipient.accessibilityPreferences.join(" · ")}</p>
           </Card>
           <Card tone="soft">
             <History size={22} aria-hidden="true" />
