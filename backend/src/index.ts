@@ -1,5 +1,8 @@
 export {
   deleteDocument,
+  cancelMedicationPlanDraft,
+  confirmMedicationPlanDraft,
+  getMedicationPlanDraft,
   getCareSnapshot,
   rebuildCareReadModel,
   getPatientQuestionSet,
@@ -9,6 +12,9 @@ export {
   saveDailyCheckIn,
   updateRecipientProfile,
   type CareDataScope,
+  type ConfirmMedicationPlanDraftInput,
+  type MedicationCandidateConfirmation,
+  type MedicationPlanConfirmationResult,
   type RegisterDocumentInput,
 } from "./care-repository";
 export {
@@ -24,6 +30,7 @@ export {
   type EphemeralDemoSession,
 } from "./demo-session";
 export {
+  confirmMedicationPlanDraftAndSyncMedicationReminders,
   deleteDocumentAndSyncMedicationReminders,
   registerDocumentAndSyncMedicationReminders,
 } from "./medication-reminder-service";
@@ -126,6 +133,10 @@ export type {
   DiseaseLookupStatus,
   DiseaseReference,
   MedicationPlan,
+  MedicationDraftState,
+  MedicationDraftTransition,
+  MedicationPlanCandidate,
+  MedicationPlanDraft,
   PrescriptionMedication,
   PatientQuestion,
   PatientQuestionResponse,

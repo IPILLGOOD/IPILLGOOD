@@ -60,10 +60,10 @@ export function DocumentAnalysisResult({
             ? <TriangleAlert size={18} aria-hidden="true" />
             : <CalendarCheck2 size={18} aria-hidden="true" />}
           <p>
-            <strong>{requiresPeriodReview ? "처방 기간 확인 필요" : "복약 일정에 반영됨"}</strong>
+            <strong>{requiresPeriodReview ? "처방 기간 확인이 필요한 초안" : "복약 후보 초안 생성"}</strong>
             {requiresPeriodReview
-              ? "처방일과 총 투약일수를 원본에서 확인하기 전에는 약을 활성화하지 않아요."
-              : `처방전에서 확인한 약 ${analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.`}
+              ? "처방일과 총 투약일수를 원본에서 확인하고 확정하기 전에는 약을 활성화하지 않아요."
+              : `처방전에서 약 ${analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.`}
           </p>
         </div>
       ) : null}

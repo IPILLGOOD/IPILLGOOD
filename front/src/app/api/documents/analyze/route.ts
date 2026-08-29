@@ -7,8 +7,9 @@ import {
   DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   DocumentUploadValidationError,
+  getMedicationPlanDraft,
   isServiceHealthDataConsentConfirmed,
-  registerDocumentAndSyncMedicationReminders,
+  registerDocument,
   type ClinicalDocumentType,
   validateClinicalDocumentFile,
 } from "@care-atlas/backend";
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
       contentType,
       contentBase64,
     }));
-    const document = await registerDocumentAndSyncMedicationReminders(scope, {
+    const document = await registerDocument(scope, {
       fileName,
       contentHash,
       documentType: typedDocumentType,
@@ -116,22 +117,23 @@ export async function POST(request: Request) {
       isSample,
       analysis: result.analysis,
     });
+    const draft = document.medicationDraftId
+      ? await getMedicationPlanDraft(scope, document.medicationDraftId)
+      : null;
+    const requiresPeriodReview = draft?.candidates.some((candidate) =>
+      !candidate.startDate || !candidate.endDate) ?? false;
 
-    const requiresPeriodReview = typedDocumentType === "처방전" && document.status === "needs_review";
-    const addedMedicationCount =
-      typedDocumentType === "처방전" && !requiresPeriodReview
-        ? (result.analysis.medications?.length ?? 0)
-        : 0;
     return Response.json({
       message:
-        requiresPeriodReview
-          ? `${result.message} 처방일 또는 총 투약일수를 원본에서 확인하기 전에는 복약 일정에 추가하지 않아요.`
-          : addedMedicationCount > 0
-          ? `${result.message} 약 ${addedMedicationCount}개를 복약 일정에 추가했어요.`
+        draft
+          ? requiresPeriodReview
+            ? `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개의 처방 기간을 확인하고 확정해주세요.`
+            : `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개를 검토하고 확정해주세요.`
           : result.message,
       analysis: result.analysis,
       document,
-      addedMedicationCount,
+      draft,
+      addedMedicationCount: 0,
       requiresPeriodReview,
     });
   } catch (error) {

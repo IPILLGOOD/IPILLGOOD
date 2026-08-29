@@ -8,6 +8,9 @@ import {
 } from "./care-read-model.ts";
 import {
   createInitialCareSnapshot,
+  cancelMedicationPlanDraft,
+  confirmMedicationPlanDraft,
+  getMedicationPlanDraft,
   medicationPlansFromPrescription,
   getCareSnapshot,
   registerDocument,
@@ -174,19 +177,28 @@ test("기존 문서 삭제와 새 문서 등록의 동시 요청에서 새 데�
   assert.deepEqual((await getCareSnapshot(scope)).documents.map((item) => item.id), ["new"]);
 });
 
-test("원본 변경과 복구 작업은 같은 commit에 저장되고 실패 시 둘 다 남지 않는다", async () => {
+test("복약 확정과 알림 복구 작업은 같은 commit에 저장되고 실패 시 둘 다 남지 않는다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-outbox", firestore };
   await consentedSnapshot(scope);
+  const document = await registerDocument(scope, prescriptionUpload("outbox-rx"));
+  const draft = (await getMedicationPlanDraft(scope, document.medicationDraftId!))!;
   await firestore.collection("pushSubscriptions").doc("sub").set({ recipientId: scope.recipientId, active: true });
   firestore.beforeCommit = (operations) => {
     if (operations.some((item) => item.path.startsWith("medicationReminderSync/"))) throw new Error("OUTBOX_FAILURE");
   };
-  await assert.rejects(registerDocument(scope, upload("a")), /OUTBOX_FAILURE/);
-  assert.equal(firestore.store.has(`careRecipients/${scope.recipientId}/clinicalDocuments/a`), false);
-  assert.deepEqual((await getCareSnapshot(scope)).documents, []);
+  const input = {
+    draftId: draft.id,
+    revision: draft.revision,
+    idempotencyKey: "outbox-confirm-001",
+    confirmedBy: "google:user-outbox",
+    candidates: confirmationCandidates(draft),
+  };
+  await assert.rejects(confirmMedicationPlanDraft(scope, input), /OUTBOX_FAILURE/);
+  assert.deepEqual((await getCareSnapshot(scope)).medications, []);
+  assert.equal((await getMedicationPlanDraft(scope, draft.id))?.state, "needs_review");
   firestore.beforeCommit = undefined;
-  await registerDocument(scope, upload("a"));
+  await confirmMedicationPlanDraft(scope, input);
   assert.equal((firestore.store.get(`medicationReminderSync/${scope.recipientId}`) as { status: string }).status, "pending");
 });
 
@@ -277,6 +289,7 @@ test("월말·윤년 계산을 보존하고 불확실한 기간은 자동 활성
 test("처방 기간이 불확실한 문서는 확인 필요로 저장하고 복약 계획을 만들지 않는다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-period-review", firestore };
+  await consentedSnapshot(scope);
   const document = await registerDocument(scope, {
     fileName: "uncertain-rx.pdf",
     contentHash: "uncertain-rx",
@@ -306,4 +319,181 @@ test("진단서 분석 결과는 복약 계획으로 만들지 않는다", () =>
     }),
     [],
   );
+});
+
+const prescriptionUpload = (id: string) => ({
+  fileName: `${id}.png`,
+  contentHash: id,
+  documentType: "처방전" as const,
+  size: 1234,
+  isSample: false,
+  analysis: {
+    documentType: "처방전" as const,
+    prescriptionDate: "2026-08-16",
+    totalSupplyDays: 7,
+    summary: "약 2개",
+    findings: [],
+    carePoints: [],
+    questionsForProfessional: [],
+    disclaimer: "원본 확인",
+    source: "openai" as const,
+    medications: [
+      {
+        productName: "첫째약 5mg",
+        ingredientName: "첫째성분",
+        doseAmount: "1정",
+        frequency: "하루 1회",
+        timing: "아침 식사 후",
+        startDate: "2026-08-16",
+        endDate: "2026-08-22",
+        purposePlain: "증상 관리",
+        precautions: [],
+      },
+      {
+        productName: "둘째약 10mg",
+        ingredientName: "둘째성분",
+        doseAmount: "2정",
+        frequency: "하루 2회",
+        timing: "아침·저녁 식사 후",
+        startDate: "2026-08-16",
+        purposePlain: "증상 관리",
+        precautions: [],
+      },
+    ],
+  },
+});
+
+function confirmationCandidates(draft: NonNullable<Awaited<ReturnType<typeof getMedicationPlanDraft>>>) {
+  return draft.candidates.map((candidate) => ({
+    id: candidate.id,
+    included: candidate.included,
+    productName: candidate.productName,
+    ingredientName: candidate.ingredientName,
+    doseAmount: candidate.doseAmount,
+    frequency: candidate.frequency,
+    timing: candidate.timing,
+    startDate: candidate.startDate,
+    endDate: candidate.endDate,
+  }));
+}
+
+test("처방 분석은 복약 초안만 만들고 현재 약·복용 기록·알림 의도를 변경하지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-draft-only", firestore };
+  await consentedSnapshot(scope);
+  await firestore.collection("pushSubscriptions").doc("active-device").set({ recipientId: scope.recipientId, active: true });
+
+  const document = await registerDocument(scope, prescriptionUpload("draft-only"));
+  const result = await getCareSnapshot(scope);
+  const draft = await getMedicationPlanDraft(scope, document.medicationDraftId!);
+
+  assert.equal(document.status, "needs_review");
+  assert.equal(draft?.state, "needs_review");
+  assert.equal(draft?.candidates.length, 2);
+  assert.deepEqual(result.medications, []);
+  assert.deepEqual(result.doseEvents, []);
+  assert.equal(firestore.store.has(`medicationReminderSync/${scope.recipientId}`), false);
+});
+
+test("사용자가 수정·선택해 확정한 약만 활성화하고 확인자·시각·문서 revision을 보존한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-draft-confirm", firestore };
+  await consentedSnapshot(scope);
+  const document = await registerDocument(scope, prescriptionUpload("confirm"));
+  const draft = (await getMedicationPlanDraft(scope, document.medicationDraftId!))!;
+  const candidates = confirmationCandidates(draft);
+  candidates[0] = { ...candidates[0]!, productName: "수정한 첫째약 5mg" };
+  candidates[1] = { ...candidates[1]!, included: false };
+
+  const result = await confirmMedicationPlanDraft(scope, {
+    draftId: draft.id,
+    revision: draft.revision,
+    idempotencyKey: "confirm-request-001",
+    confirmedBy: "google:user-1",
+    candidates,
+  }, { now: new Date("2026-08-17T01:00:00Z") });
+
+  assert.equal(result.medications.length, 1);
+  assert.equal(result.medications[0]?.productName, "수정한 첫째약 5mg");
+  assert.equal(result.medications[0]?.confirmedBy, "google:user-1");
+  assert.equal(result.medications[0]?.confirmedAt, "2026-08-17T01:00:00.000Z");
+  assert.equal(result.medications[0]?.sourceDocumentRevision, document.revision);
+  assert.deepEqual(result.draft.transitionHistory.slice(-2).map((item) => item.state), ["confirmed", "active"]);
+  assert.equal((await getCareSnapshot(scope)).medications.length, 1);
+});
+
+test("분석·확정 재시도와 동시 확정은 같은 초안·복약 계획을 중복 생성하지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-draft-idempotent", firestore };
+  await consentedSnapshot(scope);
+  const firstDocument = await registerDocument(scope, prescriptionUpload("same-analysis"));
+  const repeatedDocument = await registerDocument(scope, prescriptionUpload("same-analysis"));
+  assert.equal(firstDocument.medicationDraftId, repeatedDocument.medicationDraftId);
+  const draft = (await getMedicationPlanDraft(scope, firstDocument.medicationDraftId!))!;
+  const input = {
+    draftId: draft.id,
+    revision: draft.revision,
+    idempotencyKey: "confirm-request-retry",
+    confirmedBy: "google:user-2",
+    candidates: confirmationCandidates(draft),
+  };
+
+  const [first, concurrent] = await Promise.all([
+    confirmMedicationPlanDraft(scope, input),
+    confirmMedicationPlanDraft(scope, { ...input, idempotencyKey: "confirm-request-concurrent" }),
+  ]);
+  const replay = await confirmMedicationPlanDraft(scope, input);
+  const snapshotAfter = await getCareSnapshot(scope);
+
+  assert.equal(first.medications.length, 2);
+  assert.equal(concurrent.medications.length, 2);
+  assert.equal(replay.idempotentReplay, true);
+  assert.equal(snapshotAfter.documents.length, 1);
+  assert.equal(snapshotAfter.medications.length, 2);
+  assert.equal(new Set(snapshotAfter.medications.map((item) => item.id)).size, 2);
+});
+
+test("만료·문서 revision 변경·취소된 초안은 재검토 없이 확정할 수 없다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-draft-stale", firestore };
+  await consentedSnapshot(scope);
+  const expiredDocument = await registerDocument(scope, prescriptionUpload("expired"));
+  const expiredDraft = (await getMedicationPlanDraft(scope, expiredDocument.medicationDraftId!))!;
+  firestore.store.set(`careRecipients/${scope.recipientId}/medicationPlanDrafts/${expiredDraft.id}`, {
+    ...expiredDraft,
+    expiresAt: "2026-08-01T00:00:00.000Z",
+  });
+  await assert.rejects(confirmMedicationPlanDraft(scope, {
+    draftId: expiredDraft.id,
+    revision: expiredDraft.revision,
+    idempotencyKey: "expired-request-001",
+    confirmedBy: "google:user-3",
+    candidates: confirmationCandidates(expiredDraft),
+  }, { now: new Date("2026-08-20T00:00:00Z") }), /만료/);
+  assert.equal((await getMedicationPlanDraft(scope, expiredDraft.id))?.state, "expired");
+
+  const changedDocument = await registerDocument(scope, prescriptionUpload("changed"));
+  const changedDraft = (await getMedicationPlanDraft(scope, changedDocument.medicationDraftId!))!;
+  firestore.store.set(`careRecipients/${scope.recipientId}/clinicalDocuments/${changedDocument.id}`, {
+    ...changedDocument,
+    revision: "sha256:changed-after-analysis",
+  });
+  await assert.rejects(confirmMedicationPlanDraft(scope, {
+    draftId: changedDraft.id,
+    revision: changedDraft.revision,
+    idempotencyKey: "changed-request-001",
+    confirmedBy: "google:user-3",
+    candidates: confirmationCandidates(changedDraft),
+  }), /근거 문서가 변경/);
+
+  const cancelledDocument = await registerDocument(scope, prescriptionUpload("cancelled"));
+  const cancelledDraft = (await getMedicationPlanDraft(scope, cancelledDocument.medicationDraftId!))!;
+  await cancelMedicationPlanDraft(scope, cancelledDraft.id, "google:user-3");
+  await assert.rejects(confirmMedicationPlanDraft(scope, {
+    draftId: cancelledDraft.id,
+    revision: cancelledDraft.revision + 1,
+    idempotencyKey: "cancelled-request-001",
+    confirmedBy: "google:user-3",
+    candidates: confirmationCandidates(cancelledDraft),
+  }), /취소/);
 });
