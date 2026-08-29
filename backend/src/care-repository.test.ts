@@ -7,6 +7,7 @@ import {
   currentDailyCheckIn,
 } from "./care-read-model.ts";
 import {
+  CareConflictError,
   createInitialCareSnapshot,
   medicationPlansFromPrescription,
   getCareSnapshot,
@@ -22,6 +23,7 @@ const snapshot = {
   ...demoSeed,
   todayCheckIn: null,
   dataSource: "firestore",
+  revision: 0,
 } as CareSnapshot;
 
 test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복사하지 않는다", () => {
@@ -36,6 +38,18 @@ test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복�
   assert.deepEqual(first.symptomEvents, []);
   assert.deepEqual(first.documents, []);
   assert.notEqual(first.recipient.id, second.recipient.id);
+});
+
+test("오래된 revision으로 프로필을 저장하면 최신 변경을 덮어쓰지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-conflict", firestore };
+  const initial = await getCareSnapshot(scope);
+  await updateRecipientProfile(scope, { ...initial.recipient, displayName: "먼저 저장" }, initial, 0);
+  await assert.rejects(
+    updateRecipientProfile(scope, { ...initial.recipient, displayName: "늦은 저장" }, initial, 0),
+    CareConflictError,
+  );
+  assert.equal((await getCareSnapshot(scope)).recipient.displayName, "먼저 저장");
 });
 
 const upload = (id: string) => ({ fileName: `${id}.pdf`, contentHash: id, documentType: "진단서" as const, size: 100, isSample: true, analysis: null });

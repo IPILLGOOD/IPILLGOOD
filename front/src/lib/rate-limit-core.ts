@@ -3,6 +3,8 @@ export const RATE_LIMIT_POLICIES = {
   checkIn: { binding: "RATE_LIMIT_CHECKIN", limit: 20, windowSeconds: 60 },
   documentAnalysis: { binding: "RATE_LIMIT_ANALYSIS", limit: 5, windowSeconds: 60 },
   medicationSearch: { binding: "RATE_LIMIT_SEARCH", limit: 30, windowSeconds: 60 },
+  connectionAuth: { binding: "RATE_LIMIT_CONNECTION_AUTH", limit: 5, windowSeconds: 60 },
+  sync: { binding: "RATE_LIMIT_SYNC", limit: 30, windowSeconds: 60 },
 } as const;
 
 export type RateLimitPolicyName = keyof typeof RATE_LIMIT_POLICIES;

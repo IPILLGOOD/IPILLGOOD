@@ -4,9 +4,10 @@ import { Accessibility, History, ShieldCheck } from "lucide-react";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { AccountDeletionCard } from "@/components/profile/AccountDeletionCard";
 import { AccountDeletionProgress } from "@/components/profile/AccountDeletionProgress";
+import { CareConnectionCard } from "@/components/profile/CareConnectionCard";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareSnapshot, getAccountDeletionPolicy, publicAccountDeletion } from "@care-atlas/backend";
+import { getCareConnection, getCareSnapshot, getAccountDeletionPolicy, publicAccountDeletion } from "@care-atlas/backend";
 import { careScopeFor } from "@/lib/auth/care-scope";
 import { getSession } from "@/lib/auth/session";
 import { getAccountDeletionReceipt } from "@/lib/auth/account-deletion-receipt";
@@ -21,6 +22,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   if (!user) redirect("/login");
   const scope = careScopeFor(user);
   const snapshot = await getCareSnapshot(scope);
+  const connection = user.provider === "google" ? await getCareConnection(user.id) : null;
   const params = await searchParams;
   const reauthenticating = params.account_reauth === "1";
   return (
@@ -33,7 +35,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       {params.restored === "1" && <p className="account-deletion-notice" role="status">계정과 돌봄 기록이 복구됐어요. 복약 알림은 이 기기에서 다시 설정해주세요.</p>}
       <div className="profile-layout">
         <Card>
-          <ProfileForm recipient={snapshot.recipient} />
+          <ProfileForm recipient={snapshot.recipient} revision={snapshot.revision} />
         </Card>
         <aside className="profile-aside">
           <Card tone="accent">
@@ -57,7 +59,8 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           </Card>
         </aside>
       </div>
-      <AccountDeletionCard userId={user.id} email={user.email} demo={user.provider === "demo"} policy={getAccountDeletionPolicy()} reauthenticating={reauthenticating} />
+      {user.provider === "google" ? <CareConnectionCard connection={connection} /> : null}
+      {user.provider !== "connected" ? <AccountDeletionCard userId={user.id} email={user.email} demo={user.provider === "demo"} policy={getAccountDeletionPolicy()} reauthenticating={reauthenticating} /> : null}
     </>
   );
 }

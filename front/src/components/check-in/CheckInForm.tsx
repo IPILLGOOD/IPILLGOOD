@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 import { useCheckInForm } from "./useCheckInForm";
 import { QuestionRecovery } from "./QuestionRecovery";
@@ -21,12 +23,16 @@ const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청�
 export function CheckInForm({
   tasks,
   questionSet: initialQuestions,
+  revision,
 }: {
   tasks: MedicationScheduleTask[];
   questionSet: PatientQuestionSet | null;
+  revision: number;
 }) {
-  const form = useCheckInForm(initialQuestions);
+  const router = useRouter();
+  const form = useCheckInForm(initialQuestions, revision);
   const { state, formAction, questionSet } = form;
+  useEffect(() => { if (state.conflict) router.refresh(); }, [router, state.conflict]);
   const recovery = <QuestionRecovery unavailable={!questionSet} pending={form.pending} message={form.recoveryMessage} onRetry={form.recover} />;
   if (!questionSet) return recovery;
 
@@ -55,7 +61,13 @@ export function CheckInForm({
 
   return (
     <form className="checkin-form" action={formAction} onReset={(event) => event.preventDefault()} aria-label="오늘의 복약과 안부 기록">
+      <input type="hidden" name="expectedRevision" value={form.baselineRevision} />
       {!form.recoveryMessage && <FormMessage state={state} />}
+      {state.conflict ? (
+        <button className="button button--secondary" type="button" disabled={!form.latestRevisionReady} onClick={form.acceptLatestRevision}>
+          {form.latestRevisionReady ? "최신 내용 확인 후 다시 저장" : "최신 내용 불러오는 중…"}
+        </button>
+      ) : null}
       {(state.recoverQuestions || form.recoveryMessage) && recovery}
 
       <fieldset className="question-block">

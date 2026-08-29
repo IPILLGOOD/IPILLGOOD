@@ -4,8 +4,12 @@ import { revalidatePath } from "next/cache";
 
 import {
   buildPatientQuestionResponse,
+  CareConflictError,
+  createCareConnectionCode,
   dateKeyInSeoul,
+  deactivatePushSubscriptionsForUser,
   deleteDocumentAndSyncMedicationReminders,
+  disconnectCareConnection,
   getCareSnapshot,
   getPatientQuestionSet,
   getQuestionSetAvailability,
@@ -34,11 +38,64 @@ async function demoWriteGuard(): Promise<ActionState | null> {
       message: "로그인 정보가 만료되었어요. 다시 로그인해주세요.",
     };
   }
-  if (session.provider === "google" || process.env.IPILLGOOD_DEMO_MODE === "true") return null;
+  if (session.provider === "google" || session.provider === "connected" || process.env.IPILLGOOD_DEMO_MODE === "true") return null;
   return {
     status: "error",
     message: "현재는 읽기 전용 모드예요. 인증을 연결한 뒤 저장 기능을 활성화해주세요.",
   };
+}
+
+export type ConnectionActionState = ActionState & { code?: string; expiresAt?: string };
+
+export async function createConnectionCodeAction(
+  _previousState: ConnectionActionState,
+  _formData: FormData,
+): Promise<ConnectionActionState> {
+  void _previousState;
+  void _formData;
+  const session = await getSession();
+  if (!session || session.provider !== "google") {
+    return { status: "error", message: "Google 계정 소유자만 연결 코드를 만들 수 있어요." };
+  }
+  try {
+    const rate = await enforceRateLimit("auth", { userId: session.id });
+    if (!rate.allowed) return { status: "error", message: `${rate.retryAfterSeconds}초 뒤 다시 시도해주세요.` };
+    const result = await createCareConnectionCode(session.id);
+    revalidatePath("/profile");
+    return { status: "success", message: "10분 동안 사용할 수 있는 연결 코드를 만들었어요.", ...result };
+  } catch (error) {
+    if (error instanceof Error && error.message === "CARE_CONNECTION_ALREADY_ACTIVE") {
+      return { status: "error", message: "이미 연결된 사용자가 있어요. 먼저 기존 연결을 해제해주세요." };
+    }
+    console.error(error);
+    return { status: "error", message: "연결 코드를 만들지 못했어요. 잠시 후 다시 시도해주세요." };
+  }
+}
+
+export async function disconnectConnectionAction(
+  _previousState: ConnectionActionState,
+  _formData: FormData,
+): Promise<ConnectionActionState> {
+  void _previousState;
+  void _formData;
+  const session = await getSession();
+  if (!session || session.provider !== "google") {
+    return { status: "error", message: "Google 계정 소유자만 연결을 해제할 수 있어요." };
+  }
+  try {
+    const connection = await disconnectCareConnection(session.id);
+    if (connection) {
+      await deactivatePushSubscriptionsForUser({
+        userId: connection.connectedUserId,
+        recipientId: connection.recipientId,
+      });
+    }
+    revalidatePath("/profile");
+    return { status: "success", message: "연결 사용자와 기기 권한을 해제했어요." };
+  } catch (error) {
+    console.error(error);
+    return { status: "error", message: "연결을 해제하지 못했어요. 잠시 후 다시 시도해주세요." };
+  }
 }
 
 export async function deleteDocumentAction(formData: FormData): Promise<void> {
@@ -71,6 +128,10 @@ export async function saveProfileAction(
   const guard = await demoWriteGuard();
   if (guard) return guard;
   const result = profileSchema.safeParse(Object.fromEntries(formData));
+  const expectedRevision = Number(formData.get("expectedRevision"));
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    return { status: "error", message: "최신 프로필을 다시 불러와주세요.", conflict: true };
+  }
   if (!result.success) {
     return {
       status: "error",
@@ -91,12 +152,16 @@ export async function saveProfileAction(
         id: scope.recipientId,
       },
       current,
+      expectedRevision,
     );
     revalidatePath("/today");
     revalidatePath("/dashboard");
     revalidatePath("/profile");
     return { status: "success", message: "어르신 프로필을 업데이트했어요." };
   } catch (error) {
+    if (error instanceof CareConflictError) {
+      return { status: "error", conflict: true, message: "다른 기기에서 먼저 변경했어요. 최신 내용을 확인한 후 다시 저장해주세요." };
+    }
     console.error(error);
     return {
       status: "error",
@@ -128,6 +193,10 @@ export async function saveCheckInAction(
     }
     const scope = careScopeFor(session);
     const snapshot = await getCareSnapshot(scope);
+    const expectedRevision = Number(formData.get("expectedRevision"));
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+      return { status: "error", conflict: true, message: "최신 기록을 다시 불러와주세요." };
+    }
     const schedule = new Map(
       createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [
         task.id,
@@ -179,6 +248,7 @@ export async function saveCheckInAction(
         questionResponse,
       },
       snapshot,
+      expectedRevision,
     );
     revalidatePath("/today");
     revalidatePath("/dashboard");
@@ -192,6 +262,9 @@ export async function saveCheckInAction(
           : "오늘의 복약과 몸 상태를 기록했어요.",
     };
   } catch (error) {
+    if (error instanceof CareConflictError) {
+      return { status: "error", conflict: true, message: "다른 기기에서 먼저 변경했어요. 최신 내용을 확인한 후 다시 저장해주세요." };
+    }
     console.error(error);
     return {
       status: "error",

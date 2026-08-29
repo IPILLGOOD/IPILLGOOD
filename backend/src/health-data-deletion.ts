@@ -18,6 +18,11 @@ async function* healthReferences(firestore: FirestoreLike, recipientId: string, 
     for (const child of await collection.listDocuments()) yield* documentTree(child);
   }
   yield* documentTree(firestore.collection("careReadModels").doc(recipientId));
+  if (includeProfile) {
+    yield* documentTree(firestore.collection("careConnections").doc(recipientId));
+    const codes = await firestore.collection("connectionCodes").where("recipientId", "==", recipientId).get();
+    for (const code of codes.docs) yield* documentTree(code.ref);
+  }
   yield* notificationReferences(firestore, recipientId);
 }
 

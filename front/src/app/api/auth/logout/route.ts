@@ -1,5 +1,6 @@
 import {
   deactivatePushSubscription,
+  logoutCareConnection,
   deleteEphemeralDemoSession,
 } from "@care-atlas/backend";
 import { cookies } from "next/headers";
@@ -22,6 +23,17 @@ export async function POST() {
       await deleteEphemeralDemoSession({ id: session.id });
     } catch (error) {
       console.error("Ephemeral demo data cleanup failed during logout", error);
+    }
+  }
+  if (session?.provider === "connected" && session.recipientId && session.connectionId && session.sessionVersion) {
+    try {
+      await logoutCareConnection({
+        recipientId: session.recipientId,
+        connectionId: session.connectionId,
+        sessionVersion: session.sessionVersion,
+      });
+    } catch (error) {
+      console.error("Connected user logout revocation failed", error);
     }
   }
   await deleteSession();

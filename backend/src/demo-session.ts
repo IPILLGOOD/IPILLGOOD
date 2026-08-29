@@ -26,7 +26,7 @@ export interface EphemeralDemoSession {
   cleanupAfter?: string;
 }
 
-type DemoSeed = Omit<CareSnapshot, "dataSource">;
+type DemoSeed = Omit<CareSnapshot, "dataSource" | "revision">;
 const seed = demoSeed as DemoSeed;
 
 export function isEphemeralDemoSessionId(value: string) {
@@ -60,11 +60,12 @@ function demoSnapshot(recipientId: string): CareSnapshot {
     recipient: { ...cloned.recipient, id: recipientId },
     todayCheckIn: null,
     dataSource: "firestore",
+    revision: 0,
   };
 }
 
 function storedDemoReadModel(snapshot: CareSnapshot, now: Date) {
-  const { dataSource: _dataSource, ...stored } = snapshot;
+  const { dataSource: _dataSource, revision: _revision, ...stored } = snapshot;
   return { ...stored, updatedAt: now.toISOString() };
 }
 

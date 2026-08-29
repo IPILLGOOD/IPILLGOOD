@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Check, HeartPulse, PlayCircle, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, HeartPulse, Link2, PlayCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import { GoogleSignInButton } from "./GoogleSignInButton";
@@ -39,6 +39,20 @@ export function LoginPanel({ errorMessage, successMessage }: { errorMessage?: st
               <span><strong>Google로 로그인</strong><small>내 Google 계정으로 안전하게 계속해요.</small></span>
             </div>
             <GoogleSignInButton />
+          </div>
+
+          <div className="login-divider" role="separator"><span>또는</span></div>
+
+          <div className="login-choice login-choice--connection">
+            <div>
+              <span className="login-choice__icon"><Link2 size={22} aria-hidden="true" /></span>
+              <span><strong>연결 코드로 로그인</strong><small>계정 소유자에게 받은 8자리 코드를 입력하세요.</small></span>
+            </div>
+            <form className="connection-login-form" action="/api/auth/connection/redeem" method="post">
+              <label className="sr-only" htmlFor="connection-code">연결 코드</label>
+              <input id="connection-code" name="code" inputMode="text" autoComplete="one-time-code" minLength={8} maxLength={20} placeholder="ABCD-EFGH" required />
+              <button className="login-demo-button" type="submit">연결하기 <ArrowRight size={17} aria-hidden="true" /></button>
+            </form>
           </div>
 
           <div className="login-divider" role="separator"><span>또는</span></div>

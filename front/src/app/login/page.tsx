@@ -6,11 +6,13 @@ import { getSession } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
   title: "로그인",
-  description: "Google 계정 또는 비식별 데모로 IPILLGOOD를 시작하세요.",
+  description: "Google 계정, 공동 사용 연결 코드 또는 비식별 데모로 IPILLGOOD를 시작하세요.",
 };
 
 const errorMessages: Record<string, string> = {
   google_login_failed: "Google 로그인 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.",
+  connection_login_failed: "연결 코드가 올바르지 않거나 만료됐어요. 계정 소유자에게 새 코드를 받아주세요.",
+  connection_login_limited: "연결 코드를 너무 여러 번 확인했어요. 잠시 후 다시 시도해주세요.",
 };
 
 export default async function LoginPage({

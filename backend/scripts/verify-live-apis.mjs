@@ -81,6 +81,7 @@ function careSnapshot() {
     documents: [],
     clinicianQuestions: [],
     dataSource: "local-fallback",
+    revision: 0,
   };
 }
 

@@ -138,7 +138,7 @@ export default async function TodayPage() {
 
         <aside className="today-checklist">
           <Card tone="accent">
-            <TodayQuickCheckIn tasks={tasks} checkIn={checkIn} questionSet={questions.status === "ready" ? questions.questionSet : null} />
+            <TodayQuickCheckIn tasks={tasks} checkIn={checkIn} questionSet={questions.status === "ready" ? questions.questionSet : null} revision={snapshot.revision} />
           </Card>
         </aside>
       </div>

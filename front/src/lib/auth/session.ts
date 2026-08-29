@@ -1,6 +1,12 @@
 import "server-only";
 
-import { isEphemeralDemoSessionActive, getAccountSessionState, MAX_SESSION_SECONDS } from "@care-atlas/backend";
+import {
+  CONNECTED_SESSION_DURATION_SECONDS,
+  isEphemeralDemoSessionActive,
+  getAccountSessionState,
+  MAX_SESSION_SECONDS,
+  validateCareConnectionSession,
+} from "@care-atlas/backend";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
@@ -14,7 +20,11 @@ export type SessionUser = {
   name: string;
   email?: string;
   picture?: string;
-  provider: "google" | "demo";
+  provider: "google" | "demo" | "connected";
+  recipientId?: string;
+  ownerUserId?: string;
+  connectionId?: string;
+  sessionVersion?: string;
 };
 
 function getSessionSecret() {
@@ -33,6 +43,10 @@ async function signSession(user: SessionUser, durationSeconds: number) {
     email: user.email,
     picture: user.picture,
     provider: user.provider,
+    recipientId: user.recipientId,
+    ownerUserId: user.ownerUserId,
+    connectionId: user.connectionId,
+    sessionVersion: user.sessionVersion,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
@@ -72,9 +86,9 @@ async function readSession(allowDeleting = false): Promise<SessionUser | null> {
       !payload.sub ||
       payload.aud !== undefined ||
       typeof payload.iat !== "number" || typeof payload.exp !== "number" ||
-      payload.exp - payload.iat > MAX_SESSION_SECONDS ||
+      payload.exp - payload.iat > (payload.provider === "connected" ? CONNECTED_SESSION_DURATION_SECONDS : MAX_SESSION_SECONDS) ||
       typeof payload.name !== "string" ||
-      (payload.provider !== "google" && payload.provider !== "demo")
+      (payload.provider !== "google" && payload.provider !== "demo" && payload.provider !== "connected")
     ) {
       return null;
     }
@@ -85,12 +99,25 @@ async function readSession(allowDeleting = false): Promise<SessionUser | null> {
       email: typeof payload.email === "string" ? payload.email : undefined,
       picture: typeof payload.picture === "string" ? payload.picture : undefined,
       provider: payload.provider,
+      recipientId: typeof payload.recipientId === "string" ? payload.recipientId : undefined,
+      ownerUserId: typeof payload.ownerUserId === "string" ? payload.ownerUserId : undefined,
+      connectionId: typeof payload.connectionId === "string" ? payload.connectionId : undefined,
+      sessionVersion: typeof payload.sessionVersion === "string" ? payload.sessionVersion : undefined,
     } satisfies SessionUser;
     if (
       user.provider === "demo" &&
       !(await isEphemeralDemoSessionActive(user.id))
     ) {
       return null;
+    }
+    if (user.provider === "connected") {
+      if (!user.recipientId || !user.connectionId || !user.sessionVersion || !user.ownerUserId) return null;
+      const connection = await validateCareConnectionSession({
+        recipientId: user.recipientId,
+        connectionId: user.connectionId,
+        sessionVersion: user.sessionVersion,
+      });
+      if (!connection || connection.connectedUserId !== user.id || connection.ownerUserId !== user.ownerUserId) return null;
     }
     if (!allowDeleting && user.provider === "google") {
       const state = await getAccountSessionState(user.id);
@@ -106,6 +133,11 @@ export function getSession() { return readSession(); }
 
 /** Recovery only: this identity must never authorize care reads or writes. */
 export function getAccountDeletionSession() { return readSession(true); }
+
+export async function refreshConnectedSession(user: SessionUser) {
+  if (user.provider !== "connected") throw new Error("CONNECTED_SESSION_REQUIRED");
+  await createSession(user, { durationSeconds: CONNECTED_SESSION_DURATION_SECONDS });
+}
 
 export async function deleteSession() {
   const cookieStore = await cookies();

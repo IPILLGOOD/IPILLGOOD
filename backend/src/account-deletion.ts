@@ -53,7 +53,8 @@ export async function requestAccountDeletion(input: {
   const firestore = dependencies.firestore ?? await getAdminFirestore();
   const ref = firestore.collection(ACCOUNT_DELETIONS_COLLECTION).doc(recipientId);
   return firestore.runTransaction(async (tx) => {
-    const existing = await tx.get(ref);
+    const connectionRef = firestore.collection("careConnections").doc(recipientId);
+    const [existing, connectionDocument] = await Promise.all([tx.get(ref), tx.get(connectionRef)]);
     if (existing.exists && (existing.data() as AccountDeletion).status !== "restored") return existing.data() as AccountDeletion;
     const job: AccountDeletion = {
       requestId: randomUUID(), userId: input.userId, recipientId, status: "pending", stage: "queued",
@@ -63,6 +64,13 @@ export async function requestAccountDeletion(input: {
     // Every user write/AI publication/push claim reads this same document in its transaction.
     if (existing.exists) tx.set(ref, job);
     else tx.create(ref, job);
+    if (connectionDocument.exists) {
+      tx.set(connectionRef, {
+        status: "revoked", sessionVersion: randomUUID(), pendingCodeHash: null,
+        codeExpiresAt: null, revokedAt: now.toISOString(), revokeReason: "account_deletion",
+        expiresAt: now.toISOString(), updatedAt: now.toISOString(),
+      }, { merge: true });
+    }
     return job;
   });
 }

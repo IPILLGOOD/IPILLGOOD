@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { saveProfileAction } from "@/app/actions";
 import { FormMessage } from "@/components/ui/FormMessage";
@@ -9,14 +10,30 @@ import type { ActionState, CareRecipient } from "@care-atlas/backend";
 
 const initialState: ActionState = { status: "idle", message: "" };
 
-export function ProfileForm({ recipient }: { recipient: CareRecipient }) {
+export function ProfileForm({ recipient, revision }: { recipient: CareRecipient; revision: number }) {
+  const router = useRouter();
   const [state, action] = useActionState(saveProfileAction, initialState);
+  const [baselineRevision, setBaselineRevision] = useState(revision);
+  const conflictRefreshed = useRef(false);
+  useEffect(() => {
+    if (state.conflict && !conflictRefreshed.current) {
+      conflictRefreshed.current = true;
+      router.refresh();
+    }
+    if (!state.conflict) conflictRefreshed.current = false;
+  }, [router, state.conflict]);
   const error = (field: string) => state.fieldErrors?.[field]?.[0];
   const savedAge = /^\d+$/.test(recipient.ageBand) ? recipient.ageBand : "";
 
   return (
     <form action={action}>
+      <input type="hidden" name="expectedRevision" value={baselineRevision} />
       <FormMessage state={state} />
+      {state.conflict ? (
+        <button className="button button--secondary" type="button" disabled={revision === baselineRevision} onClick={() => setBaselineRevision(revision)}>
+          {revision === baselineRevision ? "최신 내용 불러오는 중…" : "최신 내용 확인 후 다시 저장"}
+        </button>
+      ) : null}
       <div className="form-grid">
         <div className="field">
           <label htmlFor="displayName">화면에 표시할 이름 <span aria-hidden="true">*</span></label>
