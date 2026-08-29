@@ -136,7 +136,7 @@ test("제품명과 성분명을 각각 공식 조회하고 itemSeq로 중복을 
       requested.push(url);
       if (url.pathname.endsWith("/getDrugPrdtPrmsnInq07")) {
         if (url.searchParams.has("item_name")) return officialResponse([productItem()]);
-        return officialResponse([productItem()]);
+        return emptyOfficialResponse();
       }
       return emptyOfficialResponse();
     },
@@ -202,13 +202,12 @@ test("제품·e약은요 키와 약물유전정보 키를 서비스별로 분리
   );
 });
 
-test("성분명 조회 결과를 제품명 조회와 구분하고 고정 복용법을 만들지 않는다", async () => {
+test("성분명 조회에도 잡힌 동일 품목은 성분 매칭으로 우선 표시하고 고정 복용법을 만들지 않는다", async () => {
   const result = await searchOfficialMedicationInfo("암로디핀", {
     apiKey: "official-key",
     fetcher: async (input) => {
       const url = new URL(String(input));
       if (!url.pathname.endsWith("/getDrugPrdtPrmsnInq07")) return emptyOfficialResponse();
-      if (url.searchParams.has("item_name")) return emptyOfficialResponse();
       return officialResponse([productItem()]);
     },
   });
@@ -219,6 +218,44 @@ test("성분명 조회 결과를 제품명 조회와 구분하고 고정 복용�
   assert.equal("doseAmount" in (result.items[0] ?? {}), false);
   assert.equal("frequency" in (result.items[0] ?? {}), false);
   assert.equal("timing" in (result.items[0] ?? {}), false);
+});
+
+test("제품명 응답의 괄호 속 한글 성분과 검색어가 일치하면 성분 매칭으로 표시한다", async () => {
+  const result = await searchOfficialMedicationInfo("암로디핀", {
+    apiKey: "official-key",
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/getDrugPrdtPrmsnInq07")) return emptyOfficialResponse();
+      if (url.searchParams.has("item_name")) return officialResponse([productItem()]);
+      return emptyOfficialResponse();
+    },
+  });
+
+  assert.equal(result.status, "connected");
+  if (result.status !== "connected") return;
+  assert.equal(result.items[0]?.matchType, "ingredient");
+});
+
+test("제품명 검색 결과가 10건이어도 성분명 검색 결과를 먼저 보여준다", async () => {
+  const result = await searchOfficialMedicationInfo("암로디핀", {
+    apiKey: "official-key",
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/getDrugPrdtPrmsnInq07")) return emptyOfficialResponse();
+      if (url.searchParams.has("item_name")) {
+        return officialResponse(Array.from({ length: 10 }, (_, index) => productItem({
+          ITEM_SEQ: `product-${index}`,
+        })));
+      }
+      return officialResponse([productItem({ ITEM_SEQ: "ingredient-first" })]);
+    },
+  });
+
+  assert.equal(result.status, "connected");
+  if (result.status !== "connected") return;
+  assert.equal(result.items.length, 10);
+  assert.equal(result.items[0]?.itemSeq, "ingredient-first");
+  assert.equal(result.items[0]?.matchType, "ingredient");
 });
 
 test("e약은요와 약물유전정보를 품목·성분에 맞을 때만 보강한다", async () => {

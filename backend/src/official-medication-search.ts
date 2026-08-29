@@ -356,12 +356,22 @@ function namesOverlap(first: string, second: string) {
   );
 }
 
+function matchesIngredientContext(query: string, item: OfficialMedicationSearchItem) {
+  if (namesOverlap(query, item.ingredientName)) return true;
+  return [...item.productName.matchAll(/[（(]([^()（）]+)[)）]/g)]
+    .some((match) => namesOverlap(query, match[1] ?? ""));
+}
+
 function mergeProductMatches(
+  query: string,
   productMatches: OfficialMedicationSearchItem[],
   ingredientMatches: OfficialMedicationSearchItem[],
 ) {
   const merged = new Map<string, OfficialMedicationSearchItem>();
-  for (const item of [...productMatches, ...ingredientMatches]) {
+  for (const rawItem of [...ingredientMatches, ...productMatches]) {
+    const item = rawItem.matchType === "ingredient" || matchesIngredientContext(query, rawItem)
+      ? { ...rawItem, matchType: "ingredient" as const }
+      : rawItem;
     const current = merged.get(item.itemSeq);
     if (!current) {
       merged.set(item.itemSeq, item);
@@ -369,6 +379,7 @@ function mergeProductMatches(
     }
     merged.set(item.itemSeq, {
       ...current,
+      matchType: item.matchType === "ingredient" ? "ingredient" : current.matchType,
       englishName: current.englishName || item.englishName,
       ingredientName: current.ingredientName || item.ingredientName,
       manufacturer: current.manufacturer || item.manufacturer,
@@ -459,6 +470,7 @@ export async function searchOfficialMedicationInfo(
   }
 
   const products = mergeProductMatches(
+    query,
     productNameResult.status === "fulfilled" ? productNameResult.value.items : [],
     ingredientResult.status === "fulfilled" ? ingredientResult.value.items : [],
   );
