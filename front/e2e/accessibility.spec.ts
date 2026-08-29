@@ -123,7 +123,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await page.unroute("**/api/documents/analyze");
   await tabTo(page, page.getByRole("button", { name: "비식별 샘플 처방전으로 체험" }));
   await page.keyboard.press("Enter");
-  await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "기존 복약과 겹치는 항목이 있어요" })).toBeVisible();
   await audit(page, "desktop-document-success", info);
   await page.goto("/profile");
   const consent = page.locator('input[name="consentConfirmed"]');

@@ -312,6 +312,9 @@ export interface ClinicalDocument {
   redacted: boolean;
   sourceLabel: string;
   analysis?: DocumentAnalysis;
+  requestIdempotencyKey?: string;
+  duplicateResolution?: "merge" | "separate";
+  duplicateMedicationPlanIds?: string[];
   revision?: string;
   medicationDraftId?: string;
 }

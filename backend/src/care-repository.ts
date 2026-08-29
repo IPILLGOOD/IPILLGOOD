@@ -9,6 +9,7 @@ import type {
   ClinicianQuestion,
   DailyCheckIn,
   DoseEvent,
+  DocumentAnalysis,
   MedicationPlan,
   MedicationPlanCandidate,
   MedicationPlanDraft,
@@ -339,6 +340,80 @@ export interface RegisterDocumentInput {
   size: number;
   isSample: boolean;
   analysis: ClinicalDocument["analysis"];
+  requestIdempotencyKey?: string;
+  duplicateAction?: "merge" | "separate";
+}
+
+export interface MedicationDuplicateCandidate {
+  incomingMedicationId: string;
+  existingMedicationPlanId: string;
+  existingDocumentId?: string;
+  productName: string;
+  fingerprint: string;
+}
+
+export interface DocumentImportReview {
+  id: string;
+  contentHash: string;
+  fileName: string;
+  documentType: ClinicalDocumentType;
+  size: number;
+  isSample: boolean;
+  analysis: DocumentAnalysis;
+  duplicateCandidates: MedicationDuplicateCandidate[];
+  status: "needs_resolution" | "resolved";
+  createdAt: string;
+  expiresAt: string;
+}
+
+export class MedicationDuplicateResolutionRequiredError extends Error {
+  readonly code = "MEDICATION_DUPLICATE_RESOLUTION_REQUIRED";
+  readonly candidates: MedicationDuplicateCandidate[];
+
+  constructor(candidates: MedicationDuplicateCandidate[]) {
+    super("기존 복약과 겹치는 후보가 있어 병합 또는 별도 등록을 선택해야 합니다.");
+    this.name = "MedicationDuplicateResolutionRequiredError";
+    this.candidates = candidates;
+  }
+}
+
+function normalizedMedicationFingerprintPart(value: string) {
+  return value.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+export function medicationPlanFingerprint(
+  medication: Pick<MedicationPlan, "productName" | "ingredientName" | "doseAmount" | "frequency" | "timing" | "startDate" | "endDate">,
+) {
+  return [
+    medication.productName,
+    medication.ingredientName,
+    medication.doseAmount,
+    medication.frequency,
+    medication.timing,
+    medication.startDate,
+    medication.endDate ?? "",
+  ].map(normalizedMedicationFingerprintPart).join("|");
+}
+
+export function findMedicationDuplicateCandidates(
+  incoming: MedicationPlan[],
+  existing: MedicationPlan[],
+): MedicationDuplicateCandidate[] {
+  const existingByFingerprint = new Map<string, MedicationPlan[]>();
+  for (const medication of existing) {
+    const fingerprint = medicationPlanFingerprint(medication);
+    existingByFingerprint.set(fingerprint, [...(existingByFingerprint.get(fingerprint) ?? []), medication]);
+  }
+  return incoming.flatMap((medication) => {
+    const fingerprint = medicationPlanFingerprint(medication);
+    return (existingByFingerprint.get(fingerprint) ?? []).map((matched) => ({
+      incomingMedicationId: medication.id,
+      existingMedicationPlanId: matched.id,
+      ...(matched.sourceDocumentId ? { existingDocumentId: matched.sourceDocumentId } : {}),
+      productName: medication.productName,
+      fingerprint,
+    }));
+  });
 }
 
 export const MEDICATION_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -398,34 +473,163 @@ function createMedicationPlanDraft(
 
 export async function registerDocument(scope: CareDataScope, input: RegisterDocumentInput) {
   if (!/^[^/]{1,256}$/.test(input.contentHash)) throw new Error("올바르지 않은 문서 식별자입니다.");
+  const requestIdempotencyKey = input.requestIdempotencyKey ?? input.contentHash;
+  if (!/^[^/]{1,256}$/.test(requestIdempotencyKey)) throw new Error("올바르지 않은 요청 식별자입니다.");
   return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
     const documentRef = ref.collection("clinicalDocuments").doc(input.contentHash);
+    const requestRef = ref.collection("documentImportRequests").doc(requestIdempotencyKey);
+    const reviewRef = ref.collection("documentImportReviews").doc(requestIdempotencyKey);
+    const requestRecord = await tx.get(requestRef);
+    const review = await tx.get(reviewRef);
+    if (requestRecord.exists) {
+      const recorded = requestRecord.data() as { contentHash?: string };
+      if (recorded.contentHash !== input.contentHash) {
+        throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
+      }
+    }
+
     const existing = await tx.get(documentRef);
-    if (existing.exists) return { snapshot, result: existing.data() as ClinicalDocument & { size: number }, unchanged: true };
-    const requiresMedicationReview = input.documentType === "처방전" &&
-      (input.analysis?.medications ?? []).some((medication) => medication.reviewStatus !== "verified");
+    if (existing.exists) {
+      if (!requestRecord.exists) {
+        tx.create(requestRef, {
+          contentHash: input.contentHash,
+          documentId: documentRef.id,
+          status: "completed",
+          completedAt: new Date().toISOString(),
+        });
+      }
+      return { snapshot, result: existing.data() as ClinicalDocument & { size: number }, unchanged: true };
+    }
+
     const now = new Date();
     const revision = documentRevision(input);
-    const draft = createMedicationPlanDraft(documentRef.id, revision, input.analysis, now);
+    const candidateMedications = medicationPlansFromPrescription({
+      id: documentRef.id,
+      documentType: input.documentType,
+      uploadedAt: now.toISOString(),
+      analysis: input.analysis,
+    });
+    const duplicateCandidates = findMedicationDuplicateCandidates(candidateMedications, snapshot.medications);
+    if (duplicateCandidates.length > 0 && !input.duplicateAction) {
+      throw new MedicationDuplicateResolutionRequiredError(duplicateCandidates);
+    }
+    if (duplicateCandidates.length === 0 && input.duplicateAction === "merge") {
+      throw new Error("병합할 기존 복약 계획을 찾을 수 없습니다.");
+    }
+
+    const requiresMedicationReview = input.documentType === "처방전" &&
+      (input.analysis?.medications ?? []).some((medication) => medication.reviewStatus !== "verified");
+    const draft = input.duplicateAction === "merge"
+      ? null
+      : createMedicationPlanDraft(documentRef.id, revision, input.analysis, now);
     const document: ClinicalDocument & { size: number } = {
-      id: documentRef.id, fileName: input.fileName, contentHash: input.contentHash,
-      documentType: input.documentType, uploadedAt: now.toISOString(),
-      status: draft ? "needs_review" : "confirmed", redacted: input.isSample,
-      sourceLabel: draft && requiresMedicationReview ? "OCR·공식 정보 대조 필요 · 복약 초안"
-        : draft ? "분석 초안 · 복약 일정 반영 전 검토 필요"
-        : input.analysis?.source === "api" ? "API 분석 완료"
-          : input.analysis?.source === "openai" ? "OpenAI 분석 완료" : "비식별 데모 분석 · 원본과 확인 필요",
+      id: documentRef.id,
+      fileName: input.fileName,
+      contentHash: input.contentHash,
+      documentType: input.documentType,
+      uploadedAt: now.toISOString(),
+      status: draft ? "needs_review" : "confirmed",
+      redacted: input.isSample,
+      sourceLabel: input.duplicateAction === "merge"
+        ? "기존 복약과 병합 · 중복 일정 미생성"
+        : draft && requiresMedicationReview
+          ? "OCR·공식 정보 대조 필요 · 복약 초안"
+          : draft
+            ? "분석 초안 · 복약 일정 반영 전 검토 필요"
+            : input.analysis?.source === "api"
+              ? "API 분석 완료"
+              : input.analysis?.source === "openai"
+                ? "OpenAI 분석 완료"
+                : "비식별 데모 분석 · 원본과 확인 필요",
       revision,
       ...(draft ? { medicationDraftId: draft.id } : {}),
-      size: input.size, analysis: input.analysis,
+      size: input.size,
+      analysis: input.analysis,
+      requestIdempotencyKey,
+      ...(duplicateCandidates.length > 0 && input.duplicateAction
+        ? {
+            duplicateResolution: input.duplicateAction,
+            duplicateMedicationPlanIds: [...new Set(duplicateCandidates.map((candidate) => candidate.existingMedicationPlanId))],
+          }
+        : {}),
     };
+
     tx.create(documentRef, document);
     if (draft) tx.create(ref.collection("medicationPlanDrafts").doc(draft.id), draft);
+    const completedRequest = {
+      contentHash: input.contentHash,
+      documentId: document.id,
+      status: "completed",
+      completedAt: now.toISOString(),
+      duplicateResolution: input.duplicateAction ?? null,
+    };
+    if (requestRecord.exists) tx.set(requestRef, completedRequest);
+    else tx.create(requestRef, completedRequest);
+    if (review.exists) tx.set(reviewRef, { status: "resolved", resolvedAt: now.toISOString() }, { merge: true });
+
     return {
       snapshot: { ...snapshot, documents: [document, ...snapshot.documents] },
       result: document,
     };
   }, { requiresConsent: true });
+}
+
+export async function saveDocumentImportReview(
+  scope: CareDataScope,
+  input: Omit<DocumentImportReview, "id" | "status" | "createdAt" | "expiresAt"> & { idempotencyKey: string },
+) {
+  assertValidScope(scope);
+  if (!/^[^/]{1,256}$/.test(input.idempotencyKey)) throw new Error("올바르지 않은 요청 식별자입니다.");
+  const firestore = scope.firestore ?? await getAdminFirestore();
+  await assertActiveDemoScope(scope, firestore);
+  await assertHealthDataConsentConfirmed(firestore, scope.recipientId);
+  await getOrCreateReadModel(firestore, scope);
+  return firestore.runTransaction(async (tx) => {
+    await assertTransactionScope(tx, firestore, scope);
+    const ref = firestore.collection("careRecipients").doc(scope.recipientId)
+      .collection("documentImportReviews").doc(input.idempotencyKey);
+    const existing = await tx.get(ref);
+    if (existing.exists) {
+      const review = existing.data() as DocumentImportReview;
+      if (review.contentHash !== input.contentHash) throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
+      return review;
+    }
+    const now = new Date();
+    const review: DocumentImportReview = {
+      id: input.idempotencyKey,
+      contentHash: input.contentHash,
+      fileName: input.fileName,
+      documentType: input.documentType,
+      size: input.size,
+      isSample: input.isSample,
+      analysis: input.analysis,
+      duplicateCandidates: input.duplicateCandidates,
+      status: "needs_resolution",
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+    tx.create(ref, review);
+    return review;
+  });
+}
+
+export async function getDocumentImportReview(
+  scope: CareDataScope,
+  idempotencyKey: string,
+  contentHash: string,
+): Promise<DocumentImportReview | null> {
+  assertValidScope(scope);
+  if (!/^[^/]{1,256}$/.test(idempotencyKey)) throw new Error("올바르지 않은 요청 식별자입니다.");
+  const firestore = scope.firestore ?? await getAdminFirestore();
+  await assertActiveDemoScope(scope, firestore);
+  await assertHealthDataConsentConfirmed(firestore, scope.recipientId);
+  const document = await firestore.collection("careRecipients").doc(scope.recipientId)
+    .collection("documentImportReviews").doc(idempotencyKey).get();
+  if (!document.exists) return null;
+  const review = document.data() as DocumentImportReview;
+  if (review.contentHash !== contentHash) throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
+  if (review.status !== "needs_resolution" || Date.parse(review.expiresAt) <= Date.now()) return null;
+  return review;
 }
 
 export async function getMedicationPlanDraft(

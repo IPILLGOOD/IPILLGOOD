@@ -27,9 +27,11 @@ const evidenceLabels = {
 export function DocumentAnalysisResult({
   analysis,
   requiresPeriodReview = false,
+  medicationRegistration = "draft",
 }: {
   analysis: DocumentAnalysis;
   requiresPeriodReview?: boolean;
+  medicationRegistration?: "draft" | "pending" | "merged";
 }) {
   const analysisSource =
     analysis.source === "api"
@@ -68,19 +70,33 @@ export function DocumentAnalysisResult({
 
       {analysis.documentType === "처방전" && analysis.medications?.length ? (
         <div
-          className={`disease-lookup-status disease-lookup-status--${requiresMedicationVerification ? "failed" : requiresPeriodReview ? "not_configured" : "official_match"}`}
+          className={`disease-lookup-status disease-lookup-status--${medicationRegistration === "pending" || requiresMedicationVerification ? "failed" : requiresPeriodReview ? "not_configured" : "official_match"}`}
           role="status"
         >
-          {requiresMedicationVerification || requiresPeriodReview
+          {medicationRegistration === "pending" || requiresMedicationVerification || requiresPeriodReview
             ? <TriangleAlert size={18} aria-hidden="true" />
             : <CalendarCheck2 size={18} aria-hidden="true" />}
           <p>
-            <strong>{requiresMedicationVerification ? "OCR·공식 정보 확인이 필요한 초안" : requiresPeriodReview ? "처방 기간 확인이 필요한 초안" : "복약 후보 초안 생성"}</strong>
-            {requiresMedicationVerification
-              ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 선택할 수 없어요. 대조 완료된 약도 아래에서 검토하고 확정해야 반영돼요.`
-              : requiresPeriodReview
-              ? "처방일과 총 투약일수를 원본에서 확인하고 확정하기 전에는 약을 활성화하지 않아요."
-              : `처방전에서 약 ${analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.`}
+            <strong>
+              {medicationRegistration === "merged"
+                ? "기존 복약과 병합됨"
+                : medicationRegistration === "pending"
+                  ? "중복 확인 필요"
+                  : requiresMedicationVerification
+                    ? "OCR·공식 정보 확인이 필요한 초안"
+                    : requiresPeriodReview
+                      ? "처방 기간 확인이 필요한 초안"
+                      : "복약 후보 초안 생성"}
+            </strong>
+            {medicationRegistration === "merged"
+              ? "기존 복약 계획을 유지하고 중복 일정과 알림은 만들지 않았어요."
+              : medicationRegistration === "pending"
+                ? "등록 방식을 선택하기 전에는 복약 초안·오늘 일정·알림을 만들지 않아요."
+                : requiresMedicationVerification
+                  ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 선택할 수 없어요. 대조 완료된 약도 아래에서 검토하고 확정해야 반영돼요.`
+                  : requiresPeriodReview
+                    ? "처방일과 총 투약일수를 원본에서 확인하고 확정하기 전에는 약을 활성화하지 않아요."
+                    : `처방전에서 약 ${analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.`}
           </p>
         </div>
       ) : null}

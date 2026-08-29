@@ -57,7 +57,13 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     for (const documentType of ["처방전", "진단서"]) {
       await page.getByRole("radio", { name: new RegExp(`^${documentType}`) }).check();
       await page.getByRole("button", { name: `비식별 샘플 ${documentType}으로 체험` }).click();
-      await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+      if (documentType === "처방전") {
+        await expect(page.getByRole("heading", { name: "기존 복약과 겹치는 항목이 있어요" })).toBeVisible();
+        await page.getByRole("button", { name: "별도 처방으로 등록" }).click();
+        await expect(page.getByText("복약 일정에는 아직 반영하지 않았어요.", { exact: false })).toBeVisible();
+      } else {
+        await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+      }
       await expect(page.locator(".document-item")).toHaveCount(before + 1);
       if (documentType === "처방전") {
         expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount);
