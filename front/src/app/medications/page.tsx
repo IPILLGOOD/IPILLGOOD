@@ -7,9 +7,10 @@ import { OfficialMedicationSearch } from "@/components/medications/OfficialMedic
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
   getCareSnapshot,
-  searchPharmacogenomicInfo,
+  PRODUCT_SOURCE_URL,
+  searchOfficialMedicationInfo,
   withCareAccountProcessing,
-  type PharmacogenomicLookupResult,
+  type OfficialMedicationLookupResult,
 } from "@care-atlas/backend";
 import { activeMedications, daysSince, formatDate } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
@@ -28,18 +29,19 @@ export default async function MedicationsPage({
   const rateLimit = query
     ? await enforceRateLimit("medicationSearch", { userId: scope.recipientId })
     : null;
-  const limitedResult: PharmacogenomicLookupResult = {
+  const limitedResult: OfficialMedicationLookupResult = {
     status: "unavailable",
     items: [],
     totalCount: 0,
-    sourceUrl: "https://www.data.go.kr/data/15102548/openapi.do",
+    sourceUrl: PRODUCT_SOURCE_URL,
     message: `검색 요청이 많아요. ${rateLimit?.retryAfterSeconds ?? 60}초 뒤 다시 시도해주세요.`,
+    reason: "rate_limited",
   };
   const [snapshot, officialMedicationResult] = await Promise.all([
     getCareSnapshot(scope),
     query
       ? rateLimit?.allowed
-        ? withCareAccountProcessing(scope.recipientId, () => searchPharmacogenomicInfo(query))
+        ? withCareAccountProcessing(scope.recipientId, () => searchOfficialMedicationInfo(query))
         : Promise.resolve(limitedResult)
       : Promise.resolve(null),
   ]);
@@ -56,7 +58,9 @@ export default async function MedicationsPage({
       <OfficialMedicationSearch
         query={query}
         result={officialMedicationResult}
-        officialApiConfigured={Boolean(process.env.MFDS_PARMGEN_API_KEY)}
+        officialApiConfigured={Boolean(
+          process.env.MFDS_MEDICATION_API_KEY ?? process.env.MFDS_PARMGEN_API_KEY,
+        )}
       />
 
       <div className="medication-cards">

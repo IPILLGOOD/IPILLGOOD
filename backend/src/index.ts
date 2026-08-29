@@ -83,6 +83,18 @@ export {
   type PlainMedicationExplanation,
 } from "./official-medication-api";
 export {
+  EASY_DRUG_SOURCE_URL,
+  PHARMACOGENOMIC_SOURCE_URL,
+  PRODUCT_SOURCE_URL,
+  searchOfficialMedicationInfo,
+  type OfficialMedicationConsumerInfo,
+  type OfficialMedicationLookupResult,
+  type OfficialMedicationPharmacogenomicInfo,
+  type OfficialMedicationPlainExplanation,
+  type OfficialMedicationSearchItem,
+  type OfficialMedicationSource,
+} from "./official-medication-search";
+export {
   searchOfficialDiseaseInfo,
   type OfficialDiseaseItem,
   type OfficialDiseaseLookupResult,

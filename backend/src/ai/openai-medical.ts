@@ -9,6 +9,10 @@ import type {
   PharmacogenomicInfo,
   PlainMedicationExplanation,
 } from "../official-medication-api.ts";
+import type {
+  OfficialMedicationPlainExplanation,
+  OfficialMedicationSearchItem,
+} from "../official-medication-search.ts";
 
 interface DocumentInput {
   documentType: "처방전" | "진단서";
@@ -29,13 +33,8 @@ interface PlainMedicationPayload {
   items: Array<PlainMedicationExplanation & { index: number }>;
 }
 
-interface MedicationSearchPayload {
-  matchedName: string;
-  englishName: string;
-  categoryPlain: string;
-  overview: string;
-  productInfo: string;
-  caregiverNote: string;
+interface MedicationSearchPlainPayload {
+  items: Array<OfficialMedicationPlainExplanation & { index: number }>;
 }
 
 const documentAnalysisSchema = {
@@ -155,25 +154,37 @@ const plainMedicationSchema = {
   required: ["items"],
 } as const;
 
-const medicationSearchSchema = {
+const medicationSearchPlainSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    matchedName: { type: "string" },
-    englishName: { type: "string" },
-    categoryPlain: { type: "string" },
-    overview: { type: "string" },
-    productInfo: { type: "string" },
-    caregiverNote: { type: "string" },
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          index: { type: "integer" },
+          categoryPlain: { type: "string" },
+          overview: { type: "string" },
+          usagePlain: { type: "string" },
+          safetyPlain: { type: "string" },
+          genePlain: { type: "string" },
+          caregiverNote: { type: "string" },
+        },
+        required: [
+          "index",
+          "categoryPlain",
+          "overview",
+          "usagePlain",
+          "safetyPlain",
+          "genePlain",
+          "caregiverNote",
+        ],
+      },
+    },
   },
-  required: [
-    "matchedName",
-    "englishName",
-    "categoryPlain",
-    "overview",
-    "productInfo",
-    "caregiverNote",
-  ],
+  required: ["items"],
 } as const;
 
 function getClient(apiKey = process.env.OPENAI_API_KEY): OpenAI {
@@ -383,83 +394,6 @@ export async function searchDiseaseWithOpenAI(
   };
 }
 
-export async function searchMedicationWithOpenAI(
-  query: string,
-  options: { apiKey?: string; model?: string } = {},
-): Promise<PharmacogenomicInfo> {
-  const response = await getClient(options.apiKey).responses.create({
-    model: modelName(options.model),
-    store: false,
-    reasoning: { effort: "low" },
-    tools: [
-      {
-        type: "web_search",
-        search_context_size: "medium",
-        filters: {
-          allowed_domains: [
-            "nedrug.mfds.go.kr",
-            "mfds.go.kr",
-            "dailymed.nlm.nih.gov",
-            "medlineplus.gov",
-            "fda.gov",
-            "ema.europa.eu",
-            "nhs.uk",
-          ],
-        },
-        user_location: {
-          type: "approximate",
-          country: "KR",
-          timezone: "Asia/Seoul",
-        },
-      },
-    ],
-    tool_choice: "required",
-    include: ["web_search_call.action.sources"],
-    input: [
-      "다음 약물명 또는 제품명을 공신력 있는 의약품 출처에서 검색하세요.",
-      `검색어: ${query}`,
-      "검색어와 일치하는 약의 성분명과 일반적인 쓰임만 설명하세요.",
-      "categoryPlain에는 이 약의 대표적인 대분류를 '감기약', '혈압약', '소화제', '진통제', '항생제'처럼 짧고 쉬운 말 하나로 적으세요.",
-      "개인별 복용량, 복용 변경, 진단, 대체 약 추천은 하지 마세요.",
-      "확실히 일치하는 약을 찾지 못하면 matchedName을 빈 문자열로 반환하세요.",
-      "결과는 보호자가 이해하기 쉬운 한국어로 짧게 작성하세요.",
-    ].join("\n"),
-    text: {
-      verbosity: "low",
-      format: {
-        type: "json_schema",
-        name: "medication_web_search",
-        strict: true,
-        schema: medicationSearchSchema,
-      },
-    },
-  });
-
-  const parsed = parseJson<MedicationSearchPayload>(response.output_text, "약물 웹 검색");
-  const references = citationReferences(response);
-  if (!parsed.matchedName.trim() || references.length === 0) {
-    throw new Error("OpenAI 웹 검색에서 일치하는 약물과 출처를 확인하지 못했습니다.");
-  }
-
-  return {
-    koreanName: parsed.matchedName.trim(),
-    englishName: parsed.englishName.trim(),
-    categoryPlain: parsed.categoryPlain.trim() || "분류 확인 필요",
-    pharmacogenomicInfo: "",
-    generalInfo: parsed.overview.trim(),
-    productInfo: parsed.productInfo.trim(),
-    source: "openai_web",
-    references,
-    plainExplanation: {
-      categoryPlain: parsed.categoryPlain.trim() || "분류 확인 필요",
-      overview: parsed.overview.trim(),
-      geneInfo: "",
-      productInfo: parsed.productInfo.trim(),
-      caregiverNote: parsed.caregiverNote.trim(),
-    },
-  };
-}
-
 export async function simplifyMedicationInformationWithOpenAI(
   items: PharmacogenomicInfo[],
   options: { apiKey?: string; model?: string } = {},
@@ -534,4 +468,90 @@ export async function simplifyMedicationInformationWithOpenAI(
     throw new Error("약물 쉬운 설명 일부가 누락됐습니다.");
   }
   return enrichedItems;
+}
+
+export async function simplifyOfficialMedicationSearchItemsWithOpenAI(
+  items: OfficialMedicationSearchItem[],
+  options: { apiKey?: string; model?: string } = {},
+): Promise<OfficialMedicationSearchItem[]> {
+  const sourceItems = items.flatMap((item, index) => {
+    if (!item.consumerInfo && !item.pharmacogenomicInfo) return [];
+    return [{
+      index,
+      productName: item.productName,
+      ingredientName: item.ingredientName,
+      classification: item.classification,
+      productType: item.productType,
+      officialSource: item.consumerInfo?.source ?? "pharmacogenomic",
+      efficacy: item.consumerInfo?.efficacy.slice(0, 5_000) ?? "",
+      usage: item.consumerInfo?.usage.slice(0, 5_000) ?? "",
+      warning: [item.consumerInfo?.warning, item.consumerInfo?.precautions]
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, 7_000),
+      interactions: item.consumerInfo?.interactions.slice(0, 3_000) ?? "",
+      adverseEffects: item.consumerInfo?.adverseEffects.slice(0, 3_000) ?? "",
+      storage: item.consumerInfo?.storage.slice(0, 1_000) ?? "",
+      pharmacogenomicGeneral: item.pharmacogenomicInfo?.generalInfo.slice(0, 4_000) ?? "",
+      pharmacogenomicGene: item.pharmacogenomicInfo?.geneInfo.slice(0, 4_000) ?? "",
+    }];
+  });
+  if (sourceItems.length === 0) return items;
+
+  const response = await getClient(options.apiKey).responses.create({
+    model: modelName(options.model),
+    store: false,
+    reasoning: { effort: "low" },
+    instructions: [
+      "식약처 공식 의약품 원문을 고령자와 보호자가 이해하기 쉬운 한국어로 바꾸는 설명자입니다.",
+      "입력된 공식 원문 안의 사실만 사용하고 효능, 진단, 부작용, 복용량을 새로 만들거나 추측하지 마세요.",
+      "overview에는 대표 효능을 짧게 설명하고, 원문에 효능이 없으면 빈 문자열로 반환하세요.",
+      "usagePlain에는 일반 허가 용법의 의미만 설명하세요. 개인이 먹어야 할 양이나 횟수로 단정하지 마세요.",
+      "safetyPlain에는 중요한 금기와 주의사항을 쉬운 말로 요약하세요. 원문에 없으면 빈 문자열로 반환하세요.",
+      "genePlain에는 약물유전 원문이 있을 때만 타고난 약물 반응 차이를 쉽게 설명하고, 없으면 빈 문자열로 반환하세요.",
+      "categoryPlain에는 혈압약, 진통제, 항응고제처럼 짧은 분류를 적고 근거가 부족하면 '분류 확인 필요'라고 적으세요.",
+      "caregiverNote에는 처방전의 복용 지시를 우선하고 임의로 중단하거나 양을 바꾸지 말라는 안내를 짧게 적으세요.",
+      "전문 용어가 꼭 필요하면 쉬운 뜻을 먼저 쓰고 전문명은 괄호 안에 한 번만 적으세요.",
+      "각 필드는 짧은 문장 2~3개 이내로 작성하세요.",
+    ].join("\n"),
+    input: JSON.stringify(sourceItems),
+    text: {
+      verbosity: "low",
+      format: {
+        type: "json_schema",
+        name: "plain_official_medication_search",
+        strict: true,
+        schema: medicationSearchPlainSchema,
+      },
+    },
+  });
+
+  const parsed = parseJson<MedicationSearchPlainPayload>(
+    response.output_text,
+    "통합 약 검색 쉬운 설명",
+  );
+  const explanations = new Map(
+    parsed.items
+      .filter((item) => sourceItems.some((source) => source.index === item.index))
+      .map((item) => [item.index, item]),
+  );
+  if (sourceItems.some((source) => !explanations.has(source.index))) {
+    throw new Error("통합 약 검색 쉬운 설명 일부가 누락됐습니다.");
+  }
+
+  return items.map((item, index) => {
+    const explanation = explanations.get(index);
+    if (!explanation) return item;
+    return {
+      ...item,
+      plainExplanation: {
+        categoryPlain: explanation.categoryPlain.trim(),
+        overview: explanation.overview.trim(),
+        usagePlain: explanation.usagePlain.trim(),
+        safetyPlain: explanation.safetyPlain.trim(),
+        genePlain: explanation.genePlain.trim(),
+        caregiverNote: explanation.caregiverNote.trim(),
+      },
+    };
+  });
 }
