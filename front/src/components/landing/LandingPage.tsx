@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { DemoLoginButton } from "@/components/auth/DemoLoginButton";
 import { CareDashboardPreview } from "./CareDashboardPreview";
 import { LandingHeader } from "./LandingHeader";
 
@@ -40,9 +41,9 @@ export function LandingPage() {
                 <Link className="landing-button landing-button--primary" href="/login">
                   무료로 시작하기 <ArrowRight size={18} aria-hidden="true" />
                 </Link>
-                <form action="/api/auth/demo" method="post">
-                  <button className="landing-button landing-button--secondary" type="submit">데모로 먼저 보기</button>
-                </form>
+                <DemoLoginButton className="landing-button landing-button--secondary">
+                  데모로 먼저 보기
+                </DemoLoginButton>
               </div>
               <ul className="landing-hero__assurances" aria-label="서비스 안심 원칙">
                 <li><Check size={15} aria-hidden="true" /> 원본 문서 미저장</li>
@@ -104,9 +105,9 @@ export function LandingPage() {
               <p className="landing-section-label">실제 돌봄을 위한 설계</p>
               <h2 id="features-title">보호자가 필요한 것만 한곳에</h2>
               <p>현재 복용약, 오늘 일정, 최근 변화, 상담 질문이 서로 끊기지 않도록 설계했습니다.</p>
-              <form action="/api/auth/demo" method="post">
-                <button className="landing-feature-link" type="submit">돌봄 대시보드 체험 <ArrowRight size={17} aria-hidden="true" /></button>
-              </form>
+              <DemoLoginButton className="landing-feature-link">
+                돌봄 대시보드 체험 <ArrowRight size={17} aria-hidden="true" />
+              </DemoLoginButton>
             </div>
             <article className="landing-feature landing-feature--wide">
               <Pill size={23} aria-hidden="true" /><span>복약 계획</span>
