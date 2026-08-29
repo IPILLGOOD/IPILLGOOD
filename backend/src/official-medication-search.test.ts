@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   parseEasyDrugResponse,
+  parseProductPermitDetailResponse,
   parseProductPermitResponse,
   searchOfficialMedicationInfo,
 } from "./official-medication-search.ts";
@@ -110,6 +111,32 @@ test("e약은요 응답의 소비자용 항목을 안전한 일반 텍스트로 
     "정해진 용법을 따르세요.\n과량 사용하지 마세요.",
   );
   assert.equal(result.items[0]?.imageUrl, undefined);
+});
+
+test("전문의약품 상세 허가 XML 문서를 효능·용법·주의사항 일반 텍스트로 정규화한다", () => {
+  const result = parseProductPermitDetailResponse(
+    JSON.stringify({
+      header: { resultCode: "00", resultMsg: "NORMAL SERVICE." },
+      body: {
+        totalCount: 1,
+        items: { item: {
+          ITEM_SEQ: "200001234",
+          EE_DOC_DATA: '<DOC title="효능효과"><ARTICLE title="1. 고혈압" /></DOC>',
+          UD_DOC_DATA: '<DOC title="용법용량"><PARAGRAPH><![CDATA[처방에 따라 복용합니다.]]></PARAGRAPH></DOC>',
+          NB_DOC_DATA: '<DOC title="사용상의주의사항"><ARTICLE title="어지러움에 주의" /></DOC>',
+          STORAGE_METHOD: "기밀용기, 실온보관",
+        } },
+      },
+    }),
+    "json",
+  );
+
+  assert.equal(result.totalCount, 1);
+  assert.match(result.items[0]?.efficacy ?? "", /고혈압/);
+  assert.match(result.items[0]?.usage ?? "", /처방에 따라 복용/);
+  assert.match(result.items[0]?.precautions ?? "", /어지러움에 주의/);
+  assert.equal(result.items[0]?.storage, "기밀용기, 실온보관");
+  assert.equal(JSON.stringify(result).includes("<DOC"), false);
 });
 
 test("API 키가 없으면 예시나 웹 검색으로 대체하지 않고 미설정 상태를 반환한다", async () => {
@@ -298,14 +325,100 @@ test("e약은요와 약물유전정보를 품목·성분에 맞을 때만 보강
   assert.equal(result.status, "connected");
   if (result.status !== "connected") return;
   assert.equal(result.easyDrugStatus, "complete");
+  assert.equal(result.consumerInformationStatus, "complete");
   assert.equal(result.pharmacogenomicStatus, "complete");
   assert.equal(result.items[0]?.consumerInfo?.efficacy, "공식 효능");
+  assert.equal(result.items[0]?.consumerInfo?.source, "easy_drug");
   assert.equal(result.items[0]?.pharmacogenomicInfo?.geneInfo, "유전 정보");
   assert.deepEqual(result.items[0]?.sources.map((source) => source.kind), [
     "product_permit",
     "easy_drug",
     "pharmacogenomic",
   ]);
+});
+
+test("e약은요가 없는 전문의약품은 상세 허가 원문을 사용해 OpenAI 쉬운 설명을 만든다", async () => {
+  let detailRequest: URL | undefined;
+  let simplifiedSource = "";
+  const result = await searchOfficialMedicationInfo("노바스크", {
+    apiKey: "official-key",
+    openAiApiKey: "openai-key",
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/getDrugPrdtPrmsnInq07")) {
+        return url.searchParams.has("item_name")
+          ? officialResponse([productItem()])
+          : emptyOfficialResponse();
+      }
+      if (url.pathname.endsWith("/getDrugPrdtPrmsnDtlInq06")) {
+        detailRequest = url;
+        return officialResponse([{
+          ITEM_SEQ: "200001234",
+          EE_DOC_DATA: '<DOC title="효능효과"><ARTICLE title="고혈압 치료" /></DOC>',
+          UD_DOC_DATA: '<DOC title="용법용량"><PARAGRAPH><![CDATA[의사의 지시에 따라 복용]]></PARAGRAPH></DOC>',
+          NB_DOC_DATA: '<DOC title="사용상의주의사항"><ARTICLE title="어지러움 주의" /></DOC>',
+          STORAGE_METHOD: "실온보관",
+        }]);
+      }
+      return emptyOfficialResponse();
+    },
+    simplifier: async (items) => {
+      simplifiedSource = items[0]?.consumerInfo?.source ?? "";
+      return items.map((item) => ({
+        ...item,
+        plainExplanation: {
+          categoryPlain: "혈압약",
+          overview: "높은 혈압을 낮추는 데 사용하는 약이에요.",
+          usagePlain: "복용량은 처방전을 확인하세요.",
+          safetyPlain: "어지러울 수 있어요.",
+          genePlain: "",
+          caregiverNote: "임의로 양을 바꾸지 마세요.",
+        },
+      }));
+    },
+  });
+
+  assert.equal(result.status, "connected");
+  if (result.status !== "connected") return;
+  assert.equal(detailRequest?.searchParams.get("item_seq"), "200001234");
+  assert.equal(simplifiedSource, "product_permit");
+  assert.equal(result.easyDrugStatus, "no_match");
+  assert.equal(result.consumerInformationStatus, "complete");
+  assert.equal(result.plainLanguageStatus, "complete");
+  assert.match(result.items[0]?.consumerInfo?.efficacy ?? "", /고혈압 치료/);
+  assert.equal(result.items[0]?.plainExplanation?.categoryPlain, "혈압약");
+});
+
+test("OpenAI 쉬운 설명 생성이 실패해도 전문의약품 공식 원문을 유지한다", async (context) => {
+  context.mock.method(console, "error", () => undefined);
+  const result = await searchOfficialMedicationInfo("노바스크", {
+    apiKey: "official-key",
+    openAiApiKey: "openai-key",
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/getDrugPrdtPrmsnInq07")) {
+        return url.searchParams.has("item_name")
+          ? officialResponse([productItem()])
+          : emptyOfficialResponse();
+      }
+      if (url.pathname.endsWith("/getDrugPrdtPrmsnDtlInq06")) {
+        return officialResponse([{
+          ITEM_SEQ: "200001234",
+          EE_DOC_DATA: '<DOC title="효능효과"><ARTICLE title="고혈압 치료" /></DOC>',
+        }]);
+      }
+      return emptyOfficialResponse();
+    },
+    simplifier: async () => {
+      throw new Error("temporary failure");
+    },
+  });
+
+  assert.equal(result.status, "connected");
+  if (result.status !== "connected") return;
+  assert.equal(result.plainLanguageStatus, "unavailable");
+  assert.match(result.items[0]?.consumerInfo?.efficacy ?? "", /고혈압 치료/);
+  assert.equal(result.items[0]?.plainExplanation, undefined);
 });
 
 test("보강 API 응답이 공식 제품과 조인되지 않으면 완료로 표시하지 않는다", async () => {
@@ -331,6 +444,9 @@ test("보강 API 응답이 공식 제품과 조인되지 않으면 완료로 표
           DRFSTF_ENG_NM: "Warfarin",
           BASC_INFO: "다른 성분의 정보",
         }]);
+      }
+      if (url.pathname.endsWith("/getDrugPrdtPrmsnDtlInq06")) {
+        return emptyOfficialResponse();
       }
       throw new Error(`unexpected request: ${url}`);
     },

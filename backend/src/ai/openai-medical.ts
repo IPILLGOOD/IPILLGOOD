@@ -9,6 +9,10 @@ import type {
   PharmacogenomicInfo,
   PlainMedicationExplanation,
 } from "../official-medication-api.ts";
+import type {
+  OfficialMedicationPlainExplanation,
+  OfficialMedicationSearchItem,
+} from "../official-medication-search.ts";
 
 interface DocumentInput {
   documentType: "처방전" | "진단서";
@@ -27,6 +31,10 @@ interface DiseaseSearchPayload {
 
 interface PlainMedicationPayload {
   items: Array<PlainMedicationExplanation & { index: number }>;
+}
+
+interface MedicationSearchPlainPayload {
+  items: Array<OfficialMedicationPlainExplanation & { index: number }>;
 }
 
 const documentAnalysisSchema = {
@@ -138,6 +146,39 @@ const plainMedicationSchema = {
           "overview",
           "geneInfo",
           "productInfo",
+          "caregiverNote",
+        ],
+      },
+    },
+  },
+  required: ["items"],
+} as const;
+
+const medicationSearchPlainSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          index: { type: "integer" },
+          categoryPlain: { type: "string" },
+          overview: { type: "string" },
+          usagePlain: { type: "string" },
+          safetyPlain: { type: "string" },
+          genePlain: { type: "string" },
+          caregiverNote: { type: "string" },
+        },
+        required: [
+          "index",
+          "categoryPlain",
+          "overview",
+          "usagePlain",
+          "safetyPlain",
+          "genePlain",
           "caregiverNote",
         ],
       },
@@ -427,4 +468,90 @@ export async function simplifyMedicationInformationWithOpenAI(
     throw new Error("약물 쉬운 설명 일부가 누락됐습니다.");
   }
   return enrichedItems;
+}
+
+export async function simplifyOfficialMedicationSearchItemsWithOpenAI(
+  items: OfficialMedicationSearchItem[],
+  options: { apiKey?: string; model?: string } = {},
+): Promise<OfficialMedicationSearchItem[]> {
+  const sourceItems = items.flatMap((item, index) => {
+    if (!item.consumerInfo && !item.pharmacogenomicInfo) return [];
+    return [{
+      index,
+      productName: item.productName,
+      ingredientName: item.ingredientName,
+      classification: item.classification,
+      productType: item.productType,
+      officialSource: item.consumerInfo?.source ?? "pharmacogenomic",
+      efficacy: item.consumerInfo?.efficacy.slice(0, 5_000) ?? "",
+      usage: item.consumerInfo?.usage.slice(0, 5_000) ?? "",
+      warning: [item.consumerInfo?.warning, item.consumerInfo?.precautions]
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, 7_000),
+      interactions: item.consumerInfo?.interactions.slice(0, 3_000) ?? "",
+      adverseEffects: item.consumerInfo?.adverseEffects.slice(0, 3_000) ?? "",
+      storage: item.consumerInfo?.storage.slice(0, 1_000) ?? "",
+      pharmacogenomicGeneral: item.pharmacogenomicInfo?.generalInfo.slice(0, 4_000) ?? "",
+      pharmacogenomicGene: item.pharmacogenomicInfo?.geneInfo.slice(0, 4_000) ?? "",
+    }];
+  });
+  if (sourceItems.length === 0) return items;
+
+  const response = await getClient(options.apiKey).responses.create({
+    model: modelName(options.model),
+    store: false,
+    reasoning: { effort: "low" },
+    instructions: [
+      "식약처 공식 의약품 원문을 고령자와 보호자가 이해하기 쉬운 한국어로 바꾸는 설명자입니다.",
+      "입력된 공식 원문 안의 사실만 사용하고 효능, 진단, 부작용, 복용량을 새로 만들거나 추측하지 마세요.",
+      "overview에는 대표 효능을 짧게 설명하고, 원문에 효능이 없으면 빈 문자열로 반환하세요.",
+      "usagePlain에는 일반 허가 용법의 의미만 설명하세요. 개인이 먹어야 할 양이나 횟수로 단정하지 마세요.",
+      "safetyPlain에는 중요한 금기와 주의사항을 쉬운 말로 요약하세요. 원문에 없으면 빈 문자열로 반환하세요.",
+      "genePlain에는 약물유전 원문이 있을 때만 타고난 약물 반응 차이를 쉽게 설명하고, 없으면 빈 문자열로 반환하세요.",
+      "categoryPlain에는 혈압약, 진통제, 항응고제처럼 짧은 분류를 적고 근거가 부족하면 '분류 확인 필요'라고 적으세요.",
+      "caregiverNote에는 처방전의 복용 지시를 우선하고 임의로 중단하거나 양을 바꾸지 말라는 안내를 짧게 적으세요.",
+      "전문 용어가 꼭 필요하면 쉬운 뜻을 먼저 쓰고 전문명은 괄호 안에 한 번만 적으세요.",
+      "각 필드는 짧은 문장 2~3개 이내로 작성하세요.",
+    ].join("\n"),
+    input: JSON.stringify(sourceItems),
+    text: {
+      verbosity: "low",
+      format: {
+        type: "json_schema",
+        name: "plain_official_medication_search",
+        strict: true,
+        schema: medicationSearchPlainSchema,
+      },
+    },
+  });
+
+  const parsed = parseJson<MedicationSearchPlainPayload>(
+    response.output_text,
+    "통합 약 검색 쉬운 설명",
+  );
+  const explanations = new Map(
+    parsed.items
+      .filter((item) => sourceItems.some((source) => source.index === item.index))
+      .map((item) => [item.index, item]),
+  );
+  if (sourceItems.some((source) => !explanations.has(source.index))) {
+    throw new Error("통합 약 검색 쉬운 설명 일부가 누락됐습니다.");
+  }
+
+  return items.map((item, index) => {
+    const explanation = explanations.get(index);
+    if (!explanation) return item;
+    return {
+      ...item,
+      plainExplanation: {
+        categoryPlain: explanation.categoryPlain.trim(),
+        overview: explanation.overview.trim(),
+        usagePlain: explanation.usagePlain.trim(),
+        safetyPlain: explanation.safetyPlain.trim(),
+        genePlain: explanation.genePlain.trim(),
+        caregiverNote: explanation.caregiverNote.trim(),
+      },
+    };
+  });
 }

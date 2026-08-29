@@ -22,6 +22,8 @@ type DataFormat = OfficialApiFormat;
 type Fetcher = typeof fetch;
 type MatchType = "product_name" | "ingredient";
 type EnrichmentStatus = "complete" | "no_match" | "unavailable";
+type ConsumerInformationStatus = EnrichmentStatus | "partial";
+type PlainLanguageStatus = "complete" | "partial" | "not_configured" | "unavailable" | "no_source";
 
 interface SearchOptions {
   apiKey?: string;
@@ -29,6 +31,9 @@ interface SearchOptions {
   productApiUrl?: string;
   easyDrugApiUrl?: string;
   pharmacogenomicApiUrl?: string;
+  openAiApiKey?: string;
+  openAiModel?: string;
+  simplifier?: MedicationSearchSimplifier;
   fetcher?: Fetcher;
   format?: DataFormat;
 }
@@ -54,6 +59,19 @@ interface EasyDrugInformation {
   updatedAt: string;
 }
 
+interface ProductPermitDetailInformation {
+  itemSeq: string;
+  efficacy: string;
+  usage: string;
+  precautions: string;
+  storage: string;
+}
+
+type MedicationSearchSimplifier = (
+  items: OfficialMedicationSearchItem[],
+  options?: { apiKey?: string; model?: string },
+) => Promise<OfficialMedicationSearchItem[]>;
+
 export interface OfficialMedicationSource {
   kind: "product_permit" | "easy_drug" | "pharmacogenomic";
   label: string;
@@ -61,6 +79,7 @@ export interface OfficialMedicationSource {
 }
 
 export interface OfficialMedicationConsumerInfo {
+  source: "easy_drug" | "product_permit";
   efficacy: string;
   usage: string;
   warning: string;
@@ -70,6 +89,15 @@ export interface OfficialMedicationConsumerInfo {
   storage: string;
   openedAt: string;
   updatedAt: string;
+}
+
+export interface OfficialMedicationPlainExplanation {
+  categoryPlain: string;
+  overview: string;
+  usagePlain: string;
+  safetyPlain: string;
+  genePlain: string;
+  caregiverNote: string;
 }
 
 export interface OfficialMedicationPharmacogenomicInfo {
@@ -92,6 +120,7 @@ export interface OfficialMedicationSearchItem {
   imageUrl?: string;
   consumerInfo?: OfficialMedicationConsumerInfo;
   pharmacogenomicInfo?: OfficialMedicationPharmacogenomicInfo;
+  plainExplanation?: OfficialMedicationPlainExplanation;
   sources: OfficialMedicationSource[];
 }
 
@@ -103,7 +132,9 @@ export type OfficialMedicationLookupResult =
       sourceUrl: string;
       productQueryStatus: "complete" | "partial";
       easyDrugStatus: EnrichmentStatus;
+      consumerInformationStatus: ConsumerInformationStatus;
       pharmacogenomicStatus: EnrichmentStatus;
+      plainLanguageStatus: PlainLanguageStatus;
     }
   | {
       status: "not_configured";
@@ -139,6 +170,16 @@ const pharmacogenomicSource: OfficialMedicationSource = {
   url: PHARMACOGENOMIC_SOURCE_URL,
 };
 
+async function defaultMedicationSearchSimplifier(
+  items: OfficialMedicationSearchItem[],
+  options?: { apiKey?: string; model?: string },
+) {
+  const { simplifyOfficialMedicationSearchItemsWithOpenAI } = await import(
+    "./ai/openai-medical.ts"
+  );
+  return simplifyOfficialMedicationSearchItemsWithOpenAI(items, options);
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   return value as Record<string, unknown>;
@@ -166,6 +207,20 @@ function plainOfficialText(value: unknown): string {
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function plainPermitDocument(value: unknown): string {
+  return plainOfficialText(
+    asString(value)
+      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+      .replace(
+        /<(?:DOC|SECTION|ARTICLE)\b[^>]*\btitle=(?:"([^"]*)"|'([^']*)')[^>]*>/gi,
+        (_match, doubleQuoted: string | undefined, singleQuoted: string | undefined) =>
+          `\n${doubleQuoted ?? singleQuoted ?? ""}\n`,
+      )
+      .replace(/<PARAGRAPH\b[^>]*>/gi, "\n")
+      .replace(/<BR\b[^>]*\/?\s*>/gi, "\n"),
+  );
 }
 
 function safeHttpUrl(value: unknown): string | undefined {
@@ -275,6 +330,23 @@ export function parseEasyDrugResponse(payload: string, format: DataFormat) {
   return { items, totalCount: asNumber(body.totalCount) };
 }
 
+export function parseProductPermitDetailResponse(payload: string, format: DataFormat) {
+  const body = responseBody(payload, format);
+  const items = responseItems(body).flatMap((item): ProductPermitDetailInformation[] => {
+    const itemSeq = asString(item.ITEM_SEQ);
+    if (!itemSeq) return [];
+    const detail = {
+      itemSeq,
+      efficacy: plainPermitDocument(item.EE_DOC_DATA),
+      usage: plainPermitDocument(item.UD_DOC_DATA),
+      precautions: plainPermitDocument(item.NB_DOC_DATA),
+      storage: plainOfficialText(item.STORAGE_METHOD),
+    };
+    return detail.efficacy || detail.usage || detail.precautions || detail.storage ? [detail] : [];
+  });
+  return { items, totalCount: asNumber(body.totalCount) };
+}
+
 async function fetchOfficialPayload(
   endpoint: URL,
   format: DataFormat,
@@ -306,6 +378,22 @@ async function fetchProductMatches(
   endpoint.searchParams.set(matchType === "product_name" ? "item_name" : "item_ingr_name", query);
   const payload = await fetchOfficialPayload(endpoint, options.format, options.fetcher);
   return parseProductPermitResponse(payload, options.format, matchType);
+}
+
+async function fetchProductPermitDetail(
+  itemSeq: string,
+  options: Required<Pick<SearchOptions, "apiKey" | "productApiUrl" | "fetcher" | "format">>,
+) {
+  const endpoint = new URL(
+    `${options.productApiUrl.replace(/\/$/, "")}/getDrugPrdtPrmsnDtlInq06`,
+  );
+  endpoint.searchParams.set("serviceKey", options.apiKey);
+  endpoint.searchParams.set("pageNo", "1");
+  endpoint.searchParams.set("numOfRows", "1");
+  endpoint.searchParams.set("type", options.format);
+  endpoint.searchParams.set("item_seq", itemSeq);
+  const payload = await fetchOfficialPayload(endpoint, options.format, options.fetcher);
+  return parseProductPermitDetailResponse(payload, options.format);
 }
 
 async function fetchEasyDrugMatches(
@@ -413,7 +501,9 @@ export async function searchOfficialMedicationInfo(
       sourceUrl: PRODUCT_SOURCE_URL,
       productQueryStatus: "complete",
       easyDrugStatus: "no_match",
+      consumerInformationStatus: "no_match",
       pharmacogenomicStatus: "no_match",
+      plainLanguageStatus: "no_source",
     };
   }
 
@@ -480,8 +570,26 @@ export async function searchOfficialMedicationInfo(
     ? pharmacogenomicResult.value.items
     : [];
 
+  const productsNeedingPermitDetail = products.filter((product) => !easyByItemSeq.has(product.itemSeq));
+  const permitDetailResults: PromiseSettledResult<Awaited<ReturnType<typeof fetchProductPermitDetail>>>[] = [];
+  for (let index = 0; index < productsNeedingPermitDetail.length; index += 3) {
+    const batch = productsNeedingPermitDetail.slice(index, index + 3);
+    permitDetailResults.push(...await Promise.allSettled(
+      batch.map((product) => fetchProductPermitDetail(product.itemSeq, searchOptions)),
+    ));
+  }
+  const permitDetailByItemSeq = new Map<string, ProductPermitDetailInformation>();
+  permitDetailResults.forEach((result) => {
+    if (result.status === "rejected") {
+      console.error("MFDS product permit detail unavailable", safeOfficialApiErrorCode(result.reason));
+      return;
+    }
+    result.value.items.forEach((item) => permitDetailByItemSeq.set(item.itemSeq, item));
+  });
+
   const items = products.map((product) => {
     const easy = easyByItemSeq.get(product.itemSeq);
+    const permitDetail = permitDetailByItemSeq.get(product.itemSeq);
     const pharmacogenomic = pharmacogenomicItems.find((item) =>
       namesOverlap(product.ingredientName, item.koreanName) ||
       namesOverlap(product.ingredientName, item.englishName)
@@ -492,6 +600,7 @@ export async function searchOfficialMedicationInfo(
       ...(imageUrl ? { imageUrl } : {}),
       ...(easy ? {
         consumerInfo: {
+          source: "easy_drug" as const,
           efficacy: easy.efficacy,
           usage: easy.usage,
           warning: easy.warning,
@@ -501,6 +610,19 @@ export async function searchOfficialMedicationInfo(
           storage: easy.storage,
           openedAt: easy.openedAt,
           updatedAt: easy.updatedAt,
+        },
+      } : permitDetail ? {
+        consumerInfo: {
+          source: "product_permit" as const,
+          efficacy: permitDetail.efficacy,
+          usage: permitDetail.usage,
+          warning: "",
+          precautions: permitDetail.precautions,
+          interactions: "",
+          adverseEffects: "",
+          storage: permitDetail.storage,
+          openedAt: "",
+          updatedAt: "",
         },
       } : {}),
       ...(pharmacogenomic ? {
@@ -519,13 +641,38 @@ export async function searchOfficialMedicationInfo(
       ],
     } satisfies OfficialMedicationSearchItem;
   });
-  const hasConsumerInformation = items.some((item) => item.consumerInfo);
+  const hasEasyDrugInformation = items.some((item) => item.consumerInfo?.source === "easy_drug");
   const hasPharmacogenomicInformation = items.some((item) => item.pharmacogenomicInfo);
+  const consumerInformationCount = items.filter((item) => item.consumerInfo).length;
+  const permitDetailFailed = permitDetailResults.some((result) => result.status === "rejected");
+
+  const openAiApiKey = options.openAiApiKey ?? process.env.OPENAI_API_KEY;
+  const explainableCount = items.filter(
+    (item) => item.consumerInfo || item.pharmacogenomicInfo,
+  ).length;
+  let enrichedItems = items;
+  let plainLanguageStatus: PlainLanguageStatus = !openAiApiKey
+    ? "not_configured"
+    : explainableCount === 0 ? "no_source" : "unavailable";
+  if (openAiApiKey && explainableCount > 0) {
+    try {
+      enrichedItems = await (options.simplifier ?? defaultMedicationSearchSimplifier)(items, {
+        apiKey: openAiApiKey,
+        model: options.openAiModel,
+      });
+      const explainedCount = enrichedItems.filter((item) => item.plainExplanation).length;
+      plainLanguageStatus = explainedCount >= explainableCount ? "complete" : "partial";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      console.error("OpenAI medication search simplification unavailable", message);
+      plainLanguageStatus = "unavailable";
+    }
+  }
 
   return {
     status: "connected",
-    items,
-    totalCount: items.length,
+    items: enrichedItems,
+    totalCount: enrichedItems.length,
     sourceUrl: PRODUCT_SOURCE_URL,
     productQueryStatus:
       productNameResult.status === "fulfilled" && ingredientResult.status === "fulfilled"
@@ -534,10 +681,19 @@ export async function searchOfficialMedicationInfo(
     easyDrugStatus:
       easyDrugResult.status === "rejected"
         ? "unavailable"
-        : hasConsumerInformation ? "complete" : "no_match",
+        : hasEasyDrugInformation ? "complete" : "no_match",
+    consumerInformationStatus:
+      consumerInformationCount === items.length && items.length > 0
+        ? "complete"
+        : consumerInformationCount > 0
+          ? "partial"
+          : easyDrugResult.status === "rejected" || permitDetailFailed
+            ? "unavailable"
+            : "no_match",
     pharmacogenomicStatus:
       pharmacogenomicResult.status === "rejected"
         ? "unavailable"
         : hasPharmacogenomicInformation ? "complete" : "no_match",
+    plainLanguageStatus,
   };
 }

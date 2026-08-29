@@ -69,7 +69,7 @@ export function OfficialMedicationSearch({
             </button>
           </div>
           <p className="field-hint">
-            제품 허가정보를 기준으로 찾고 e약은요와 약물유전정보가 있으면 함께 보여드려요. 어르신의 개인정보는 보내지 않아요.
+            일반의약품은 e약은요, 전문의약품은 상세 허가정보를 확인하고 공식 원문이 있으면 쉬운 설명을 함께 보여드려요. 어르신의 개인정보는 보내지 않아요.
           </p>
         </div>
       </form>
@@ -112,10 +112,37 @@ export function OfficialMedicationSearch({
 
       {result?.status === "connected" &&
       result.items.length > 0 &&
-      result.easyDrugStatus === "unavailable" ? (
+      result.consumerInformationStatus === "unavailable" ? (
         <div className="official-drug-message official-drug-message--warning" role="status">
-          <strong>e약은요 정보를 잠시 불러오지 못했어요.</strong>
-          <p>제품·성분 허가정보는 정상적으로 확인했으며, 소비자용 설명만 일부 없을 수 있어요.</p>
+          <strong>상세 허가정보를 잠시 불러오지 못했어요.</strong>
+          <p>제품·성분은 확인했지만 효능·용법·주의사항 원문은 품목 상세 링크에서 확인해주세요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      result.consumerInformationStatus === "partial" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>일부 제품의 상세정보만 확인됐어요.</strong>
+          <p>공식 원문이 없는 결과에는 의약품안전나라 품목 상세 링크를 제공해요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      result.plainLanguageStatus === "not_configured" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>쉬운 설명 생성이 설정되지 않았어요.</strong>
+          <p>식약처 공식 원문은 그대로 표시하며 OpenAI 요약은 만들지 않았어요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      (result.plainLanguageStatus === "unavailable" || result.plainLanguageStatus === "partial") ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>쉬운 설명을 일부 만들지 못했어요.</strong>
+          <p>누락된 항목은 식약처 공식 원문으로 확인할 수 있어요.</p>
         </div>
       ) : null}
 

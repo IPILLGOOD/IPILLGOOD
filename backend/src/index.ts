@@ -90,6 +90,7 @@ export {
   type OfficialMedicationConsumerInfo,
   type OfficialMedicationLookupResult,
   type OfficialMedicationPharmacogenomicInfo,
+  type OfficialMedicationPlainExplanation,
   type OfficialMedicationSearchItem,
   type OfficialMedicationSource,
 } from "./official-medication-search";
