@@ -8,14 +8,18 @@ export interface FirebaseAccountAdmin {
   delete(userId: string): Promise<void>;
 }
 
-export function createFirebaseAccountAdmin(input: { projectId: string; accessToken: () => Promise<string>; fetcher?: typeof fetch; emulatorHost?: string }): FirebaseAccountAdmin {
+export function createFirebaseAccountAdmin(input: { projectId: string; accessToken: () => Promise<string>; fetcher?: typeof fetch; emulatorHost?: string; quotaProjectId?: string }): FirebaseAccountAdmin {
   if (input.emulatorHost && (!input.projectId.startsWith("demo-") || !/^(127\.0\.0\.1|localhost):\d+$/.test(input.emulatorHost))) {
     throw new Error("Auth emulator requires a demo- project and loopback host.");
   }
   const origin = input.emulatorHost ? `http://${input.emulatorHost}/identitytoolkit.googleapis.com` : "https://identitytoolkit.googleapis.com";
   async function request(method: string, data: object, allowMissing = false) {
     const response = await (input.fetcher ?? fetch)(`${origin}/v1/projects/${encodeURIComponent(input.projectId)}/accounts:${method}`, {
-      method: "POST", headers: { Authorization: `Bearer ${await input.accessToken()}`, "Content-Type": "application/json" },
+      method: "POST", headers: {
+        Authorization: `Bearer ${await input.accessToken()}`,
+        "Content-Type": "application/json",
+        ...(input.quotaProjectId ? { "x-goog-user-project": input.quotaProjectId } : {}),
+      },
       body: JSON.stringify(data), signal: AbortSignal.timeout(15_000),
     });
     const result = await response.json() as { error?: { message?: string }; users?: FirebaseAccount[] };
@@ -40,6 +44,7 @@ export function getFirebaseAccountAdmin() {
     const emulatorHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
     const credentials = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
     let accessToken: () => Promise<string>;
+    let quotaProjectId: string | undefined;
     if (emulatorHost) accessToken = async () => "owner";
     else if (credentials) {
       const oauth = new FirestoreRestClient(JSON.parse(credentials), projectId, fetch, undefined, "https://www.googleapis.com/auth/identitytoolkit");
@@ -47,9 +52,10 @@ export function getFirebaseAccountAdmin() {
     } else {
       const { GoogleAuth } = await import("google-auth-library");
       const auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/identitytoolkit"] });
+      quotaProjectId = (await auth.getClient()).quotaProjectId;
       accessToken = async () => { const token = await auth.getAccessToken(); if (!token) throw new Error("AUTH_CREDENTIALS_MISSING"); return token; };
     }
-    return createFirebaseAccountAdmin({ projectId, accessToken, emulatorHost });
+    return createFirebaseAccountAdmin({ projectId, accessToken, emulatorHost, quotaProjectId });
   })().catch((error) => { admin = undefined; throw error; });
   return admin;
 }
