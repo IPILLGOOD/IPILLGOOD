@@ -8,7 +8,7 @@ import {
 } from "../src/lib/form-validation.ts";
 
 const validProfileForm = {
-  displayName: "코덱스",
+  displayName: "김데모",
   ageBand: "77",
   heightCm: "",
   weightKg: "",

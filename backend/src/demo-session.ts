@@ -1,5 +1,8 @@
 import demoSeed from "./data/demo-seed.json" with { type: "json" };
 
+import { careInputRevision, runCareAgent } from "./ai/care-agent.ts";
+import { buildPatientQuestionSet } from "./ai/questions/generate-question-set.ts";
+import { addCalendarDays, calendarDayDifference, dateKeyInSeoul } from "./dates.ts";
 import { getAdminFirestore } from "./firebase-admin.ts";
 import { deleteRecipientHealthData } from "./health-data-deletion.ts";
 import type {
@@ -13,6 +16,7 @@ const READ_MODELS_COLLECTION = "careReadModels";
 const RECIPIENTS_COLLECTION = "careRecipients";
 const DEMO_SESSION_ID_PATTERN =
   /^demo-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const DEMO_SEED_ANCHOR_DATE = "2026-08-16";
 
 export const DEMO_SESSION_DURATION_SECONDS = 2 * 60 * 60;
 export const DEMO_SESSION_CLEANUP_GRACE_SECONDS = 5 * 60;
@@ -53,11 +57,50 @@ function assertDemoSessionId(id: string) {
   }
 }
 
-function demoSnapshot(recipientId: string): CareSnapshot {
+function rebaseDemoDate(value: string, targetAnchorDate: string) {
+  const sourceDate = dateKeyInSeoul(value);
+  const targetDate = addCalendarDays(
+    targetAnchorDate,
+    calendarDayDifference(DEMO_SEED_ANCHOR_DATE, sourceDate),
+  );
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? targetDate
+    : `${targetDate}${value.slice(10)}`;
+}
+
+function demoSnapshot(recipientId: string, now: Date): CareSnapshot {
   const cloned = structuredClone(seed);
+  // Keep the scenario recent while leaving today empty for the visitor's own check-in.
+  const targetAnchorDate = addCalendarDays(dateKeyInSeoul(now), -1);
   return {
     ...cloned,
-    recipient: { ...cloned.recipient, id: recipientId },
+    recipient: {
+      ...cloned.recipient,
+      id: recipientId,
+      lastConfirmedAt: rebaseDemoDate(cloned.recipient.lastConfirmedAt, targetAnchorDate),
+    },
+    medications: cloned.medications.map((medication) => ({
+      ...medication,
+      startDate: rebaseDemoDate(medication.startDate, targetAnchorDate),
+      ...(medication.endDate
+        ? { endDate: rebaseDemoDate(medication.endDate, targetAnchorDate) }
+        : {}),
+    })),
+    doseEvents: cloned.doseEvents.map((event) => ({
+      ...event,
+      scheduledAt: rebaseDemoDate(event.scheduledAt, targetAnchorDate),
+      ...(event.answeredAt
+        ? { answeredAt: rebaseDemoDate(event.answeredAt, targetAnchorDate) }
+        : {}),
+    })),
+    symptomEvents: cloned.symptomEvents.map((event) => ({
+      ...event,
+      occurredAt: rebaseDemoDate(event.occurredAt, targetAnchorDate),
+    })),
+    documents: cloned.documents.map((document) => ({
+      ...document,
+      uploadedAt: rebaseDemoDate(document.uploadedAt, targetAnchorDate),
+    })),
     todayCheckIn: null,
     dataSource: "firestore",
   };
@@ -66,6 +109,25 @@ function demoSnapshot(recipientId: string): CareSnapshot {
 function storedDemoReadModel(snapshot: CareSnapshot, now: Date) {
   const { dataSource: _dataSource, ...stored } = snapshot;
   return { ...stored, updatedAt: now.toISOString() };
+}
+
+async function preparedDemoQuestionSet(snapshot: CareSnapshot, now: Date) {
+  const targetDate = dateKeyInSeoul(now);
+  const inputRevision = careInputRevision(snapshot, targetDate);
+  const agent = await runCareAgent({
+    snapshot,
+    targetDate,
+    requestId: `demo-${snapshot.recipient.id}-${targetDate}`,
+    apiKey: "",
+  });
+  return buildPatientQuestionSet({
+    snapshot,
+    analysis: agent.output,
+    targetDate,
+    answerer: "caregiver",
+    inputRevision,
+    source: agent.source,
+  });
 }
 
 export async function createEphemeralDemoSession(input: {
@@ -89,7 +151,8 @@ export async function createEphemeralDemoSession(input: {
     createdAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
   };
-  const snapshot = demoSnapshot(input.id);
+  const snapshot = demoSnapshot(input.id, now);
+  const questionSet = await preparedDemoQuestionSet(snapshot, now);
   const recipientRef = firestore.collection(RECIPIENTS_COLLECTION).doc(input.id);
   const batch = firestore.batch();
 
@@ -110,6 +173,7 @@ export async function createEphemeralDemoSession(input: {
   for (const question of snapshot.clinicianQuestions) {
     batch.set(recipientRef.collection("clinicianQuestions").doc(question.id), question);
   }
+  batch.set(recipientRef.collection("questionSets").doc(questionSet.question_set_id), questionSet);
   batch.set(
     firestore.collection(READ_MODELS_COLLECTION).doc(input.id),
     storedDemoReadModel(snapshot, now),

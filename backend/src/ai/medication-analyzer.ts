@@ -5,6 +5,7 @@ import type {
   MedicationEvidenceField,
   PrescriptionMedication,
 } from "../types.ts";
+import { addCalendarDays, dateKeyInSeoul } from "../dates.ts";
 import { searchOfficialDiseaseInfo } from "../official-disease-api.ts";
 import {
   verifyOfficialMedicationCode,
@@ -170,6 +171,15 @@ async function enrichMedicationVerification(
 }
 
 function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
+  const scenarioAnchor = addCalendarDays(dateKeyInSeoul(), -1);
+  const prescriptionDate = addCalendarDays(scenarioAnchor, -4);
+  const longTermMedicationStart = addCalendarDays(scenarioAnchor, -159);
+  const shortTermMedicationEnd = addCalendarDays(scenarioAnchor, 2);
+  const koreanDate = (dateKey: string) => {
+    const [year, month, day] = dateKey.split("-").map(Number);
+    return `${year}년 ${month}월 ${day}일`;
+  };
+
   if (documentType === "진단서") {
     return {
       documentType,
@@ -177,7 +187,7 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
         "진료에서 확인된 상태와 이후 돌봄에서 살펴볼 내용을 보호자가 이해하기 쉬운 말로 정리했어요.",
       findings: [
         { label: "확인된 내용", value: "혈압을 꾸준히 관리하고 경과를 살펴보는 중이에요." },
-        { label: "진료 시점", value: "2026년 8월 16일" },
+        { label: "진료 시점", value: koreanDate(scenarioAnchor) },
         { label: "다음 계획", value: "기록한 혈압과 몸 상태를 다음 진료 때 함께 확인해요." },
       ],
       carePoints: [
@@ -220,7 +230,7 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
     findings: [
       { label: "약 이름", value: "노바스크정 5mg 외 2개" },
       { label: "먹는 방법", value: "아침 식사 후 1회, 아침·저녁 식사 후 2회" },
-      { label: "처방 기간", value: "2026년 8월 12일부터 약별 처방 기간 확인 필요" },
+      { label: "처방 기간", value: `${koreanDate(prescriptionDate)}부터 약별 처방 기간 확인 필요` },
     ],
     carePoints: [
       "처방전의 약 이름과 실제 약 봉투가 같은지 먼저 확인해주세요.",
@@ -240,7 +250,7 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
         doseAmount: "한 번에 1정",
         frequency: "하루 1회",
         timing: "아침 식사 후",
-        startDate: "2026-08-12",
+        startDate: longTermMedicationStart,
         purposePlain: "혈압이 너무 높아지지 않도록 도와줘요.",
         precautions: ["평소보다 많이 어지러운지 확인해주세요."],
       },
@@ -250,8 +260,8 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
         doseAmount: "한 번에 1캡슐",
         frequency: "하루 2회",
         timing: "아침·저녁 식사 후",
-        startDate: "2026-08-12",
-        endDate: "2026-08-18",
+        startDate: prescriptionDate,
+        endDate: shortTermMedicationEnd,
         purposePlain: "무릎의 통증과 붓는 느낌을 줄이는 데 사용돼요.",
         precautions: ["속이 많이 쓰리거나 아픈지 확인해주세요."],
       },
@@ -261,7 +271,7 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
         doseAmount: "한 번에 1정",
         frequency: "하루 1회",
         timing: "저녁 식사 후",
-        startDate: "2026-08-12",
+        startDate: longTermMedicationStart,
         purposePlain: "혈액 속 기름 성분을 관리하는 데 사용돼요.",
         precautions: ["이유 없이 근육이 많이 아픈지 확인해주세요."],
       },

@@ -37,6 +37,31 @@ test("두 데모 세션은 같은 seed를 서로 다른 저장 범위에 만든�
   const secondModel = firestore.values.get(`careReadModels/${secondId}`);
   assert.equal((firstModel?.recipient as { id?: string }).id, firstId);
   assert.equal((secondModel?.recipient as { id?: string }).id, secondId);
+  assert.equal((firstModel?.recipient as { displayName?: string }).displayName, "김데모");
+  assert.equal(
+    (firstModel?.recipient as { lastConfirmedAt?: string }).lastConfirmedAt,
+    "2026-08-25T09:20:00+09:00",
+  );
+  assert.equal(
+    (firstModel?.medications as Array<{ id: string; endDate?: string }>)
+      .find((medication) => medication.id === "med-celecoxib")?.endDate,
+    "2026-08-27",
+  );
+  assert.equal(
+    (firstModel?.documents as Array<{ uploadedAt: string }>)[0]?.uploadedAt,
+    "2026-08-21T13:05:00+09:00",
+  );
+  assert.equal(
+    (firstModel?.doseEvents as Array<{ scheduledAt: string }>).every(
+      (event) => event.scheduledAt.slice(0, 10) <= "2026-08-25",
+    ),
+    true,
+  );
+  const preparedQuestionSet = [...firestore.values.entries()].find(([path]) =>
+    path.startsWith(`careRecipients/${firstId}/questionSets/question-set-2026-08-26-`),
+  )?.[1];
+  assert.equal(preparedQuestionSet?.subject_ref, firstId);
+  assert.equal(preparedQuestionSet?.response_status, "unanswered");
   assert.deepEqual(firstModel?.medications, secondModel?.medications);
 
   await firestore

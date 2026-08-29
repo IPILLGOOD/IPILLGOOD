@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 
 import { careInputRevision, runCareAgent, type CareAgentResult } from "./ai/care-agent.ts";
 import { buildPatientQuestionSet, questionSetIdFor } from "./ai/questions/generate-question-set.ts";
-import { getCareSnapshot, type CareDataScope } from "./care-repository.ts";
+import { getCareSnapshot, getPatientQuestionSet, type CareDataScope } from "./care-repository.ts";
 import { getAdminFirestore } from "./firebase-admin.ts";
 import type { CareSnapshot, PatientQuestionSet } from "./types.ts";
 
@@ -33,6 +33,18 @@ export async function getQuestionSetAvailability(
   dependencies: Parameters<typeof getOrCreateQuestionSet>[1] = {},
 ): Promise<QuestionSetAvailability> {
   try {
+    if (input.scope.useDemoData && input.snapshot) {
+      const targetDate = input.targetDate ?? dateKeyInSeoul((dependencies.now ?? (() => new Date()))());
+      const inputRevision = careInputRevision(input.snapshot, targetDate);
+      const questionSetId = questionSetIdFor({
+        recipientId: input.scope.recipientId,
+        targetDate,
+        answerer: input.answerer,
+        inputRevision,
+      });
+      const prepared = await getPatientQuestionSet(input.scope, questionSetId);
+      if (prepared) return { status: "ready", questionSet: prepared };
+    }
     return { status: "ready", questionSet: await getOrCreateQuestionSet(input, { maxWaitMs: 1500, ...dependencies }) };
   } catch {
     return { status: "unavailable", message: "질문을 안전하게 저장하지 못했어요. 잠시 후 다시 준비해 주세요." };
