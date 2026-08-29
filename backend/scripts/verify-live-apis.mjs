@@ -126,9 +126,18 @@ try {
     contentBase64: diagnosisBytes.toString("base64"),
   });
   const [productMedication, ingredientMedication, easyMedication] = await Promise.all([
-    searchOfficialMedicationInfo("노바스크", { apiKey: medicationApiKey }),
-    searchOfficialMedicationInfo("암로디핀", { apiKey: medicationApiKey }),
-    searchOfficialMedicationInfo("타이레놀정160밀리그람", { apiKey: medicationApiKey }),
+    searchOfficialMedicationInfo("노바스크", {
+      apiKey: medicationApiKey,
+      pharmacogenomicApiKey: process.env.MFDS_PARMGEN_API_KEY,
+    }),
+    searchOfficialMedicationInfo("암로디핀", {
+      apiKey: medicationApiKey,
+      pharmacogenomicApiKey: process.env.MFDS_PARMGEN_API_KEY,
+    }),
+    searchOfficialMedicationInfo("타이레놀정500밀리그람", {
+      apiKey: medicationApiKey,
+      pharmacogenomicApiKey: process.env.MFDS_PARMGEN_API_KEY,
+    }),
   ]);
   const careAgent = await runCareAgent({
     snapshot: careSnapshot(),

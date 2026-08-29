@@ -25,6 +25,7 @@ type EnrichmentStatus = "complete" | "no_match" | "unavailable";
 
 interface SearchOptions {
   apiKey?: string;
+  pharmacogenomicApiKey?: string;
   productApiUrl?: string;
   easyDrugApiUrl?: string;
   pharmacogenomicApiUrl?: string;
@@ -178,6 +179,16 @@ function safeHttpUrl(value: unknown): string | undefined {
   }
 }
 
+function normalizedServiceKey(value: string): string {
+  const key = value.trim();
+  if (!/%[\da-f]{2}/i.test(key)) return key;
+  try {
+    return decodeURIComponent(key);
+  } catch {
+    return key;
+  }
+}
+
 function parsePayload(payload: string, format: DataFormat): unknown {
   if (format === "json") return JSON.parse(payload) as unknown;
   return parseOfficialXml(payload);
@@ -315,12 +326,14 @@ async function fetchEasyDrugMatches(
 
 async function fetchPharmacogenomicMatches(
   query: string,
-  options: Required<Pick<SearchOptions, "apiKey" | "pharmacogenomicApiUrl" | "fetcher" | "format">>,
+  options: Required<
+    Pick<SearchOptions, "pharmacogenomicApiKey" | "pharmacogenomicApiUrl" | "fetcher" | "format">
+  >,
 ) {
   const endpoint = new URL(
     `${options.pharmacogenomicApiUrl.replace(/\/$/, "")}/getParmgen`,
   );
-  endpoint.searchParams.set("serviceKey", options.apiKey);
+  endpoint.searchParams.set("serviceKey", options.pharmacogenomicApiKey);
   endpoint.searchParams.set("pageNo", "1");
   endpoint.searchParams.set("numOfRows", "10");
   endpoint.searchParams.set("type", options.format);
@@ -381,7 +394,6 @@ export async function searchOfficialMedicationInfo(
   const apiKey = options.apiKey ??
     process.env.MFDS_MEDICATION_API_KEY ??
     process.env.MFDS_PARMGEN_API_KEY;
-
   if (!query) {
     return {
       status: "connected",
@@ -404,8 +416,14 @@ export async function searchOfficialMedicationInfo(
     };
   }
 
+  const pharmacogenomicApiKey = options.pharmacogenomicApiKey ??
+    options.apiKey ??
+    process.env.MFDS_PARMGEN_API_KEY ??
+    apiKey;
+
   const searchOptions = {
-    apiKey,
+    apiKey: normalizedServiceKey(apiKey),
+    pharmacogenomicApiKey: normalizedServiceKey(pharmacogenomicApiKey),
     productApiUrl: options.productApiUrl ??
       process.env.MFDS_PRODUCT_API_URL ?? DEFAULT_PRODUCT_API_URL,
     easyDrugApiUrl: options.easyDrugApiUrl ??

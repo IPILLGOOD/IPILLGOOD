@@ -188,9 +188,11 @@ MFDS_PRODUCT_API_URL=https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07
 MFDS_EASY_DRUG_API_URL=https://apis.data.go.kr/1471000/DrbEasyDrugInfoService
 MFDS_PARMGEN_API_URL=https://apis.data.go.kr/1471000/ParmgenService
 MFDS_MEDICATION_API_KEY=공공데이터포털_일반_인증키
+# 약물 유전 정보가 별도 키로 승인된 경우
+MFDS_PARMGEN_API_KEY=약물유전정보_인증키
 ```
 
-공공데이터포털에서 의약품 제품 허가정보, 의약품개요정보(e약은요), 약물 유전 정보 활용 신청을 완료한 같은 프로젝트 키를 사용합니다. 기존 배포의 `MFDS_PARMGEN_API_KEY`도 전환 기간 동안 읽지만 새 설정명 사용을 권장합니다.
+공공데이터포털에서 의약품 제품 허가정보와 의약품개요정보(e약은요) 활용 신청을 완료한 프로젝트 키를 `MFDS_MEDICATION_API_KEY`에 저장합니다. 약물 유전 정보가 다른 프로젝트 키로 승인된 경우 `MFDS_PARMGEN_API_KEY`를 함께 설정합니다. 제품·e약 키가 없을 때는 기존 배포의 약물유전 키를 전환 호환용으로 읽습니다.
 
 문서 분석과 질병 정보 조회를 활성화하려면 같은 파일에 다음 서버 전용 값을 설정합니다.
 

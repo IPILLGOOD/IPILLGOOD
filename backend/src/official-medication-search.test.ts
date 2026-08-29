@@ -158,6 +158,50 @@ test("제품명과 성분명을 각각 공식 조회하고 itemSeq로 중복을 
   );
 });
 
+test("공공데이터포털 Encoding 키를 URL에서 한 번만 인코딩한다", async () => {
+  const requestedKeys: string[] = [];
+  await searchOfficialMedicationInfo("노바스크", {
+    apiKey: "sample%2Bkey%3D%3D",
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      requestedKeys.push(url.searchParams.get("serviceKey") ?? url.searchParams.get("ServiceKey") ?? "");
+      return emptyOfficialResponse();
+    },
+  });
+
+  assert.equal(requestedKeys.length, 4);
+  assert.deepEqual(new Set(requestedKeys), new Set(["sample+key=="]));
+});
+
+test("제품·e약은요 키와 약물유전정보 키를 서비스별로 분리한다", async () => {
+  const requestedKeys = new Map<string, string>();
+  await searchOfficialMedicationInfo("노바스크", {
+    apiKey: "medication-key",
+    pharmacogenomicApiKey: "pharmacogenomic-key",
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      requestedKeys.set(
+        url.pathname,
+        url.searchParams.get("serviceKey") ?? url.searchParams.get("ServiceKey") ?? "",
+      );
+      return emptyOfficialResponse();
+    },
+  });
+
+  assert.equal(
+    requestedKeys.get("/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07"),
+    "medication-key",
+  );
+  assert.equal(
+    requestedKeys.get("/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"),
+    "medication-key",
+  );
+  assert.equal(
+    requestedKeys.get("/1471000/ParmgenService/getParmgen"),
+    "pharmacogenomic-key",
+  );
+});
+
 test("성분명 조회 결과를 제품명 조회와 구분하고 고정 복용법을 만들지 않는다", async () => {
   const result = await searchOfficialMedicationInfo("암로디핀", {
     apiKey: "official-key",
