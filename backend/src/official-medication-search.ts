@@ -25,7 +25,7 @@ type EnrichmentStatus = "complete" | "no_match" | "unavailable";
 type ConsumerInformationStatus = EnrichmentStatus | "partial";
 type PlainLanguageStatus = "complete" | "partial" | "not_configured" | "unavailable" | "no_source";
 
-interface SearchOptions {
+export interface SearchOptions {
   apiKey?: string;
   pharmacogenomicApiKey?: string;
   productApiUrl?: string;
@@ -151,6 +151,10 @@ export type OfficialMedicationLookupResult =
       message: string;
       reason: "api_error" | "rate_limited";
     };
+
+export type OfficialMedicationCodeVerification =
+  | { status: "matched"; item: OfficialMedicationSearchItem; sourceUrl: string }
+  | { status: "not_found" | "not_configured" | "unavailable"; sourceUrl: string };
 
 const productSource: OfficialMedicationSource = {
   kind: "product_permit",
@@ -378,6 +382,40 @@ async function fetchProductMatches(
   endpoint.searchParams.set(matchType === "product_name" ? "item_name" : "item_ingr_name", query);
   const payload = await fetchOfficialPayload(endpoint, options.format, options.fetcher);
   return parseProductPermitResponse(payload, options.format, matchType);
+}
+
+export async function verifyOfficialMedicationCode(
+  itemCode: string,
+  options: SearchOptions = {},
+): Promise<OfficialMedicationCodeVerification> {
+  const normalizedCode = itemCode.trim();
+  if (!/^\d{6,12}$/.test(normalizedCode)) {
+    return { status: "not_found", sourceUrl: PRODUCT_SOURCE_URL };
+  }
+  const apiKey = options.apiKey ?? process.env.MFDS_MEDICATION_API_KEY ?? process.env.MFDS_PARMGEN_API_KEY;
+  if (!apiKey) return { status: "not_configured", sourceUrl: PRODUCT_SOURCE_URL };
+
+  const endpoint = new URL(
+    `${(options.productApiUrl ?? process.env.MFDS_PRODUCT_API_URL ?? DEFAULT_PRODUCT_API_URL).replace(/\/$/, "")}/getDrugPrdtPrmsnInq07`,
+  );
+  endpoint.searchParams.set("serviceKey", normalizedServiceKey(apiKey));
+  endpoint.searchParams.set("pageNo", "1");
+  endpoint.searchParams.set("numOfRows", "1");
+  endpoint.searchParams.set("type", options.format ?? "json");
+  endpoint.searchParams.set("item_seq", normalizedCode);
+
+  try {
+    const format = options.format ?? "json";
+    const payload = await fetchOfficialPayload(endpoint, format, options.fetcher ?? fetch);
+    const parsed = parseProductPermitResponse(payload, format, "product_name");
+    const item = parsed.items.find((candidate) => candidate.itemSeq === normalizedCode) ?? parsed.items[0];
+    return item
+      ? { status: "matched", item, sourceUrl: PRODUCT_SOURCE_URL }
+      : { status: "not_found", sourceUrl: PRODUCT_SOURCE_URL };
+  } catch (error) {
+    console.error("MFDS item-code verification unavailable", safeOfficialApiErrorCode(error));
+    return { status: "unavailable", sourceUrl: PRODUCT_SOURCE_URL };
+  }
 }
 
 async function fetchProductPermitDetail(

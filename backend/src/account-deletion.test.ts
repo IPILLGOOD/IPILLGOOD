@@ -176,7 +176,8 @@ test("#55 common health reset can retain the profile without retaining health de
 test("deletion fences a running AI result and does not recreate its checkpoint or failure record", async () => {
   const f = fixture();
   const scope = { recipientId: f.recipientId, firestore: f.firestore };
-  await getCareSnapshot(scope);
+  const current = await getCareSnapshot(scope);
+  await updateRecipientProfile(scope, { ...current.recipient, consentConfirmed: true }, current);
   await assert.rejects(getOrCreateQuestionSet({ scope, answerer: "caregiver" }, {
     wait: async () => undefined,
     runAgent: async (input) => {

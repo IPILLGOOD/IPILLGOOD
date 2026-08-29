@@ -48,8 +48,10 @@ for (const adapter of ["admin", "rest"] as const) {
     t.after(() => fixture.cleanup());
     const { scope, firestore } = fixture;
     const initial = await getCareSnapshot(scope);
+    await updateRecipientProfile(scope, { ...initial.recipient, consentConfirmed: true }, initial);
+    const consented = await getCareSnapshot(scope);
     const upload = syntheticDocument;
-    await Promise.all([registerDocument(scope, upload("a")), registerDocument(scope, upload("b")), updateRecipientProfile(scope, { ...initial.recipient, displayName: "계정 검증" }, initial)]);
+    await Promise.all([registerDocument(scope, upload("a")), registerDocument(scope, upload("b")), updateRecipientProfile(scope, { ...consented.recipient, displayName: "계정 검증" }, consented)]);
     const result = await getCareSnapshot(scope);
     assert.deepEqual(result.documents.map((doc) => doc.id).sort(), ["a", "b"]);
     assert.equal(result.recipient.displayName, "계정 검증");

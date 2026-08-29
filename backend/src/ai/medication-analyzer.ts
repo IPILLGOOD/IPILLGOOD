@@ -1,5 +1,16 @@
-import type { ClinicalDocumentType, DiseaseInformation, DocumentAnalysis } from "../types.ts";
+import type {
+  ClinicalDocumentType,
+  DiseaseInformation,
+  DocumentAnalysis,
+  MedicationEvidenceField,
+  PrescriptionMedication,
+} from "../types.ts";
+import { addCalendarDays, dateKeyInSeoul } from "../dates.ts";
 import { searchOfficialDiseaseInfo } from "../official-disease-api.ts";
+import {
+  verifyOfficialMedicationCode,
+  type OfficialMedicationCodeVerification,
+} from "../official-medication-search.ts";
 
 import {
   analyzeClinicalDocumentWithOpenAI,
@@ -39,9 +50,136 @@ export class DocumentAnalysisIncompleteError extends Error {
 
 type MedicationAnalyzerDependencies = {
   analyzeClinicalDocumentWithOpenAI: typeof analyzeClinicalDocumentWithOpenAI;
+  verifyOfficialMedicationCode?: typeof verifyOfficialMedicationCode;
 };
 
+const requiredMedicationEvidence = [
+  "productName",
+  "ingredientName",
+  "doseAmount",
+  "frequency",
+  "timing",
+] satisfies MedicationEvidenceField[];
+
+function normalizedMedicationIdentity(value: string) {
+  return value.toLocaleLowerCase("ko-KR").replace(/[^0-9a-z가-힣]/g, "");
+}
+
+function medicationNamesOverlap(first: string, second: string) {
+  const a = normalizedMedicationIdentity(first);
+  const b = normalizedMedicationIdentity(second);
+  return Boolean(a && b && (a.includes(b) || b.includes(a)));
+}
+
+function lowConfidenceWarnings(medication: PrescriptionMedication) {
+  return requiredMedicationEvidence.flatMap((field) => {
+    const evidence = medication.fieldEvidence?.find((candidate) => candidate.field === field);
+    if (!evidence) return [`${field} 필드의 원문 근거가 없어요.`];
+    if (evidence.confidence < 0.8) {
+      return [`${field} 필드의 OCR 신뢰도가 ${Math.round(evidence.confidence * 100)}%예요.`];
+    }
+    return [];
+  });
+}
+
+function officialVerificationWarnings(
+  medication: PrescriptionMedication,
+  official: OfficialMedicationCodeVerification,
+) {
+  if (official.status !== "matched") {
+    if (official.status === "not_found") return ["읽은 품목코드를 식약처 허가정보에서 찾지 못했어요."];
+    if (official.status === "not_configured") return ["식약처 의약품 코드 조회가 설정되지 않았어요."];
+    return ["식약처 의약품 코드 조회를 일시적으로 완료하지 못했어요."];
+  }
+
+  const warnings: string[] = [];
+  if (!medicationNamesOverlap(medication.productName, official.item.productName)) {
+    warnings.push(`제품명이 식약처 정보(${official.item.productName})와 일치하지 않아요.`);
+  }
+  if (
+    medication.ingredientName.trim() &&
+    official.item.ingredientName.trim() &&
+    !medicationNamesOverlap(medication.ingredientName, official.item.ingredientName)
+  ) {
+    warnings.push(`성분명이 식약처 정보(${official.item.ingredientName})와 일치하지 않아요.`);
+  }
+  return warnings;
+}
+
+async function enrichMedicationVerification(
+  analysis: DocumentAnalysis,
+  verifyCode: typeof verifyOfficialMedicationCode,
+): Promise<DocumentAnalysis> {
+  if (analysis.documentType !== "처방전") return analysis;
+  if (analysis.source === "demo") {
+    return {
+      ...analysis,
+      medications: analysis.medications?.map((medication) => ({
+        ...medication,
+        reviewStatus: "verified",
+        verification: {
+          status: "verified",
+          sourceLabel: "비식별 데모 데이터",
+          warnings: [],
+        },
+      })),
+    };
+  }
+
+  return {
+    ...analysis,
+    medications: await Promise.all((analysis.medications ?? []).map(async (medication) => {
+      const evidenceWarnings = lowConfidenceWarnings(medication);
+      if (!medication.itemCode) {
+        const warnings = [...evidenceWarnings, "문서에서 품목코드를 확인하지 못했어요."];
+        return {
+          ...medication,
+          reviewStatus: "needs_review" as const,
+          verification: {
+            status: "not_found" as const,
+            sourceLabel: "식약처 의약품 제품 허가정보",
+            warnings,
+          },
+        };
+      }
+
+      const official = await verifyCode(medication.itemCode);
+      const officialWarnings = officialVerificationWarnings(medication, official);
+      const warnings = [...evidenceWarnings, ...officialWarnings];
+      const matched = official.status === "matched";
+      const verified = matched && warnings.length === 0;
+      return {
+        ...medication,
+        reviewStatus: verified ? "verified" as const : "needs_review" as const,
+        verification: {
+          status: verified
+            ? "verified" as const
+            : matched
+              ? "mismatch" as const
+              : official.status,
+          sourceLabel: "식약처 의약품 제품 허가정보",
+          ...(matched ? {
+            officialItemCode: official.item.itemSeq,
+            officialProductName: official.item.productName,
+            officialIngredientName: official.item.ingredientName,
+          } : {}),
+          warnings,
+        },
+      };
+    })),
+  };
+}
+
 function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
+  const scenarioAnchor = addCalendarDays(dateKeyInSeoul(), -1);
+  const prescriptionDate = addCalendarDays(scenarioAnchor, -4);
+  const longTermMedicationStart = addCalendarDays(scenarioAnchor, -159);
+  const shortTermMedicationEnd = addCalendarDays(scenarioAnchor, 2);
+  const koreanDate = (dateKey: string) => {
+    const [year, month, day] = dateKey.split("-").map(Number);
+    return `${year}년 ${month}월 ${day}일`;
+  };
+
   if (documentType === "진단서") {
     return {
       documentType,
@@ -49,7 +187,7 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
         "진료에서 확인된 상태와 이후 돌봄에서 살펴볼 내용을 보호자가 이해하기 쉬운 말로 정리했어요.",
       findings: [
         { label: "확인된 내용", value: "혈압을 꾸준히 관리하고 경과를 살펴보는 중이에요." },
-        { label: "진료 시점", value: "2026년 8월 16일" },
+        { label: "진료 시점", value: koreanDate(scenarioAnchor) },
         { label: "다음 계획", value: "기록한 혈압과 몸 상태를 다음 진료 때 함께 확인해요." },
       ],
       carePoints: [
@@ -92,7 +230,7 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
     findings: [
       { label: "약 이름", value: "노바스크정 5mg 외 2개" },
       { label: "먹는 방법", value: "아침 식사 후 1회, 아침·저녁 식사 후 2회" },
-      { label: "처방 기간", value: "2026년 8월 12일부터 약별 처방 기간 확인 필요" },
+      { label: "처방 기간", value: `${koreanDate(prescriptionDate)}부터 약별 처방 기간 확인 필요` },
     ],
     carePoints: [
       "처방전의 약 이름과 실제 약 봉투가 같은지 먼저 확인해주세요.",
@@ -112,7 +250,7 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
         doseAmount: "한 번에 1정",
         frequency: "하루 1회",
         timing: "아침 식사 후",
-        startDate: "2026-08-12",
+        startDate: longTermMedicationStart,
         purposePlain: "혈압이 너무 높아지지 않도록 도와줘요.",
         precautions: ["평소보다 많이 어지러운지 확인해주세요."],
       },
@@ -122,8 +260,8 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
         doseAmount: "한 번에 1캡슐",
         frequency: "하루 2회",
         timing: "아침·저녁 식사 후",
-        startDate: "2026-08-12",
-        endDate: "2026-08-18",
+        startDate: prescriptionDate,
+        endDate: shortTermMedicationEnd,
         purposePlain: "무릎의 통증과 붓는 느낌을 줄이는 데 사용돼요.",
         precautions: ["속이 많이 쓰리거나 아픈지 확인해주세요."],
       },
@@ -133,7 +271,7 @@ function demoAnalysis(documentType: ClinicalDocumentType): DocumentAnalysis {
         doseAmount: "한 번에 1정",
         frequency: "하루 1회",
         timing: "저녁 식사 후",
-        startDate: "2026-08-12",
+        startDate: longTermMedicationStart,
         purposePlain: "혈액 속 기름 성분을 관리하는 데 사용돼요.",
         precautions: ["이유 없이 근육이 많이 아픈지 확인해주세요."],
       },
@@ -293,6 +431,9 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
     analysis.carePoints.every((point) => typeof point === "string") &&
     Array.isArray(analysis.questionsForProfessional) &&
     analysis.questionsForProfessional.every((question) => typeof question === "string") &&
+    (analysis.prescriptionDate === undefined || typeof analysis.prescriptionDate === "string") &&
+    (analysis.totalSupplyDays === undefined ||
+      (typeof analysis.totalSupplyDays === "number" && Number.isInteger(analysis.totalSupplyDays))) &&
     (analysis.diagnoses === undefined ||
       (Array.isArray(analysis.diagnoses) &&
         analysis.diagnoses.every(
@@ -310,6 +451,7 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
             typeof medication === "object" &&
             typeof medication.productName === "string" &&
             typeof medication.ingredientName === "string" &&
+            (medication.itemCode === undefined || typeof medication.itemCode === "string") &&
             typeof medication.doseAmount === "string" &&
             typeof medication.frequency === "string" &&
             typeof medication.timing === "string" &&
@@ -317,7 +459,18 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
             (medication.endDate === undefined || typeof medication.endDate === "string") &&
             typeof medication.purposePlain === "string" &&
             Array.isArray(medication.precautions) &&
-            medication.precautions.every((item) => typeof item === "string"),
+            medication.precautions.every((item) => typeof item === "string") &&
+            (medication.fieldEvidence === undefined ||
+              (Array.isArray(medication.fieldEvidence) &&
+                medication.fieldEvidence.every((evidence) =>
+                  evidence &&
+                  typeof evidence === "object" &&
+                  typeof evidence.field === "string" &&
+                  typeof evidence.sourceText === "string" &&
+                  typeof evidence.confidence === "number" &&
+                  evidence.confidence >= 0 &&
+                  evidence.confidence <= 1,
+                ))),
         ))) &&
     typeof analysis.disclaimer === "string"
   );
@@ -329,7 +482,10 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
  */
 export async function analyzeMedicationDocument(
   input: MedicationAnalyzerInput,
-  dependencies: MedicationAnalyzerDependencies = { analyzeClinicalDocumentWithOpenAI },
+  dependencies: MedicationAnalyzerDependencies = {
+    analyzeClinicalDocumentWithOpenAI,
+    verifyOfficialMedicationCode,
+  },
 ): Promise<MedicationAnalyzerResult> {
   const endpoint = process.env.AI_ANALYSIS_ENDPOINT;
   const apiKey = process.env.AI_API_KEY;
@@ -338,7 +494,10 @@ export async function analyzeMedicationDocument(
     return {
       status: "complete",
       message: "비식별 데모 분석을 마쳤어요. 실제 API를 연결하면 업로드한 문서를 분석해요.",
-      analysis: demoAnalysis(input.documentType),
+      analysis: await enrichMedicationVerification(
+        demoAnalysis(input.documentType),
+        dependencies.verifyOfficialMedicationCode ?? verifyOfficialMedicationCode,
+      ),
     };
   }
 
@@ -370,7 +529,12 @@ export async function analyzeMedicationDocument(
     if (analysisNeedsRetry(structuredAnalysis)) {
       throw new DocumentAnalysisIncompleteError(input.documentType);
     }
-    const analysis = await enrichDiagnosisAnalysis(structuredAnalysis);
+    const analysis = await enrichDiagnosisAnalysis(
+      await enrichMedicationVerification(
+        structuredAnalysis,
+        dependencies.verifyOfficialMedicationCode ?? verifyOfficialMedicationCode,
+      ),
+    );
     return {
       status: "complete",
       message:
@@ -396,7 +560,10 @@ export async function analyzeMedicationDocument(
       throw new DocumentAnalysisIncompleteError(input.documentType);
     }
     const analysis = await enrichDiagnosisAnalysis(
-      withStructuredEvidenceFindings(structuredAnalysis),
+      await enrichMedicationVerification(
+        withStructuredEvidenceFindings(structuredAnalysis),
+        dependencies.verifyOfficialMedicationCode ?? verifyOfficialMedicationCode,
+      ),
     );
     return {
       status: "complete",

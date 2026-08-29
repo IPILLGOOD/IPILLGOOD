@@ -9,6 +9,7 @@ import {
 } from "@care-atlas/backend";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 import { sessionSecretBytes } from "./session-security";
 
@@ -130,7 +131,9 @@ async function readSession(allowDeleting = false): Promise<SessionUser | null> {
   }
 }
 
-export function getSession() { return readSession(); }
+const getRequestSession = cache(() => readSession());
+
+export function getSession() { return getRequestSession(); }
 
 /** Recovery only: this identity must never authorize care reads or writes. */
 export function getAccountDeletionSession() { return readSession(true); }

@@ -1,18 +1,31 @@
 export {
   confirmDocumentDiagnoses,
   deleteDocument,
+  findMedicationDuplicateCandidates,
+  getDocumentImportReview,
+  cancelMedicationPlanDraft,
+  confirmMedicationPlanDraft,
   getCareRevision,
+  getMedicationPlanDraft,
   getCareSnapshot,
   rebuildCareReadModel,
   getPatientQuestionSet,
   getTodayDailyCheckIn,
   medicationPlansFromPrescription,
+  medicationPlanFingerprint,
   registerDocument,
+  saveDocumentImportReview,
   saveDailyCheckIn,
   updateRecipientProfile,
   type CareDataScope,
+  type DocumentImportReview,
+  type MedicationDuplicateCandidate,
+  type ConfirmMedicationPlanDraftInput,
+  type MedicationCandidateConfirmation,
+  type MedicationPlanConfirmationResult,
   type RegisterDocumentInput,
   CareConflictError,
+  MedicationDuplicateResolutionRequiredError,
 } from "./care-repository";
 export {
   DEMO_SESSION_DURATION_SECONDS,
@@ -27,6 +40,7 @@ export {
   type EphemeralDemoSession,
 } from "./demo-session";
 export {
+  confirmMedicationPlanDraftAndSyncMedicationReminders,
   deleteDocumentAndSyncMedicationReminders,
   registerDocumentAndSyncMedicationReminders,
 } from "./medication-reminder-service";
@@ -91,8 +105,10 @@ export {
   PHARMACOGENOMIC_SOURCE_URL,
   PRODUCT_SOURCE_URL,
   searchOfficialMedicationInfo,
+  verifyOfficialMedicationCode,
   type OfficialMedicationConsumerInfo,
   type OfficialMedicationLookupResult,
+  type OfficialMedicationCodeVerification,
   type OfficialMedicationPharmacogenomicInfo,
   type OfficialMedicationPlainExplanation,
   type OfficialMedicationSearchItem,
@@ -131,6 +147,10 @@ export type {
   DiseaseLookupStatus,
   DiseaseReference,
   MedicationPlan,
+  MedicationDraftState,
+  MedicationDraftTransition,
+  MedicationPlanCandidate,
+  MedicationPlanDraft,
   NutritionEvidence,
   NutritionInsight,
   NutritionInsightStatus,
@@ -172,4 +192,10 @@ export { getAccountDeletion, requestAccountDeletion, processAccountDeletion, ret
 export { AccountDeletingError, getAccountSessionState, isServiceAccountActive, assertCareAccountActive, MAX_SESSION_SECONDS } from "./account-lifecycle";
 export { getFirebaseAccountAdmin } from "./firebase-account-admin";
 export { withCareAccountProcessing } from "./account-processing";
+export {
+  HealthDataConsentRequiredError,
+  assertHealthDataConsentConfirmed,
+  isHealthDataConsentConfirmed,
+  isServiceHealthDataConsentConfirmed,
+} from "./health-data-consent";
 export { deleteRecipientHealthData, verifyRecipientHealthDataDeleted } from "./health-data-deletion";

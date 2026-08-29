@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, HeartPulse, Link2, PlayCircle, ShieldChec
 import Link from "next/link";
 import { useState } from "react";
 
+import { DemoLoginButton } from "./DemoLoginButton";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { GoogleLogo } from "./GoogleLogo";
 
@@ -80,9 +81,9 @@ export function LoginPanel({ errorMessage, successMessage }: { errorMessage?: st
           <div className="login-demo-entry">
             <span className="login-demo-entry__icon"><PlayCircle size={20} aria-hidden="true" /></span>
             <span><strong>체험 모드</strong><small>가입 없이 비식별 샘플로 둘러봐요.</small></span>
-            <form action="/api/auth/demo" method="post">
-              <button type="submit">둘러보기 <ArrowRight size={16} aria-hidden="true" /></button>
-            </form>
+            <DemoLoginButton className="login-demo-button">
+              둘러보기 <ArrowRight size={16} aria-hidden="true" />
+            </DemoLoginButton>
           </div>
 
           <p className="login-panel__notice">

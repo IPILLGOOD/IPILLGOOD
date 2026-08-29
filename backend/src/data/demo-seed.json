@@ -1,12 +1,12 @@
 {
   "recipient": {
-    "id": "demo-kim-yeonghui",
-    "displayName": "코덱스",
+    "id": "demo-kim-template",
+    "displayName": "김데모",
     "ageBand": "77",
     "heightCm": 154,
     "weightKg": 57,
     "allergies": ["페니실린계 항생제"],
-    "conditions": ["혈압 관리 중", "무릎 통증"],
+    "conditions": ["고혈압", "이상지질혈증", "무릎 골관절염"],
     "confirmedConditions": [
       {
         "id": "condition-hypertension",
@@ -17,9 +17,9 @@
       }
     ],
     "supplementIntakes": [],
-    "mobilityNote": "실내에서는 혼자 걷고, 외출할 때 지팡이를 사용해요.",
+    "mobilityNote": "집 안에서는 혼자 걷고, 장시간 외출할 때는 지팡이를 사용해요.",
     "accessibilityPreferences": ["큰 글씨", "쉬운 설명"],
-    "caregiverNote": "아침 약을 가끔 잊어 보호자가 전화로 확인해요.",
+    "caregiverNote": "혼자 생활하며, 보호자가 아침 복약 여부와 어지러움 변화를 전화로 확인해요.",
     "consentConfirmed": true,
     "lastConfirmedAt": "2026-08-16T09:20:00+09:00"
   },
@@ -34,7 +34,7 @@
       "doseAmount": "한 번에 1정",
       "frequency": "하루 1회",
       "timing": "아침 식사 후",
-      "startDate": "2026-07-18",
+      "startDate": "2026-03-10",
       "status": "active",
       "isNew": false,
       "sourceLabel": "복약안내서에서 보호자가 확인",
@@ -59,7 +59,7 @@
       "endDate": "2026-08-18",
       "status": "active",
       "isNew": true,
-      "sourceLabel": "8월 12일 처방전에서 보호자가 확인",
+      "sourceLabel": "최근 처방전에서 보호자가 확인",
       "watchFor": ["속이 많이 쓰리거나 아픈지", "검은색 변처럼 평소와 다른 변화가 있는지"],
       "clinicianQuestion": "속이 불편한 날에도 같은 방법으로 먹어야 하는지 확인해주세요.",
       "howItWorksPlain": "몸에서 통증과 붓는 반응을 만드는 신호를 줄여 움직일 때 덜 불편하도록 도와요.",
@@ -77,7 +77,7 @@
       "doseAmount": "한 번에 1정",
       "frequency": "하루 1회",
       "timing": "저녁 식사 후",
-      "startDate": "2026-06-02",
+      "startDate": "2026-03-10",
       "status": "active",
       "isNew": false,
       "sourceLabel": "복약안내서에서 보호자가 확인",
@@ -101,18 +101,18 @@
     {"id":"dose-0815-pain-pm","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-15T19:00:00+09:00","response":"unconfirmed","answeredBy":"caregiver"},
     {"id":"dose-0816-am","medicationPlanId":"med-amlodipine","scheduledAt":"2026-08-16T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-16T08:30:00+09:00"},
     {"id":"dose-0816-pain-am","medicationPlanId":"med-celecoxib","scheduledAt":"2026-08-16T08:00:00+09:00","response":"completed","answeredBy":"caregiver","answeredAt":"2026-08-16T08:30:00+09:00"},
-    {"id":"dose-0816-statin","medicationPlanId":"med-atorvastatin","scheduledAt":"2026-08-16T19:00:00+09:00","response":"not_yet","answeredBy":"caregiver"}
+    {"id":"dose-0816-statin","medicationPlanId":"med-atorvastatin","scheduledAt":"2026-08-16T19:00:00+09:00","response":"unconfirmed","answeredBy":"caregiver"}
   ],
   "symptomEvents": [
-    {"id":"symptom-0814","symptomType":"어지러움","occurredAt":"2026-08-14T14:20:00+09:00","severity":3,"dailyLifeImpact":"잠깐 앉아서 쉬었어요.","reporterType":"recipient_reported","note":"점심 이후 잠깐 어지럽다고 말씀하셨어요."},
-    {"id":"symptom-0815","symptomType":"어지러움","occurredAt":"2026-08-15T17:10:00+09:00","severity":5,"dailyLifeImpact":"걸을 때 벽을 짚었어요.","reporterType":"caregiver_observed","note":"보호자가 통화 중 휘청거렸다는 말을 들었어요."},
-    {"id":"symptom-0816","symptomType":"어지러움","occurredAt":"2026-08-16T10:40:00+09:00","severity":3,"dailyLifeImpact":"10분 정도 쉬고 괜찮아졌어요.","reporterType":"recipient_reported"}
+    {"id":"symptom-0814","symptomType":"어지러움","occurredAt":"2026-08-14T14:20:00+09:00","severity":3,"dailyLifeImpact":"소파에 앉아 잠시 쉬었어요.","reporterType":"recipient_reported","note":"점심 식사 후 일어날 때 잠깐 어지러웠다고 말씀하셨어요."},
+    {"id":"symptom-0815","symptomType":"어지러움","occurredAt":"2026-08-15T17:10:00+09:00","severity":4,"dailyLifeImpact":"외출 준비를 멈추고 앉아서 쉬었어요.","reporterType":"caregiver_observed","note":"보호자와 통화하며 천천히 움직이도록 안내했어요."},
+    {"id":"symptom-0816","symptomType":"어지러움","occurredAt":"2026-08-16T10:40:00+09:00","severity":2,"dailyLifeImpact":"5분 정도 쉬고 평소 활동을 이어갔어요.","reporterType":"recipient_reported","note":"전날보다 덜 어지럽다고 말씀하셨어요."}
   ],
   "documents": [
-    {"id":"doc-prescription-0812","fileName":"8월12일_처방전_비식별샘플.jpg","documentType":"처방전","uploadedAt":"2026-08-12T13:05:00+09:00","status":"confirmed","redacted":true,"sourceLabel":"보호자가 원본과 대조해 확인"}
+    {"id":"doc-prescription-0812","fileName":"최근_처방전_비식별샘플.jpg","documentType":"처방전","uploadedAt":"2026-08-12T13:05:00+09:00","status":"confirmed","redacted":true,"sourceLabel":"보호자가 원본과 대조해 확인"}
   ],
   "clinicianQuestions": [
-    {"id":"question-dizziness","priority":"today","question":"새 약을 시작한 뒤 기록된 어지러움을 함께 확인해도 될까요?","reason":"8월 12일 약 변경 이후 어지러움이 3일 기록됐어요. 약 때문이라는 뜻은 아니에요."},
-    {"id":"question-missed","priority":"next_visit","question":"저녁 약을 확인하지 못한 날에는 다음 날 어떻게 기록하면 될까요?","reason":"8월 15일 저녁 복용 여부가 확인되지 않았어요."}
+    {"id":"question-dizziness","priority":"today","question":"최근 처방 이후 반복된 어지러움을 함께 확인해도 될까요?","reason":"최근 며칠 동안 어지러움이 이어졌지만 강도는 낮아지고 있어요. 약 때문이라는 뜻은 아니에요."},
+    {"id":"question-missed","priority":"next_visit","question":"저녁 약을 확인하지 못한 날에는 다음 날 어떻게 기록하면 될까요?","reason":"최근 저녁 복용 여부를 확인하지 못한 기록이 있어요."}
   ]
 }

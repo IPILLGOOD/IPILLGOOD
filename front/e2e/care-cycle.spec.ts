@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { SignJWT, decodeJwt } from "jose";
 import { randomUUID } from "node:crypto";
 import { emulatorFixture } from "../../backend/test-support/emulator";
+import { seedCareAccount } from "../../backend/test-support/care-fixtures";
 
 const browserEvents = new WeakMap<object, string[]>();
 
@@ -34,7 +35,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
   let recipientId: string | undefined;
   try {
     await page.goto("/login");
-    await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+    await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
     const cookie = (await context.cookies()).find((entry) => entry.name === "care_atlas_session")!;
     recipientId = decodeJwt(cookie.value).sub;
@@ -50,14 +51,37 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     await expect(page.getByText("오늘의 몸 상태를 기록했어요.")).toBeVisible();
     await page.goto("/documents");
     const before = await page.locator(".document-item").count();
+    const recipient = fixture.admin.collection("careRecipients").doc(recipientId!);
+    const baselineMedicationCount = (await recipient.collection("medicationPlans").get()).size;
+    const baselineDoseEventCount = (await recipient.collection("doseEvents").get()).size;
     for (const documentType of ["처방전", "진단서"]) {
       await page.getByRole("radio", { name: new RegExp(`^${documentType}`) }).check();
       await page.getByRole("button", { name: `비식별 샘플 ${documentType}으로 체험` }).click();
-      await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+      if (documentType === "처방전") {
+        await expect(page.getByRole("heading", { name: "기존 복약과 겹치는 항목이 있어요" })).toBeVisible();
+        await page.getByRole("button", { name: "별도 처방으로 등록" }).click();
+        await expect(page.getByText("복약 일정에는 아직 반영하지 않았어요.", { exact: false })).toBeVisible();
+      } else {
+        await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+      }
       await expect(page.locator(".document-item")).toHaveCount(before + 1);
+      if (documentType === "처방전") {
+        expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount);
+        expect((await recipient.collection("doseEvents").get()).size).toBe(baselineDoseEventCount);
+        const endDates = page.getByRole("region", { name: "원본과 비교해 약과 일정을 검토하세요" }).getByLabel("종료일");
+        for (let index = 0; index < await endDates.count(); index++) {
+          if (!await endDates.nth(index).inputValue()) await endDates.nth(index).fill("2027-12-31");
+        }
+        await page.getByRole("button", { name: "선택한 약 3개 확정" }).click();
+        await expect(page.getByText("선택한 약 3개를 복약 일정에 반영했어요.")).toBeVisible();
+        expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount + 3);
+      }
       page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: `“비식별_샘플_${documentType}.jpg” 문서 삭제` }).first().click();
       await expect(page.locator(".document-item")).toHaveCount(before);
+      if (documentType === "처방전") {
+        expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount);
+      }
     }
     await page.goto("/today");
     await expect(page.getByLabel("보호자 메모")).toHaveValue("격리된 자동 검증 기록");
@@ -111,6 +135,11 @@ test("synthetic account: isolated normal session, read-only Push status, forged 
     for (const collection of ["careAnalyses", "questionSets", "agentRuns"]) {
       expect((await fixture.admin.collection("careRecipients").doc(recipientId).collection(collection).get()).empty).toBe(true);
     }
+    const deniedAnalysis = await context.request.post("/api/documents/analyze", {
+      multipart: { documentType: "처방전", sample: "true" },
+    });
+    expect(deniedAnalysis.status()).toBe(403);
+    expect((await deniedAnalysis.json()).message).toContain("동의");
     const status = await context.request.get("/api/push/subscriptions?deviceId=test-device-000001");
     expect(status.status()).toBe(200);
     expect((await status.json()).subscribed).toBe(false);
@@ -141,6 +170,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
   let demoRecipientId: string | undefined;
   try {
     expect((await request.post("/api/documents/analyze", { multipart: { documentType: "처방전", sample: "true" } })).status()).toBe(401);
+    await seedCareAccount(fixture.firestore, recipientId, { consent: true });
     await context.addCookies([sessionCookie]);
     await page.goto("/documents");
     await expect(page.getByText("아직 등록한 문서가 없어요")).toBeVisible();
@@ -149,7 +179,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
 
     for (const width of [320, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      await expect(page.locator(".sample-button, .sample-divider, .demo-document-samples")).toHaveCount(0);
+      await expect(page.locator(".sample-button, .sample-divider")).toHaveCount(0);
       await expect(page.getByRole("button", { name: "처방전 첨부하고 분석하기" })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       if (width === 320 || width === 1440) {
@@ -193,17 +223,16 @@ test("documents: samples stay demo-only across API requests, uploads and account
     await expect(page).toHaveURL(/\/$/);
     expect((await context.request.post("/api/documents/analyze", { multipart: { sample: "true" } })).status()).toBe(401);
     await page.goto("/login");
-    await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+    await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
     demoRecipientId = decodeJwt((await context.cookies()).find((entry) => entry.name === "care_atlas_session")!.value).sub;
     await page.goto("/documents");
     await expect(page.getByRole("button", { name: "비식별 샘플 처방전으로 체험" })).toBeVisible();
-    await expect(page.locator(".demo-document-samples")).toBeVisible();
     await page.getByRole("button", { name: "로그아웃" }).click();
     await expect(page).toHaveURL(/\/$/);
     await context.addCookies([sessionCookie]);
     await page.goto("/documents");
-    await expect(page.locator(".sample-button, .sample-divider, .demo-document-samples")).toHaveCount(0);
+    await expect(page.locator(".sample-button, .sample-divider")).toHaveCount(0);
     await expect(page.getByText("처방전이나 진단서를 첨부하고 분석해보세요.")).toBeVisible();
   } finally {
     for (const id of [recipientId, demoRecipientId].filter((id): id is string => Boolean(id))) {
