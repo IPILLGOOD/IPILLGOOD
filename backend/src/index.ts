@@ -139,4 +139,10 @@ export { getAccountDeletion, requestAccountDeletion, processAccountDeletion, ret
 export { AccountDeletingError, getAccountSessionState, isServiceAccountActive, assertCareAccountActive, MAX_SESSION_SECONDS } from "./account-lifecycle";
 export { getFirebaseAccountAdmin } from "./firebase-account-admin";
 export { withCareAccountProcessing } from "./account-processing";
+export {
+  HealthDataConsentRequiredError,
+  assertHealthDataConsentConfirmed,
+  isHealthDataConsentConfirmed,
+  isServiceHealthDataConsentConfirmed,
+} from "./health-data-consent";
 export { deleteRecipientHealthData, verifyRecipientHealthDataDeleted } from "./health-data-deletion";

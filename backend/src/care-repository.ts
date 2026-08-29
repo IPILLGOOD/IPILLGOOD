@@ -1,5 +1,6 @@
 import demoSeed from "./data/demo-seed.json" with { type: "json" };
 import { assertCareAccountActive } from "./account-lifecycle.ts";
+import { assertHealthDataConsentConfirmed } from "./health-data-consent.ts";
 import type {
   CareRecipient,
   CareSnapshot,
@@ -242,7 +243,7 @@ async function mutateCare<T>(
   scope: CareDataScope,
   currentSnapshot: CareSnapshot | undefined,
   change: (tx: TransactionLike, snapshot: CareSnapshot, recipientRef: DocumentReferenceLike) => Promise<{ snapshot: CareSnapshot; result: T; unchanged?: boolean }>,
-  affectsMedications = false,
+  options: { affectsMedications?: boolean; requiresConsent?: boolean } = {},
 ): Promise<T> {
   assertValidScope(scope);
   if (currentSnapshot && (currentSnapshot.dataSource !== "firestore" || currentSnapshot.recipient.id !== scope.recipientId)) {
@@ -256,13 +257,16 @@ async function mutateCare<T>(
     const document = await tx.get(modelRef);
     if (!document.exists) throw new Error("돌봄 데이터를 다시 불러와 주세요.");
     const stored = document.data() as StoredCareReadModel;
-    const subscriptions = affectsMedications
+    const subscriptions = options.affectsMedications
       ? await tx.get(firestore.collection("pushSubscriptions").where("recipientId", "==", scope.recipientId)) : null;
+    if (options.requiresConsent) {
+      await assertHealthDataConsentConfirmed(firestore, scope.recipientId, tx);
+    }
     const update = await change(tx, fromStoredReadModel(stored, scope), firestore.collection("careRecipients").doc(scope.recipientId));
     if (update.unchanged) return update.result;
     const revision = (stored.revision ?? 0) + 1;
     tx.set(modelRef, { ...toStoredReadModel(update.snapshot), revision });
-    if (affectsMedications && subscriptions?.docs.some((doc) => (doc.data() as { active?: boolean }).active)) {
+    if (options.affectsMedications && subscriptions?.docs.some((doc) => (doc.data() as { active?: boolean }).active)) {
       // Durable intent and canonical plan updates commit together. No subscription => no reminder writes.
       const now = new Date().toISOString();
       tx.set(firestore.collection("medicationReminderSync").doc(scope.recipientId), {
@@ -320,7 +324,7 @@ export async function saveDailyCheckIn(
     tx.set(ref.collection("questionResponses").doc(input.questionResponse.response_id), input.questionResponse);
     tx.set(questionRef, { response_status: "answered", answered_at: input.questionResponse.answered_at }, { merge: true });
     return { snapshot: { ...update.nextSnapshot, todayCheckIn: checkIn }, result: undefined };
-  });
+  }, { requiresConsent: true });
 }
 
 export interface RegisterDocumentInput {
@@ -353,7 +357,7 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
       snapshot: { ...snapshot, medications: [...snapshot.medications, ...medications], documents: [document, ...snapshot.documents] },
       result: document,
     };
-  }, true);
+  }, { affectsMedications: true, requiresConsent: true });
 }
 
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -410,5 +414,5 @@ export async function deleteDocument(scope: CareDataScope, documentId: string, c
       if (medication.sourceDocumentId === documentId) tx.delete(ref.collection("medicationPlans").doc(medication.id));
     }
     return { snapshot: nextSnapshot, result: nextSnapshot };
-  }, true);
+  }, { affectsMedications: true });
 }
