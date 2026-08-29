@@ -1910,6 +1910,64 @@
   padding: var(--space-5);
 }
 
+.document-verification-layout {
+  display: grid;
+  grid-template-columns: minmax(17rem, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.document-verification-original {
+  position: sticky;
+  top: var(--space-4);
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+}
+
+.document-verification-original figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: var(--space-3) var(--space-4);
+}
+
+.document-verification-original figcaption span {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-verification-original > img {
+  display: block;
+  width: 100%;
+  max-height: 48rem;
+  object-fit: contain;
+}
+
+.document-verification-original__placeholder {
+  display: grid;
+  min-height: 18rem;
+  place-items: center;
+  align-content: center;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  padding: var(--space-5);
+  text-align: center;
+}
+
+.document-verification-original__placeholder p {
+  max-width: 18rem;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
 .analysis-result__header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -1959,6 +2017,102 @@
   color: var(--color-primary-900);
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.medication-evidence {
+  margin: var(--space-5) 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+.medication-evidence__heading h4,
+.medication-evidence__heading p {
+  margin: 0;
+}
+
+.medication-evidence__heading p {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.medication-evidence__list {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.medication-evidence__item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.medication-evidence__item header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.medication-evidence__item header span:not(.badge) {
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.medication-evidence__item h5 {
+  margin: var(--space-1) 0 0;
+}
+
+.medication-evidence__item dl {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.medication-evidence__item dl > div {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: var(--space-2);
+  border-radius: calc(var(--radius-sm) / 2);
+  background: var(--color-sage-50);
+  padding: var(--space-2);
+}
+
+.medication-evidence__item dt {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.medication-evidence__item dd {
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.medication-evidence__item q,
+.medication-evidence__item small {
+  display: block;
+}
+
+.medication-evidence__item small {
+  margin-top: 0.15rem;
+  color: var(--color-text-muted);
+}
+
+.medication-evidence__official {
+  margin: var(--space-3) 0 0;
+  color: var(--color-primary-800);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.medication-evidence__warnings {
+  margin: var(--space-3) 0 0;
+  color: var(--color-warning);
+  padding-left: 1.1rem;
+  font-size: 0.74rem;
 }
 
 .analysis-columns {
@@ -2612,8 +2766,13 @@
   .medication-facts,
   .analysis-findings,
   .analysis-columns,
+  .document-verification-layout,
   .detail-two-column {
     grid-template-columns: 1fr;
+  }
+
+  .document-verification-original {
+    position: static;
   }
 
   .today-quick-actions,

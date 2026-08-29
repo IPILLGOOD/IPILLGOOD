@@ -122,10 +122,14 @@ export async function POST(request: Request) {
       : null;
     const requiresPeriodReview = draft?.candidates.some((candidate) =>
       !candidate.startDate || !candidate.endDate) ?? false;
-
+    const reviewMedicationCount = typedDocumentType === "처방전"
+      ? (result.analysis.medications ?? []).filter((medication) => medication.reviewStatus !== "verified").length
+      : 0;
     return Response.json({
       message:
-        draft
+        reviewMedicationCount > 0
+          ? `${result.message} OCR 또는 공식 정보 확인이 필요한 약 ${reviewMedicationCount}개는 선택할 수 없어요. 나머지 약도 검토하고 확정하기 전에는 반영하지 않아요.`
+          : draft
           ? requiresPeriodReview
             ? `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개의 처방 기간을 확인하고 확정해주세요.`
             : `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개를 검토하고 확정해주세요.`
@@ -134,6 +138,7 @@ export async function POST(request: Request) {
       document,
       draft,
       addedMedicationCount: 0,
+      reviewMedicationCount,
       requiresPeriodReview,
     });
   } catch (error) {

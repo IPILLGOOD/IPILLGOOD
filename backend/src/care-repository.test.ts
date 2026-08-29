@@ -227,6 +227,7 @@ test("처방일과 총 투약일수로 종료일을 계산해 경계 날짜에�
           startDate: "",
           purposePlain: "증상 관리",
           precautions: ["어지러움 확인"],
+          reviewStatus: "verified",
         },
       ],
     },
@@ -255,7 +256,7 @@ test("과거 처방은 종료 상태로 보존하고 오늘 복약 일정에는 
       totalSupplyDays: 5,
       summary: "과거 5일분 처방",
       findings: [], carePoints: [], questionsForProfessional: [], disclaimer: "원본 확인", source: "openai",
-      medications: [{ productName: "과거처방정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "", purposePlain: "테스트", precautions: [] }],
+      medications: [{ productName: "과거처방정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "", purposePlain: "테스트", precautions: [], reviewStatus: "verified" }],
     },
   }, "2026-08-23");
 
@@ -275,7 +276,7 @@ test("월말·윤년 계산을 보존하고 불확실한 기간은 자동 활성
       prescriptionDate,
       ...(totalSupplyDays ? { totalSupplyDays } : {}),
       summary: "기간 계산", findings: [], carePoints: [], questionsForProfessional: [], disclaimer: "원본 확인", source: "openai" as const,
-      medications: [{ productName: "기간정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "", purposePlain: "테스트", precautions: [] }],
+      medications: [{ productName: "기간정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "", purposePlain: "테스트", precautions: [], reviewStatus: "verified" }],
     },
   }, "2020-01-01");
 
@@ -300,13 +301,43 @@ test("처방 기간이 불확실한 문서는 확인 필요로 저장하고 복�
       documentType: "처방전",
       summary: "기간 확인 필요",
       findings: [], carePoints: [], questionsForProfessional: [], disclaimer: "원본 확인", source: "openai",
-      medications: [{ productName: "확인정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "날짜 확인 필요", purposePlain: "테스트", precautions: [] }],
+      medications: [{ productName: "확인정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "날짜 확인 필요", purposePlain: "테스트", precautions: [], reviewStatus: "needs_review" }],
     },
   });
 
   assert.equal(document.status, "needs_review");
   assert.deepEqual((await getCareSnapshot(scope)).medications, []);
   assert.equal(firestore.store.has(`careRecipients/${scope.recipientId}/medicationPlans/rx-uncertain-rx-1`), false);
+});
+
+test("OCR 근거나 공식 코드 대조가 필요한 약은 복약 일정으로 활성화하지 않는다", () => {
+  const medications = medicationPlansFromPrescription({
+    id: "doc-rx-review",
+    documentType: "처방전",
+    uploadedAt: "2026-08-16T10:00:00+09:00",
+    analysis: {
+      documentType: "처방전",
+      summary: "약 1개",
+      findings: [],
+      carePoints: [],
+      questionsForProfessional: [],
+      disclaimer: "원본 확인",
+      source: "openai",
+      medications: [{
+        productName: "테스트정 5mg",
+        ingredientName: "테스트 성분",
+        doseAmount: "1정",
+        frequency: "하루 1회",
+        timing: "아침 식사 후",
+        startDate: "2026-08-16",
+        purposePlain: "증상 관리",
+        precautions: [],
+        reviewStatus: "needs_review",
+      }],
+    },
+  });
+
+  assert.deepEqual(medications, []);
 });
 
 test("진단서 분석 결과는 복약 계획으로 만들지 않는다", () => {
@@ -348,6 +379,7 @@ const prescriptionUpload = (id: string) => ({
         endDate: "2026-08-22",
         purposePlain: "증상 관리",
         precautions: [],
+        reviewStatus: "verified" as const,
       },
       {
         productName: "둘째약 10mg",
@@ -358,6 +390,7 @@ const prescriptionUpload = (id: string) => ({
         startDate: "2026-08-16",
         purposePlain: "증상 관리",
         precautions: [],
+        reviewStatus: "verified" as const,
       },
     ],
   },
@@ -393,6 +426,37 @@ test("처방 분석은 복약 초안만 만들고 현재 약·복용 기록·알
   assert.deepEqual(result.medications, []);
   assert.deepEqual(result.doseEvents, []);
   assert.equal(firestore.store.has(`medicationReminderSync/${scope.recipientId}`), false);
+});
+
+test("OCR 대조가 끝나지 않은 초안 후보는 확정 요청으로도 활성화할 수 없다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-draft-unverified", firestore };
+  await consentedSnapshot(scope);
+  const verifiedUpload = prescriptionUpload("unverified-confirm");
+  const upload = {
+    ...verifiedUpload,
+    analysis: {
+      ...verifiedUpload.analysis,
+      medications: verifiedUpload.analysis.medications.map((medication, index) => ({
+        ...medication,
+        reviewStatus: index === 0 ? "needs_review" as const : medication.reviewStatus,
+      })),
+    },
+  };
+  const document = await registerDocument(scope, upload);
+  const draft = (await getMedicationPlanDraft(scope, document.medicationDraftId!))!;
+  const candidates = confirmationCandidates(draft);
+  candidates[0] = { ...candidates[0]!, included: true };
+  candidates[1] = { ...candidates[1]!, included: false };
+
+  await assert.rejects(confirmMedicationPlanDraft(scope, {
+    draftId: draft.id,
+    revision: draft.revision,
+    idempotencyKey: "unverified-confirm-request",
+    confirmedBy: "google:user-1",
+    candidates,
+  }), /식약처 정보 대조가 완료된 약만/);
+  assert.deepEqual((await getCareSnapshot(scope)).medications, []);
 });
 
 test("사용자가 수정·선택해 확정한 약만 활성화하고 확인자·시각·문서 revision을 보존한다", async () => {

@@ -17,6 +17,7 @@ type EditableCandidate = Pick<
   | "timing"
   | "startDate"
   | "endDate"
+  | "reviewStatus"
 >;
 
 interface ConfirmationResponse {
@@ -77,18 +78,20 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
       </div>
 
       <div className="medication-draft-review__list">
-        {candidates.map((candidate, index) => (
-          <fieldset className="medication-draft-candidate" disabled={status === "pending" || status === "success"} key={candidate.id}>
+        {candidates.map((candidate, index) => {
+          const verified = candidate.reviewStatus === "verified";
+          return <fieldset className="medication-draft-candidate" disabled={status === "pending" || status === "success"} key={candidate.id}>
             <legend>약 {index + 1}</legend>
             <label className="medication-draft-candidate__include">
               <input
                 type="checkbox"
                 checked={candidate.included}
+                disabled={!verified}
                 onChange={(event) => updateCandidate(candidate.id, { included: event.target.checked })}
               />
               <span>
                 <strong>이 약을 복약 일정에 포함</strong>
-                <small>제외한 후보는 저장만 되고 활성화되지 않아요.</small>
+                <small>{verified ? "제외한 후보는 저장만 되고 활성화되지 않아요." : "OCR 근거와 식약처 정보 대조를 완료해야 선택할 수 있어요."}</small>
               </span>
             </label>
             <div className="medication-draft-fields">
@@ -101,10 +104,10 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
               <label>종료일<input type="date" value={candidate.endDate ?? ""} onChange={(event) => updateCandidate(candidate.id, { endDate: event.target.value || undefined })} required /></label>
             </div>
             <p className="medication-draft-candidate__notice">
-              <TriangleAlert size={16} aria-hidden="true" /> 분석값은 확인이 필요한 초안이에요. 처방전과 약 봉투를 기준으로 수정해주세요.
+              <TriangleAlert size={16} aria-hidden="true" /> {verified ? "분석값은 확인이 필요한 초안이에요. 처방전과 약 봉투를 기준으로 수정해주세요." : "공식 대조가 끝나지 않아 이 약은 활성화할 수 없어요."}
             </p>
           </fieldset>
-        ))}
+        })}
       </div>
 
       <div className="medication-draft-summary">

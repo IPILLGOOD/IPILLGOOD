@@ -380,7 +380,7 @@ function createMedicationPlanDraft(
         startDate,
         ...(endDate ? { endDate } : {}),
         id: `${id}-candidate-${index + 1}`,
-        included: true,
+        included: medication.reviewStatus === "verified",
         state: "needs_review",
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -402,6 +402,8 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
     const documentRef = ref.collection("clinicalDocuments").doc(input.contentHash);
     const existing = await tx.get(documentRef);
     if (existing.exists) return { snapshot, result: existing.data() as ClinicalDocument & { size: number }, unchanged: true };
+    const requiresMedicationReview = input.documentType === "처방전" &&
+      (input.analysis?.medications ?? []).some((medication) => medication.reviewStatus !== "verified");
     const now = new Date();
     const revision = documentRevision(input);
     const draft = createMedicationPlanDraft(documentRef.id, revision, input.analysis, now);
@@ -409,7 +411,8 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
       id: documentRef.id, fileName: input.fileName, contentHash: input.contentHash,
       documentType: input.documentType, uploadedAt: now.toISOString(),
       status: draft ? "needs_review" : "confirmed", redacted: input.isSample,
-      sourceLabel: draft ? "분석 초안 · 복약 일정 반영 전 검토 필요"
+      sourceLabel: draft && requiresMedicationReview ? "OCR·공식 정보 대조 필요 · 복약 초안"
+        : draft ? "분석 초안 · 복약 일정 반영 전 검토 필요"
         : input.analysis?.source === "api" ? "API 분석 완료"
           : input.analysis?.source === "openai" ? "OpenAI 분석 완료" : "비식별 데모 분석 · 원본과 확인 필요",
       revision,
@@ -574,6 +577,9 @@ export async function confirmMedicationPlanDraft(
     }
     const selected = input.candidates.filter((candidate) => candidate.included);
     if (selected.length === 0) throw new Error("활성화할 약을 하나 이상 선택해주세요.");
+    if (selected.some((candidate) => originalById.get(candidate.id)?.reviewStatus !== "verified")) {
+      throw new Error("OCR 근거와 식약처 정보 대조가 완료된 약만 활성화할 수 있어요.");
+    }
     const timestamp = now.toISOString();
     const medications = selected.map((candidate) =>
       confirmedMedicationPlan(draft, originalById.get(candidate.id)!, candidate, input.confirmedBy, timestamp));
@@ -686,7 +692,11 @@ export function medicationPlansFromPrescription(
   const totalSupplyDays = validSupplyDays(document.analysis?.totalSupplyDays);
 
   return sourceMedications
-    .filter((medication) => medication.productName.trim() && medication.frequency.trim())
+    .filter((medication) =>
+      medication.reviewStatus === "verified" &&
+      medication.productName.trim() &&
+      medication.frequency.trim(),
+    )
     .flatMap((medication, index) => {
       const startDate = validCalendarDate(medication.startDate) ?? prescriptionDate;
       if (!startDate) return [];

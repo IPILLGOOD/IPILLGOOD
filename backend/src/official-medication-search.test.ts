@@ -6,6 +6,7 @@ import {
   parseProductPermitDetailResponse,
   parseProductPermitResponse,
   searchOfficialMedicationInfo,
+  verifyOfficialMedicationCode,
 } from "./official-medication-search.ts";
 
 function officialResponse(items: unknown[], totalCount = items.length) {
@@ -152,6 +153,37 @@ test("API 키가 없으면 예시나 웹 검색으로 대체하지 않고 미설
   assert.equal(called, false);
   assert.equal(result.status, "not_configured");
   assert.deepEqual(result.items, []);
+});
+
+test("OCR 품목코드를 정확 일치 조건으로 식약처 허가정보에서 확인한다", async () => {
+  let requested: URL | undefined;
+  const result = await verifyOfficialMedicationCode("200001234", {
+    apiKey: "official-key",
+    fetcher: async (input) => {
+      requested = new URL(String(input));
+      return officialResponse([productItem()]);
+    },
+  });
+
+  assert.equal(requested?.searchParams.get("item_seq"), "200001234");
+  assert.equal(requested?.searchParams.has("item_name"), false);
+  assert.equal(result.status, "matched");
+  if (result.status === "matched") {
+    assert.equal(result.item.itemSeq, "200001234");
+    assert.match(result.item.productName, /노바스크/);
+  }
+});
+
+test("품목코드가 없거나 API 키가 없으면 네트워크 없이 확인 필요 상태를 반환한다", async () => {
+  let calls = 0;
+  const fetcher = async () => {
+    calls += 1;
+    return emptyOfficialResponse();
+  };
+
+  assert.equal((await verifyOfficialMedicationCode("코드없음", { apiKey: "key", fetcher })).status, "not_found");
+  assert.equal((await verifyOfficialMedicationCode("200001234", { apiKey: "", fetcher })).status, "not_configured");
+  assert.equal(calls, 0);
 });
 
 test("제품명과 성분명을 각각 공식 조회하고 itemSeq로 중복을 제거한다", async () => {

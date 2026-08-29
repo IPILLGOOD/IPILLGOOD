@@ -51,6 +51,7 @@ export interface MedicationPlan {
 export interface PrescriptionMedication {
   productName: string;
   ingredientName: string;
+  itemCode?: string;
   doseAmount: string;
   frequency: string;
   timing: string;
@@ -58,6 +59,41 @@ export interface PrescriptionMedication {
   endDate?: string;
   purposePlain: string;
   precautions: string[];
+  fieldEvidence?: MedicationFieldEvidence[];
+  verification?: MedicationVerification;
+  reviewStatus?: "verified" | "needs_review";
+}
+
+export type MedicationEvidenceField =
+  | "productName"
+  | "ingredientName"
+  | "itemCode"
+  | "doseAmount"
+  | "frequency"
+  | "timing"
+  | "startDate"
+  | "endDate";
+
+export interface MedicationFieldEvidence {
+  field: MedicationEvidenceField;
+  sourceText: string;
+  confidence: number;
+  region?: {
+    page: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface MedicationVerification {
+  status: "verified" | "mismatch" | "not_found" | "not_configured" | "unavailable";
+  sourceLabel: string;
+  officialItemCode?: string;
+  officialProductName?: string;
+  officialIngredientName?: string;
+  warnings: string[];
 }
 
 export type MedicationDraftState =
