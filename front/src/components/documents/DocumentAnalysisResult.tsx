@@ -44,11 +44,11 @@ export function DocumentAnalysisResult({
       : analysis.source === "openai"
         ? "OpenAI 문서 분석"
         : "데모 분석 결과";
+  const nutritionDiagnoses = supportedNutritionDiagnoses(analysis);
   const medicationsNeedingReview = analysis.medications?.filter(
     (medication) => medication.reviewStatus !== "verified",
   ).length ?? 0;
   const requiresMedicationVerification = medicationsNeedingReview > 0;
-  const nutritionDiagnoses = supportedNutritionDiagnoses(analysis);
 
   return (
     <section className="analysis-result" aria-labelledby="analysis-result-title">

@@ -363,7 +363,7 @@ export async function confirmDocumentDiagnoses(
     const recipient = { ...snapshot.recipient, confirmedConditions: [...merged.values()], lastConfirmedAt: confirmedAt };
     tx.set(ref, recipient);
     return { snapshot: { ...snapshot, recipient }, result: additions };
-  });
+  }, { requiresConsent: true });
 }
 
 export async function getTodayDailyCheckIn(scope: CareDataScope): Promise<DailyCheckIn | null> {
@@ -1023,11 +1023,11 @@ export async function deleteDocument(scope: CareDataScope, documentId: string, c
       documents: snapshot.documents.filter((item) => item.id !== documentId),
     };
     tx.delete(document.ref);
+    if (recipient !== snapshot.recipient) tx.set(ref, recipient);
     const storedDocument = document.data() as ClinicalDocument;
     if (storedDocument.medicationDraftId) {
       tx.delete(ref.collection("medicationPlanDrafts").doc(storedDocument.medicationDraftId));
     }
-    if (recipient !== snapshot.recipient) tx.set(ref, recipient);
     for (const medication of snapshot.medications) {
       if (medication.sourceDocumentId === documentId) tx.delete(ref.collection("medicationPlans").doc(medication.id));
     }

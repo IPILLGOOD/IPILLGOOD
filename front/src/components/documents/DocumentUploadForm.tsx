@@ -13,6 +13,7 @@ interface AnalysisResponse {
   message?: string;
   analysis?: DocumentAnalysis;
   addedMedicationCount?: number;
+  document?: { id: string };
   reviewMedicationCount?: number;
   draft?: MedicationPlanDraft | null;
   requiresPeriodReview?: boolean;
@@ -23,7 +24,6 @@ interface AnalysisResponse {
     productName: string;
   }>;
   duplicateResolution?: "merge" | "separate";
-  document?: { id: string };
 }
 
 function copyFormData(source: FormData) {
@@ -39,12 +39,12 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
+  const [documentId, setDocumentId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MedicationPlanDraft | null>(null);
   const [requiresPeriodReview, setRequiresPeriodReview] = useState(false);
   const [duplicateCandidates, setDuplicateCandidates] = useState<NonNullable<AnalysisResponse["duplicateCandidates"]>>([]);
   const [medicationRegistration, setMedicationRegistration] = useState<"draft" | "pending" | "merged">("draft");
   const retryFormData = useRef<FormData | null>(null);
-  const [documentId, setDocumentId] = useState<string | null>(null);
   const previewUrl = useMemo(
     () => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : null),
     [file],
@@ -66,11 +66,11 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         : "문서에서 중요한 내용을 찾고 쉬운 말로 정리하고 있어요.",
     );
     setAnalysis(null);
+    setDocumentId(null);
     setDraft(null);
     setRequiresPeriodReview(false);
     setDuplicateCandidates([]);
     setMedicationRegistration("draft");
-    setDocumentId(null);
 
     try {
       const response = await fetch("/api/documents/analyze", {
@@ -93,10 +93,10 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
       setStatus("success");
       setMessage(body.message ?? "문서 분석을 마쳤어요.");
       setAnalysis(body.analysis);
+      setDocumentId(body.document?.id ?? null);
       setDraft(body.draft ?? null);
       setRequiresPeriodReview(body.requiresPeriodReview === true);
       setMedicationRegistration(body.duplicateResolution === "merge" ? "merged" : "draft");
-      setDocumentId(body.document?.id ?? null);
       router.refresh();
     } catch (error) {
       setStatus("error");

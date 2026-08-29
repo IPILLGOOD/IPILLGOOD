@@ -52,7 +52,7 @@ test("profile: three-month policy, responsive dialog, keyboard cancellation, dem
     expect((await f.admin.collection("accountDeletions").doc(f.scope.recipientId).get()).exists).toBe(false);
     await page.getByRole("button", { name: "로그아웃", exact: true }).click();
     await page.goto("/login");
-    await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+    await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
     await page.goto("/profile");
     await expect(page.getByRole("button", { name: "회원 탈퇴", exact: true })).toBeDisabled();
