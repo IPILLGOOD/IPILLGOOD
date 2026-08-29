@@ -1,9 +1,12 @@
 import {
   deleteDocument,
+  confirmMedicationPlanDraft,
   getCareSnapshot,
   registerDocument,
   type CareDataScope,
   type RegisterDocumentInput,
+  type ConfirmMedicationPlanDraftInput,
+  type MedicationPlanConfirmationResult,
 } from "./care-repository.ts";
 import { syncMedicationReminderSchedules } from "./push-repository.ts";
 import type { CareSnapshot, ClinicalDocument, MedicationPlan } from "./types.ts";
@@ -35,6 +38,15 @@ interface DeleteDependencies {
     documentId: string,
     currentSnapshot?: CareSnapshot,
   ): Promise<CareSnapshot>;
+  syncMedicationReminderSchedules(input: ReminderSyncInput): Promise<unknown>;
+}
+
+interface ConfirmDependencies {
+  confirmMedicationPlanDraft(
+    scope: CareDataScope,
+    input: ConfirmMedicationPlanDraftInput,
+  ): Promise<MedicationPlanConfirmationResult>;
+  getCareSnapshot(scope: CareDataScope): Promise<CareSnapshot>;
   syncMedicationReminderSchedules(input: ReminderSyncInput): Promise<unknown>;
 }
 
@@ -100,4 +112,27 @@ export async function deleteDocumentAndSyncMedicationReminders(
   } catch {
     console.error(JSON.stringify({ event: "reminder_sync_pending", code: "SYNC_DEFERRED" }));
   }
+}
+
+export async function confirmMedicationPlanDraftAndSyncMedicationReminders(
+  scope: CareDataScope,
+  input: ConfirmMedicationPlanDraftInput,
+  dependencies: ConfirmDependencies = {
+    confirmMedicationPlanDraft,
+    getCareSnapshot,
+    syncMedicationReminderSchedules,
+  },
+) {
+  const result = await dependencies.confirmMedicationPlanDraft(scope, input);
+  const snapshot = await dependencies.getCareSnapshot(scope);
+  try {
+    await syncWithOneRetry(dependencies.syncMedicationReminderSchedules, {
+      recipientId: scope.recipientId,
+      medications: snapshot.medications,
+      firestore: scope.firestore,
+    });
+  } catch {
+    console.error(JSON.stringify({ event: "reminder_sync_pending", code: "SYNC_DEFERRED" }));
+  }
+  return result;
 }

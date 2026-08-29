@@ -190,6 +190,45 @@ async function generationFixture() {
   return { firestore, input: { scope, snapshot: stored, targetDate: "2026-08-16", answerer: "caregiver" as const } };
 }
 
+test("동의가 없으면 Care Agent를 호출하거나 질문·분석 기록을 만들지 않는다", async () => {
+  const { firestore, input } = await generationFixture();
+  await firestore.collection("careRecipients").doc(input.scope.recipientId).set({ consentConfirmed: false }, { merge: true });
+  let calls = 0;
+
+  await assert.rejects(
+    getOrCreateQuestionSet(input, {
+      runAgent: async (request) => {
+        calls += 1;
+        return runCareAgent({ ...request, apiKey: "" });
+      },
+    }),
+    /동의/,
+  );
+
+  assert.equal(calls, 0);
+  for (const collection of ["questionGenerations", "questionGenerationAttempts", "questionSets", "careAnalyses", "agentRuns"]) {
+    assert.equal((await firestore.collection(`careRecipients/${input.scope.recipientId}/${collection}`).get()).docs.length, 0);
+  }
+});
+
+test("Care Agent 실행 중 동의가 철회되면 결과와 실패 기록을 게시하지 않는다", async () => {
+  const { firestore, input } = await generationFixture();
+  let calls = 0;
+
+  await assert.rejects(getOrCreateQuestionSet(input, {
+    runAgent: async (request) => {
+      calls += 1;
+      await firestore.collection("careRecipients").doc(input.scope.recipientId).set({ consentConfirmed: false }, { merge: true });
+      return runCareAgent({ ...request, apiKey: "" });
+    },
+  }), /동의/);
+
+  assert.equal(calls, 1);
+  for (const collection of ["questionGenerations", "questionGenerationAttempts", "questionSets", "careAnalyses", "agentRuns"]) {
+    assert.equal((await firestore.collection(`careRecipients/${input.scope.recipientId}/${collection}`).get()).docs.length, 0);
+  }
+});
+
 test("같은 입력의 동시 최초 요청은 Agent와 성공 결과를 한 번만 생성한다", async () => {
   const { firestore, input } = await generationFixture();
   let calls = 0;

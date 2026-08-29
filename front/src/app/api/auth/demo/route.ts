@@ -10,12 +10,13 @@ import {
 
 import { createSession } from "@/lib/auth/session";
 import { isDemoLoginAllowed } from "@/lib/auth/session-security";
-import { isSameOriginRequest } from "@/lib/api-security";
+import { isSameOriginBrowserRequest } from "@/lib/request-origin";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { rateLimitResponse } from "@/lib/rate-limit-core";
 
 export async function POST(request: Request) {
-  if (!isSameOriginRequest(request)) {
+  const wantsJson = request.headers.get("accept")?.includes("application/json") === true;
+  if (!isSameOriginBrowserRequest(request)) {
     return NextResponse.json({ error: "invalid_origin" }, { status: 403 });
   }
   const requestUrl = new URL(request.url);
@@ -54,5 +55,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "demo_session_failed" }, { status: 503 });
   }
 
-  return new NextResponse(null, { status: 303, headers: { Location: "/today" } });
+  return wantsJson
+    ? NextResponse.json({ redirectTo: "/today" }, { status: 201 })
+    : new NextResponse(null, { status: 303, headers: { Location: "/today" } });
 }
