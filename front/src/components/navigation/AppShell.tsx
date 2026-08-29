@@ -16,6 +16,7 @@ import { usePathname } from "next/navigation";
 import type { SessionUser } from "@/lib/auth/session";
 import { PushStatusProvider } from "@/components/notifications/PushStatusProvider";
 import { PushKeyNotice } from "@/components/notifications/PushKeyNotice";
+import { CareSyncProvider } from "@/components/sync/CareSyncProvider";
 
 const navigation = [
   { href: "/today", label: "오늘 할 일", icon: CalendarCheck2, mobile: true },
@@ -81,6 +82,7 @@ export function AppShell({
   if (isPublicPage) return children;
 
   return (
+    <CareSyncProvider enabled={Boolean(user && user.provider !== "demo")} connected={user?.provider === "connected"}>
     <PushStatusProvider key={`${user?.provider}:${user?.id}`} enabled={Boolean(user)}>
       <a className="skip-link" href="#main-content">
         본문으로 바로가기
@@ -96,7 +98,7 @@ export function AppShell({
               </span>
               <span className="sidebar-user__copy">
                 <strong>{user.name}</strong>
-                <small>{user.provider === "google" ? "Google 계정" : "데모 모드"}</small>
+                <small>{user.provider === "google" ? "Google 계정" : user.provider === "connected" ? "연결된 사용자" : "데모 모드"}</small>
               </span>
               <form action="/api/auth/logout" method="post">
                 <button type="submit" aria-label="로그아웃" title="로그아웃">
@@ -131,5 +133,6 @@ export function AppShell({
       </div>
       <NavigationLinks mobile />
     </PushStatusProvider>
+    </CareSyncProvider>
   );
 }

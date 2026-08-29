@@ -195,6 +195,33 @@ export async function deactivatePushSubscription(input: {
   return true;
 }
 
+export async function deactivatePushSubscriptionsForUser(input: {
+  userId: string;
+  recipientId: string;
+  now?: Date;
+  firestore?: FirestoreLike;
+}) {
+  const firestore = input.firestore ?? await getAdminFirestore();
+  const now = input.now ?? new Date();
+  const rows = await firestore.collection(SUBSCRIPTIONS_COLLECTION).where("userId", "==", input.userId).get();
+  const targets = rows.docs.filter((doc) => {
+    const value = doc.data() as PushSubscriptionRecord;
+    return value.recipientId === input.recipientId && value.active;
+  });
+  if (!targets.length) return 0;
+  await firestore.runTransaction(async (tx) => {
+    const current = await Promise.all(targets.map((doc) => tx.get(doc.ref)));
+    for (const document of current) {
+      const value = document.data() as PushSubscriptionRecord | undefined;
+      if (value?.userId === input.userId && value.recipientId === input.recipientId && value.active) {
+        tx.set(document.ref, { active: false, updatedAt: now.toISOString() }, { merge: true });
+      }
+    }
+  });
+  await deactivateSchedulesIfUnused(firestore, input.recipientId, now);
+  return targets.length;
+}
+
 export async function getNotificationScheduleStatus(
   recipientId: string,
 ): Promise<NotificationScheduleStatus> {

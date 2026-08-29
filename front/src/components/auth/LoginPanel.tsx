@@ -1,11 +1,16 @@
-import { ArrowLeft, ArrowRight, Check, HeartPulse, PlayCircle, ShieldCheck } from "lucide-react";
+"use client";
+
+import { ArrowLeft, ArrowRight, Check, HeartPulse, Link2, PlayCircle, ShieldCheck, UserRound } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { DemoLoginButton } from "./DemoLoginButton";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { GoogleLogo } from "./GoogleLogo";
 
 export function LoginPanel({ errorMessage, successMessage }: { errorMessage?: string; successMessage?: string }) {
+  const [method, setMethod] = useState<"google" | "connection">("google");
+
   return (
     <main className="login-page" id="main-content">
       <div className="login-page__brand-column">
@@ -34,23 +39,50 @@ export function LoginPanel({ errorMessage, successMessage }: { errorMessage?: st
           {errorMessage ? <p className="login-error" role="alert">{errorMessage}</p> : null}
           {successMessage ? <p className="account-deletion-notice" role="status">{successMessage}</p> : null}
 
-          <div className="login-choice login-choice--google">
-            <div>
-              <span className="login-choice__icon"><GoogleLogo /></span>
-              <span><strong>Google로 로그인</strong><small>내 Google 계정으로 안전하게 계속해요.</small></span>
+          <div className="login-access-card">
+            <div className="login-method-tabs" role="tablist" aria-label="로그인 방법">
+              <button aria-controls="login-method-panel" aria-selected={method === "google"} className={method === "google" ? "login-method-tab login-method-tab--active" : "login-method-tab"} onClick={() => setMethod("google")} role="tab" type="button">
+                <UserRound size={17} aria-hidden="true" /> 내 계정
+              </button>
+              <button aria-controls="login-method-panel" aria-selected={method === "connection"} className={method === "connection" ? "login-method-tab login-method-tab--active" : "login-method-tab"} onClick={() => setMethod("connection")} role="tab" type="button">
+                <Link2 size={17} aria-hidden="true" /> 연결 코드
+              </button>
             </div>
-            <GoogleSignInButton />
+
+            <div className="login-method-panel" id="login-method-panel" role="tabpanel">
+              {method === "google" ? (
+                <>
+                  <div className="login-method-copy">
+                    <span className="login-choice__icon"><GoogleLogo /></span>
+                    <span><strong>Google 계정으로 시작하기</strong><small>돌봄 기록을 만들고 함께 사용할 사람을 초대할 수 있어요.</small></span>
+                  </div>
+                  <GoogleSignInButton />
+                </>
+              ) : (
+                <>
+                  <div className="login-method-copy">
+                    <span className="login-choice__icon"><Link2 size={22} aria-hidden="true" /></span>
+                    <span><strong>초대받은 돌봄 화면 연결하기</strong><small>전달받은 8자리 코드만 입력하면 같은 화면을 바로 볼 수 있어요.</small></span>
+                  </div>
+                  <form className="connection-login-form" action="/api/auth/connection/redeem" method="post">
+                    <label htmlFor="connection-code">연결 코드</label>
+                    <div className="connection-login-form__row">
+                      <input id="connection-code" name="code" inputMode="text" autoComplete="one-time-code" minLength={8} maxLength={20} placeholder="ABCD-EFGH" required />
+                      <button className="login-demo-button" type="submit">연결하기 <ArrowRight size={17} aria-hidden="true" /></button>
+                    </div>
+                  </form>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="login-divider" role="separator"><span>또는</span></div>
+          <div className="login-divider" role="separator"><span>서비스를 먼저 둘러보고 싶다면</span></div>
 
-          <div className="login-choice login-choice--demo">
-            <div>
-              <span className="login-choice__icon"><PlayCircle size={22} aria-hidden="true" /></span>
-              <span><strong>데모 로그인</strong><small>가입 없이 비식별 샘플로 모든 흐름을 둘러봐요.</small></span>
-            </div>
+          <div className="login-demo-entry">
+            <span className="login-demo-entry__icon"><PlayCircle size={20} aria-hidden="true" /></span>
+            <span><strong>체험 모드</strong><small>가입 없이 비식별 샘플로 둘러봐요.</small></span>
             <DemoLoginButton className="login-demo-button">
-              데모로 둘러보기 <ArrowRight size={17} aria-hidden="true" />
+              둘러보기 <ArrowRight size={16} aria-hidden="true" />
             </DemoLoginButton>
           </div>
 

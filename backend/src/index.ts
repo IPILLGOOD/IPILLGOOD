@@ -4,6 +4,7 @@ export {
   getDocumentImportReview,
   cancelMedicationPlanDraft,
   confirmMedicationPlanDraft,
+  getCareRevision,
   getMedicationPlanDraft,
   getCareSnapshot,
   rebuildCareReadModel,
@@ -22,6 +23,7 @@ export {
   type MedicationCandidateConfirmation,
   type MedicationPlanConfirmationResult,
   type RegisterDocumentInput,
+  CareConflictError,
   MedicationDuplicateResolutionRequiredError,
 } from "./care-repository";
 export {
@@ -59,6 +61,7 @@ export {
 } from "./medication-schedule";
 export {
   deactivatePushSubscription,
+  deactivatePushSubscriptionsForUser,
   dispatchDueMedicationReminders,
   getNotificationScheduleStatus,
   getPushDeviceStatus,
@@ -155,6 +158,22 @@ export type {
   SymptomEvent,
 } from "./types";
 export { getAccountDeletionPolicy, accountDeletionDeadline, assertRecentAccountAuthentication, type AccountDeletionPolicy } from "./account-deletion-policy";
+export {
+  CONNECTION_CODE_DURATION_SECONDS,
+  CONNECTED_SESSION_DURATION_SECONDS,
+  cleanupExpiredCareConnections,
+  createCareConnectionCode,
+  disconnectCareConnection,
+  getCareConnection,
+  hashConnectionCode,
+  normalizeConnectionCode,
+  redeemCareConnectionCode,
+  revokeCareConnectionForAccount,
+  touchCareConnection,
+  validateCareConnectionSession,
+  type CareConnection,
+  type PublicCareConnection,
+} from "./care-connection";
 export { getAccountDeletion, requestAccountDeletion, processAccountDeletion, retryAccountDeletions, restoreAccount, publicAccountDeletion, type AccountDeletion } from "./account-deletion";
 export { AccountDeletingError, getAccountSessionState, isServiceAccountActive, assertCareAccountActive, MAX_SESSION_SECONDS } from "./account-lifecycle";
 export { getFirebaseAccountAdmin } from "./firebase-account-admin";

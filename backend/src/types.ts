@@ -386,10 +386,12 @@ export interface CareSnapshot {
   clinicianQuestions: ClinicianQuestion[];
   todayCheckIn?: DailyCheckIn | null;
   dataSource: "firestore" | "local-fallback";
+  revision: number;
 }
 
 export interface ActionState {
   status: "idle" | "success" | "error";
   message: string;
   fieldErrors?: Record<string, string[]>;
+  conflict?: boolean;
 }

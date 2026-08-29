@@ -42,6 +42,16 @@
       "name": "RATE_LIMIT_CHECKIN",
       "namespace_id": "5804",
       "simple": { "limit": 20, "period": 60 }
+    },
+    {
+      "name": "RATE_LIMIT_CONNECTION_AUTH",
+      "namespace_id": "5805",
+      "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      "name": "RATE_LIMIT_SYNC",
+      "namespace_id": "5806",
+      "simple": { "limit": 30, "period": 60 }
     }
   ],
   "services": [

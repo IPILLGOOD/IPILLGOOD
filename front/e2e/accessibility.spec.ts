@@ -76,7 +76,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await audit(page, "desktop-login-error", info);
   await page.goto("/login");
   await audit(page, "desktop-login", info);
-  await tabTo(page, page.getByRole("button", { name: /데모로 둘러보기/ }));
+  await tabTo(page, page.getByRole("button", { name: /둘러보기/ }));
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/today$/);
   await audit(page, "desktop-today", info);
@@ -161,7 +161,7 @@ test.describe("mobile Push status semantics (simulated user agent, no delivery)"
       await route.fulfill({ status: 500, json: { message: "synthetic configuration failure" } });
     });
     await page.goto("/login");
-    await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+    await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
     await expect(page.getByText("이 기기의 알림 가능 여부를 확인하고 있어요.")).toBeVisible();
     await audit(page, "push-loading", info);
@@ -184,7 +184,7 @@ test("mobile reflow and 200 percent text size retain usable controls", async ({ 
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto("/login");
   await audit(page, "mobile-login", info);
-  await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+  await page.getByRole("button", { name: /둘러보기/ }).click();
   await expect(page).toHaveURL(/\/today$/);
   for (const width of [768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });

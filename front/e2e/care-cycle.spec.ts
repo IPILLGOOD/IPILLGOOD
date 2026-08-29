@@ -35,7 +35,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
   let recipientId: string | undefined;
   try {
     await page.goto("/login");
-    await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+    await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
     const cookie = (await context.cookies()).find((entry) => entry.name === "care_atlas_session")!;
     recipientId = decodeJwt(cookie.value).sub;
@@ -223,7 +223,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
     await expect(page).toHaveURL(/\/$/);
     expect((await context.request.post("/api/documents/analyze", { multipart: { sample: "true" } })).status()).toBe(401);
     await page.goto("/login");
-    await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+    await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
     demoRecipientId = decodeJwt((await context.cookies()).find((entry) => entry.name === "care_atlas_session")!.value).sub;
     await page.goto("/documents");

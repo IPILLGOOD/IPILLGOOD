@@ -45,6 +45,7 @@ function snapshot(medications: MedicationPlan[]): CareSnapshot {
     clinicianQuestions: [],
     todayCheckIn: null,
     dataSource: "firestore",
+    revision: 0,
   };
 }
 

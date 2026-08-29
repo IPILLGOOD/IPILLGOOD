@@ -183,6 +183,14 @@ Google 로그인은 `care-atlas-seoul-2026-v2` Firebase Authentication의 Google
 
 ```bash
 SESSION_SECRET=openssl_rand_base64_32로_생성한_값
+CONNECTION_CODE_SECRET=별도로_생성한_openssl_rand_base64_32_값
+```
+
+Google 계정 소유자는 `/profile`에서 10분 안에 최초 입력해야 하는 연결 코드를 발급할 수 있습니다. 최초 연결 뒤에는 같은 코드로 다시 로그인할 수 있으며, 새 기기에서 로그인하면 이전 연결 세션은 교체되어 한 계정당 연결 기기 한 대만 유지됩니다. 로그아웃은 현재 기기 세션만 종료하고, 연결은 30일 미사용, 소유자의 연결 해제 또는 회원 탈퇴 시 종료됩니다. 운영 Cloudflare 환경에는 코드 HMAC용 값을 별도 secret으로 등록합니다.
+
+```bash
+cd front
+npx wrangler secret put CONNECTION_CODE_SECRET
 ```
 
 식약처 공식 약물 정보를 검색하려면 `front/.env.local`에 공공데이터포털 인증키를 설정합니다. 이 값은 서버에서만 사용되며 `.env*`는 `.gitignore`로 커밋 대상에서 제외됩니다.

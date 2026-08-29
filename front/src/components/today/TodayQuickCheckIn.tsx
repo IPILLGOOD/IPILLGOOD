@@ -22,18 +22,21 @@ export function TodayQuickCheckIn({
   tasks,
   checkIn,
   questionSet: initialQuestions,
+  revision,
 }: {
   tasks: MedicationScheduleTask[];
   checkIn: DailyCheckIn | null;
   questionSet: PatientQuestionSet | null;
+  revision: number;
 }) {
   const router = useRouter();
-  const form = useCheckInForm(initialQuestions);
+  const form = useCheckInForm(initialQuestions, revision);
   const { state, formAction, questionSet } = form;
 
   useEffect(() => {
     if (state.status === "success") router.refresh();
-  }, [router, state.status]);
+    if (state.conflict) router.refresh();
+  }, [router, state.conflict, state.status]);
 
   const recovery = <QuestionRecovery unavailable={!questionSet} pending={form.pending} message={form.recoveryMessage} onRetry={form.recover} />;
   if (!questionSet) return recovery;
@@ -45,6 +48,7 @@ export function TodayQuickCheckIn({
       onReset={(event) => event.preventDefault()}
       aria-label="오늘의 안부 바로 기록"
     >
+      <input type="hidden" name="expectedRevision" value={form.baselineRevision} />
       <div className="quick-checkin__header">
         <ClipboardCheck size={23} aria-hidden="true" />
         <div>
@@ -54,6 +58,11 @@ export function TodayQuickCheckIn({
       </div>
 
       {!form.recoveryMessage && <FormMessage state={state} />}
+      {state.conflict ? (
+        <button className="button button--secondary" type="button" disabled={!form.latestRevisionReady} onClick={form.acceptLatestRevision}>
+          {form.latestRevisionReady ? "최신 내용 확인 후 다시 저장" : "최신 내용 불러오는 중…"}
+        </button>
+      ) : null}
       {(state.recoverQuestions || form.recoveryMessage) && recovery}
       <input type="hidden" name="checkInScope" value="wellbeing" />
 

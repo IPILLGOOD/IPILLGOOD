@@ -31,7 +31,7 @@ export default async function CheckInPage() {
       />
       <div className="checkin-layout">
         <Card>
-          <CheckInForm tasks={tasks} questionSet={questions.status === "ready" ? questions.questionSet : null} />
+          <CheckInForm tasks={tasks} questionSet={questions.status === "ready" ? questions.questionSet : null} revision={snapshot.revision} />
         </Card>
         <aside className="checkin-aside">
           <Card tone="accent">

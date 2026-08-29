@@ -63,6 +63,7 @@ const snapshot: CareSnapshot = {
   documents: [],
   clinicianQuestions: [],
   dataSource: "local-fallback",
+  revision: 0,
 };
 
 const analysis: CareAgentOutput = {

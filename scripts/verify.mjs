@@ -27,6 +27,7 @@ Object.assign(env, {
   CI: "1", NEXT_TELEMETRY_DISABLED: "1", FIREBASE_CLI_DISABLE_UPDATE_CHECK: "1",
   XDG_CONFIG_HOME: temporary, FIREBASE_PROJECT_ID: `demo-rel-${randomBytes(6).toString("hex")}`,
   SESSION_SECRET: randomBytes(48).toString("base64url"), IPILLGOOD_DEMO_MODE: "true",
+  CONNECTION_CODE_SECRET: randomBytes(48).toString("base64url"),
   IPILLGOOD_PUBLIC_DEMO_MODE: "isolated", IPILLGOOD_DEMO_ALLOWED_HOSTS: "127.0.0.1,localhost",
   OPENAI_API_KEY: "", MEDICAL_DOCUMENT_API_KEY: "", FIREBASE_SERVICE_ACCOUNT_JSON: "",
 });

@@ -7,7 +7,7 @@ import type { PatientQuestionSet } from "@care-atlas/backend";
 
 const initialState: CheckInActionState = { status: "idle", message: "" };
 
-export function useCheckInForm(initialQuestions: PatientQuestionSet | null) {
+export function useCheckInForm(initialQuestions: PatientQuestionSet | null, revision: number) {
   const [questionSet, setQuestionSet] = useState(initialQuestions);
   const [draft, setDraft] = useState<CheckInDraft>({});
   const [recovering, startRecovery] = useTransition();
@@ -17,6 +17,7 @@ export function useCheckInForm(initialQuestions: PatientQuestionSet | null) {
     try { return await saveCheckInAction(previous, data); }
     catch { return { status: "error" as const, message: "연결이 끊겨 저장을 확인하지 못했어요. 입력을 유지했으니 다시 시도해 주세요." }; }
   }, initialState);
+  const [baselineRevision, setBaselineRevision] = useState(revision);
 
   const onChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const target = event.target;
@@ -39,7 +40,9 @@ export function useCheckInForm(initialQuestions: PatientQuestionSet | null) {
   });
 
   return {
-    state, formAction, pending: pending || recovering, questionSet, draft, onChange,
+    state, formAction, pending: pending || recovering, questionSet, draft, onChange, baselineRevision,
+    latestRevisionReady: revision !== baselineRevision,
+    acceptLatestRevision: () => setBaselineRevision(revision),
     recover, recovering, recoveryMessage,
     field: (name: string, fallback = "") => ({ value: draft[name]?.[0] ?? fallback, onChange }),
     check: (name: string, value: string, fallback = false) => ({ checked: draft[name] ? draft[name].includes(value) : fallback, onChange }),

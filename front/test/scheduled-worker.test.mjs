@@ -33,7 +33,7 @@ try {
   hooks.deregister();
 }
 
-const paths = ["/api/account/deletion/cleanup", "/api/demo/cleanup", "/api/push/dispatch"];
+const paths = ["/api/account/deletion/cleanup", "/api/demo/cleanup", "/api/auth/connection/cleanup", "/api/push/dispatch"];
 const environment = { PUSH_CRON_SECRET: "synthetic-scheduled-worker-secret-20260828" };
 const context = { waitUntil() {} };
 beforeEach(() => {
@@ -61,7 +61,7 @@ test("scheduled worker invokes withdrawal cleanup first and authenticates all ro
 });
 
 test("one failed cleanup does not skip other scheduled routes and fails the invocation", async () => {
-  fixture.outcomes.push(503, 200, 500);
+  fixture.outcomes.push(503, 200, 200, 500);
   await assert.rejects(worker.scheduled({}, environment, context), (error) => {
     assert.ok(error instanceof AggregateError);
     assert.equal(error.errors.length, 2);
@@ -69,11 +69,11 @@ test("one failed cleanup does not skip other scheduled routes and fails the invo
     assert.match(error.errors[1].message, /push\/dispatch failed: HTTP 500/);
     return true;
   });
-  assert.equal(fixture.calls.length, 3);
+  assert.equal(fixture.calls.length, 4);
 });
 
 test("a transient scheduled exception is retried by the next invocation", async () => {
-  fixture.outcomes.push(new Error("synthetic transient failure"), 200, 200);
+  fixture.outcomes.push(new Error("synthetic transient failure"), 200, 200, 200);
   await assert.rejects(worker.scheduled({}, environment, context), AggregateError);
   await worker.scheduled({}, environment, context);
   assert.deepEqual(fixture.calls.map(({ request }) => new URL(request.url).pathname), [...paths, ...paths]);

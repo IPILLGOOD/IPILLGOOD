@@ -40,14 +40,16 @@ export type CareDataScope = {
   recipientId: string;
   initialDisplayName?: string;
   useDemoData?: boolean;
+  /** Server-derived connected-session fence; never populated from client input. */
+  connection?: { connectionId: string; sessionVersion: string };
   /** Internal dependency injection; never populated from client input. */
   firestore?: FirestoreLike;
 };
 
 const READ_MODEL_COLLECTION = "careReadModels";
 
-type DemoSeed = Omit<CareSnapshot, "dataSource">;
-type StoredCareReadModel = Omit<CareSnapshot, "dataSource"> & {
+type DemoSeed = Omit<CareSnapshot, "dataSource" | "revision">;
+type StoredCareReadModel = Omit<CareSnapshot, "dataSource" | "revision"> & {
   updatedAt: string;
   revision?: number;
 };
@@ -59,6 +61,14 @@ async function assertActiveDemoScope(
   firestore: FirestoreLike,
 ) {
   await assertCareAccountActive(firestore, scope.recipientId);
+  if (scope.connection) {
+    const document = await firestore.collection("careConnections").doc(scope.recipientId).get();
+    const connection = document.data() as { status?: string; connectionId?: string; sessionVersion?: string; expiresAt?: string } | undefined;
+    if (!connection || connection.status !== "active" || connection.connectionId !== scope.connection.connectionId ||
+        connection.sessionVersion !== scope.connection.sessionVersion || Date.parse(connection.expiresAt ?? "") <= Date.now()) {
+      throw new Error("연결 사용자 세션이 만료되었어요.");
+    }
+  }
   if (
     scope.useDemoData &&
     !(await isEphemeralDemoSessionActive(scope.recipientId, { firestore }))
@@ -115,6 +125,7 @@ export function createInitialCareSnapshot(scope: CareDataScope): CareSnapshot {
     clinicianQuestions: [],
     todayCheckIn: null,
     dataSource: "firestore",
+    revision: 0,
   };
 }
 
@@ -138,6 +149,7 @@ function fromStoredReadModel(model: StoredCareReadModel, scope: CareDataScope): 
     clinicianQuestions: model.clinicianQuestions ?? fallback.clinicianQuestions,
     todayCheckIn: currentDailyCheckIn(model.todayCheckIn),
     dataSource: "firestore",
+    revision: model.revision ?? 0,
   };
 }
 
@@ -180,11 +192,20 @@ async function canonicalReadModel(
     clinicianQuestions: questions.docs.map((doc) => doc.data() as ClinicianQuestion),
     todayCheckIn: checkIn.exists ? checkIn.data() as DailyCheckIn : null,
     dataSource: "firestore",
+    revision: 0,
   });
 }
 
 async function assertTransactionScope(tx: TransactionLike, firestore: FirestoreLike, scope: CareDataScope) {
   await assertCareAccountActive(firestore, scope.recipientId, tx);
+  if (scope.connection) {
+    const document = await tx.get(firestore.collection("careConnections").doc(scope.recipientId));
+    const connection = document.data() as { status?: string; connectionId?: string; sessionVersion?: string; expiresAt?: string } | undefined;
+    if (!connection || connection.status !== "active" || connection.connectionId !== scope.connection.connectionId ||
+        connection.sessionVersion !== scope.connection.sessionVersion || Date.parse(connection.expiresAt ?? "") <= Date.now()) {
+      throw new Error("연결 사용자 세션이 만료되었어요.");
+    }
+  }
   if (!scope.useDemoData) return;
   const doc = await tx.get(firestore.collection("demoSessions").doc(scope.recipientId));
   const session = doc.data() as { status?: string; expiresAt?: string } | undefined;
@@ -222,6 +243,19 @@ export async function getCareSnapshot(scope: CareDataScope): Promise<CareSnapsho
   return fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
 }
 
+export async function getCareRevision(scope: CareDataScope): Promise<number> {
+  assertValidScope(scope);
+  const firestore = scope.firestore ?? await getAdminFirestore();
+  return (await getOrCreateReadModel(firestore, scope)).revision ?? 0;
+}
+
+export class CareConflictError extends Error {
+  constructor() {
+    super("CARE_DATA_REVISION_CONFLICT");
+    this.name = "CareConflictError";
+  }
+}
+
 export async function rebuildCareReadModel(scope: CareDataScope, options: { apply?: boolean } = {}) {
   assertValidScope(scope);
   const firestore = scope.firestore ?? await getAdminFirestore();
@@ -249,7 +283,7 @@ async function mutateCare<T>(
   scope: CareDataScope,
   currentSnapshot: CareSnapshot | undefined,
   change: (tx: TransactionLike, snapshot: CareSnapshot, recipientRef: DocumentReferenceLike) => Promise<{ snapshot: CareSnapshot; result: T; unchanged?: boolean }>,
-  options: { affectsMedications?: boolean; requiresConsent?: boolean } = {},
+  options: { affectsMedications?: boolean; requiresConsent?: boolean; expectedRevision?: number } = {},
 ): Promise<T> {
   assertValidScope(scope);
   if (currentSnapshot && (currentSnapshot.dataSource !== "firestore" || currentSnapshot.recipient.id !== scope.recipientId)) {
@@ -263,6 +297,9 @@ async function mutateCare<T>(
     const document = await tx.get(modelRef);
     if (!document.exists) throw new Error("돌봄 데이터를 다시 불러와 주세요.");
     const stored = document.data() as StoredCareReadModel;
+    if (options.expectedRevision !== undefined && (stored.revision ?? 0) !== options.expectedRevision) {
+      throw new CareConflictError();
+    }
     const subscriptions = options.affectsMedications
       ? await tx.get(firestore.collection("pushSubscriptions").where("recipientId", "==", scope.recipientId)) : null;
     if (options.requiresConsent) {
@@ -284,12 +321,12 @@ async function mutateCare<T>(
   });
 }
 
-export async function updateRecipientProfile(scope: CareDataScope, recipient: CareRecipient, currentSnapshot?: CareSnapshot) {
+export async function updateRecipientProfile(scope: CareDataScope, recipient: CareRecipient, currentSnapshot?: CareSnapshot, expectedRevision?: number) {
   if (recipient.id !== scope.recipientId) throw new Error("프로필 소유자가 일치하지 않습니다.");
   await mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
     tx.set(ref, recipient);
     return { snapshot: { ...snapshot, recipient }, result: undefined };
-  });
+  }, { expectedRevision });
 }
 
 export async function getTodayDailyCheckIn(scope: CareDataScope): Promise<DailyCheckIn | null> {
@@ -315,6 +352,7 @@ export async function saveDailyCheckIn(
   scope: CareDataScope,
   input: DailyCheckInInput & { questionResponse: PatientQuestionResponse },
   currentSnapshot?: CareSnapshot,
+  expectedRevision?: number,
 ) {
   if (input.questionResponse.subject_ref !== scope.recipientId) throw new Error("체크인 소유자가 일치하지 않습니다.");
   await mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
@@ -330,7 +368,7 @@ export async function saveDailyCheckIn(
     tx.set(ref.collection("questionResponses").doc(input.questionResponse.response_id), input.questionResponse);
     tx.set(questionRef, { response_status: "answered", answered_at: input.questionResponse.answered_at }, { merge: true });
     return { snapshot: { ...update.nextSnapshot, todayCheckIn: checkIn }, result: undefined };
-  }, { requiresConsent: true });
+  }, { requiresConsent: true, expectedRevision });
 }
 
 export interface RegisterDocumentInput {
