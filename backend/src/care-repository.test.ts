@@ -16,6 +16,7 @@ import {
   deleteDocument,
 } from "./care-repository.ts";
 import { MemoryFirestore } from "../test-support/memory-firestore.ts";
+import { createMedicationSchedule } from "./medication-schedule.ts";
 import type { CareSnapshot } from "./types.ts";
 
 const snapshot = {
@@ -165,13 +166,15 @@ test("원본 변경과 복구 작업은 같은 commit에 저장되고 실패 시
   assert.equal((firestore.store.get(`medicationReminderSync/${scope.recipientId}`) as { status: string }).status, "pending");
 });
 
-test("처방전에서 추출한 약을 복약 일정용 활성 계획으로 변환한다", () => {
+test("처방일과 총 투약일수로 종료일을 계산해 경계 날짜에만 일정을 만든다", () => {
   const medications = medicationPlansFromPrescription({
     id: "doc-rx-1",
     documentType: "처방전",
     uploadedAt: "2026-08-16T10:00:00+09:00",
     analysis: {
       documentType: "처방전",
+      prescriptionDate: "2026-08-16",
+      totalSupplyDays: 5,
       summary: "약 1개",
       findings: [],
       carePoints: [],
@@ -185,20 +188,88 @@ test("처방전에서 추출한 약을 복약 일정용 활성 계획으로 변�
           doseAmount: "한 번에 1정",
           frequency: "하루 2회",
           timing: "아침·저녁 식사 후",
-          startDate: "날짜 확인 필요",
+          startDate: "",
           purposePlain: "증상 관리",
           precautions: ["어지러움 확인"],
         },
       ],
     },
-  });
+  }, "2026-08-16");
 
   assert.equal(medications.length, 1);
   assert.equal(medications[0]?.id, "rx-doc-rx-1-1");
   assert.equal(medications[0]?.startDate, "2026-08-16");
+  assert.equal(medications[0]?.endDate, "2026-08-20");
   assert.equal(medications[0]?.frequency, "하루 2회");
   assert.equal(medications[0]?.sourceDocumentId, "doc-rx-1");
   assert.equal(medications[0]?.status, "active");
+  assert.equal(createMedicationSchedule(medications, [], new Date("2026-08-15T23:00:00Z")).length, 2);
+  assert.equal(createMedicationSchedule(medications, [], new Date("2026-08-20T03:00:00Z")).length, 2);
+  assert.equal(createMedicationSchedule(medications, [], new Date("2026-08-20T15:01:00Z")).length, 0);
+});
+
+test("과거 처방은 종료 상태로 보존하고 오늘 복약 일정에는 포함하지 않는다", () => {
+  const medications = medicationPlansFromPrescription({
+    id: "doc-past-rx",
+    documentType: "처방전",
+    uploadedAt: "2026-08-23T00:00:00Z",
+    analysis: {
+      documentType: "처방전",
+      prescriptionDate: "2022-02-26",
+      totalSupplyDays: 5,
+      summary: "과거 5일분 처방",
+      findings: [], carePoints: [], questionsForProfessional: [], disclaimer: "원본 확인", source: "openai",
+      medications: [{ productName: "과거처방정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "", purposePlain: "테스트", precautions: [] }],
+    },
+  }, "2026-08-23");
+
+  assert.equal(medications[0]?.startDate, "2022-02-26");
+  assert.equal(medications[0]?.endDate, "2022-03-02");
+  assert.equal(medications[0]?.status, "ended");
+  assert.deepEqual(createMedicationSchedule(medications, [], new Date("2026-08-23T03:00:00Z")), []);
+});
+
+test("월말·윤년 계산을 보존하고 불확실한 기간은 자동 활성화하지 않는다", () => {
+  const prescription = (id: string, prescriptionDate: string, totalSupplyDays?: number) => medicationPlansFromPrescription({
+    id,
+    documentType: "처방전" as const,
+    uploadedAt: "2026-08-23T00:00:00Z",
+    analysis: {
+      documentType: "처방전" as const,
+      prescriptionDate,
+      ...(totalSupplyDays ? { totalSupplyDays } : {}),
+      summary: "기간 계산", findings: [], carePoints: [], questionsForProfessional: [], disclaimer: "원본 확인", source: "openai" as const,
+      medications: [{ productName: "기간정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "", purposePlain: "테스트", precautions: [] }],
+    },
+  }, "2020-01-01");
+
+  assert.equal(prescription("month-end", "2026-01-30", 3)[0]?.endDate, "2026-02-01");
+  assert.equal(prescription("leap", "2024-02-28", 2)[0]?.endDate, "2024-02-29");
+  assert.equal(prescription("future", "2027-01-01", 1)[0]?.status, "active");
+  assert.deepEqual(prescription("unknown-days", "2026-01-30"), []);
+  assert.deepEqual(prescription("unknown-date", "날짜 확인 필요", 3), []);
+});
+
+test("처방 기간이 불확실한 문서는 확인 필요로 저장하고 복약 계획을 만들지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-period-review", firestore };
+  const document = await registerDocument(scope, {
+    fileName: "uncertain-rx.pdf",
+    contentHash: "uncertain-rx",
+    documentType: "처방전",
+    size: 100,
+    isSample: false,
+    analysis: {
+      documentType: "처방전",
+      summary: "기간 확인 필요",
+      findings: [], carePoints: [], questionsForProfessional: [], disclaimer: "원본 확인", source: "openai",
+      medications: [{ productName: "확인정", ingredientName: "성분", doseAmount: "1정", frequency: "하루 1회", timing: "아침", startDate: "날짜 확인 필요", purposePlain: "테스트", precautions: [] }],
+    },
+  });
+
+  assert.equal(document.status, "needs_review");
+  assert.deepEqual((await getCareSnapshot(scope)).medications, []);
+  assert.equal(firestore.store.has(`careRecipients/${scope.recipientId}/medicationPlans/rx-uncertain-rx-1`), false);
 });
 
 test("진단서 분석 결과는 복약 계획으로 만들지 않는다", () => {

@@ -13,7 +13,13 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import type { DocumentAnalysis } from "@care-atlas/backend";
 
-export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysis }) {
+export function DocumentAnalysisResult({
+  analysis,
+  requiresPeriodReview = false,
+}: {
+  analysis: DocumentAnalysis;
+  requiresPeriodReview?: boolean;
+}) {
   const analysisSource =
     analysis.source === "api"
       ? "외부 API 문서 분석"
@@ -46,11 +52,18 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
       </dl>
 
       {analysis.documentType === "처방전" && analysis.medications?.length ? (
-        <div className="disease-lookup-status disease-lookup-status--official_match" role="status">
-          <CalendarCheck2 size={18} aria-hidden="true" />
+        <div
+          className={`disease-lookup-status disease-lookup-status--${requiresPeriodReview ? "not_configured" : "official_match"}`}
+          role="status"
+        >
+          {requiresPeriodReview
+            ? <TriangleAlert size={18} aria-hidden="true" />
+            : <CalendarCheck2 size={18} aria-hidden="true" />}
           <p>
-            <strong>복약 일정에 반영됨</strong>
-            처방전에서 확인한 약 {analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.
+            <strong>{requiresPeriodReview ? "처방 기간 확인 필요" : "복약 일정에 반영됨"}</strong>
+            {requiresPeriodReview
+              ? "처방일과 총 투약일수를 원본에서 확인하기 전에는 약을 활성화하지 않아요."
+              : `처방전에서 확인한 약 ${analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.`}
           </p>
         </div>
       ) : null}

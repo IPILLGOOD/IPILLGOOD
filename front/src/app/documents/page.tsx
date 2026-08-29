@@ -48,6 +48,7 @@ export default async function DocumentsPage() {
               <ul className="document-list">
                 {snapshot.documents.map((document) => {
                   const confirmed = document.status === "confirmed";
+                  const needsReview = document.status === "needs_review";
                   const Icon = confirmed ? FileCheck2 : FileClock;
                   return (
                     <li className="document-item" key={document.id}>
@@ -62,7 +63,7 @@ export default async function DocumentsPage() {
                         </small>
                       </div>
                       <Badge tone={confirmed ? "success" : "warning"}>
-                        {confirmed ? "분석 완료" : "분석 대기"}
+                        {confirmed ? "분석 완료" : needsReview ? "기간 확인 필요" : "분석 대기"}
                       </Badge>
                       <DeleteDocumentButton
                         documentId={document.id}
