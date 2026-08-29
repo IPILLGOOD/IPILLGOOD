@@ -15,11 +15,13 @@ export type CareConnectionStatus = "pending" | "active" | "revoked" | "expired";
 export type CareConnection = {
   recipientId: string;
   ownerUserId: string;
+  ownerDisplayName?: string;
   connectionId: string;
   connectedUserId: string;
   sessionVersion: string;
   status: CareConnectionStatus;
   pendingCodeHash: string | null;
+  loginCodeHash?: string | null;
   codeExpiresAt: string | null;
   createdAt: string;
   connectedAt: string | null;
@@ -35,7 +37,7 @@ type ConnectionCode = {
   recipientId: string;
   ownerUserId: string;
   connectionId: string;
-  status: "pending" | "consumed" | "revoked" | "expired";
+  status: "pending" | "active" | "revoked" | "expired";
   createdAt: string;
   expiresAt: string;
   consumedAt: string | null;
@@ -51,7 +53,13 @@ type Dependencies = {
   now?: () => Date;
   codeSecret?: string;
   randomCode?: () => string;
+  ownerDisplayName?: string;
 };
+
+function ownerDisplayName(value?: string) {
+  const normalized = value?.trim();
+  return normalized ? normalized.slice(0, 100) : undefined;
+}
 
 function connectionCodeSecret(override?: string) {
   const secret = override ?? process.env.CONNECTION_CODE_SECRET;
@@ -103,8 +111,15 @@ function publicConnection(connection: CareConnection | undefined, now: Date): Pu
 export async function getCareConnection(ownerUserId: string, dependencies: Dependencies = {}) {
   const firestore = dependencies.firestore ?? await getAdminFirestore();
   const recipientId = accountRecipientId(ownerUserId);
-  const document = await firestore.collection(CONNECTIONS_COLLECTION).doc(recipientId).get();
-  return publicConnection(document.data() as CareConnection | undefined, (dependencies.now ?? (() => new Date()))());
+  const reference = firestore.collection(CONNECTIONS_COLLECTION).doc(recipientId);
+  const document = await reference.get();
+  let connection = document.data() as CareConnection | undefined;
+  const currentOwnerName = ownerDisplayName(dependencies.ownerDisplayName);
+  if (connection && currentOwnerName && connection.ownerDisplayName !== currentOwnerName) {
+    await reference.set({ ownerDisplayName: currentOwnerName }, { merge: true });
+    connection = { ...connection, ownerDisplayName: currentOwnerName };
+  }
+  return publicConnection(connection, (dependencies.now ?? (() => new Date()))());
 }
 
 export async function createCareConnectionCode(ownerUserId: string, dependencies: Dependencies = {}) {
@@ -130,8 +145,9 @@ export async function createCareConnectionCode(ownerUserId: string, dependencies
     const current = currentDocument.data() as CareConnection | undefined;
     const active = current?.status === "active" && !inactiveAt(current, now);
     if (active) throw new Error("CARE_CONNECTION_ALREADY_ACTIVE");
-    const oldCodeRef = current?.pendingCodeHash
-      ? firestore.collection(CODES_COLLECTION).doc(current.pendingCodeHash)
+    const oldCodeHash = current?.pendingCodeHash ?? current?.loginCodeHash;
+    const oldCodeRef = oldCodeHash
+      ? firestore.collection(CODES_COLLECTION).doc(oldCodeHash)
       : null;
     const oldCode = oldCodeRef ? await tx.get(oldCodeRef) : null;
     const existingCode = await tx.get(codeRef);
@@ -139,8 +155,8 @@ export async function createCareConnectionCode(ownerUserId: string, dependencies
     if (existingCode.exists) throw new Error("CONNECTION_CODE_COLLISION");
     if (oldCode?.exists && oldCodeRef) tx.set(oldCodeRef, { status: "revoked" }, { merge: true });
     const record: CareConnection = {
-      recipientId, ownerUserId, connectionId, connectedUserId, sessionVersion,
-      status: "pending", pendingCodeHash: codeHash, codeExpiresAt: expiresAt,
+      recipientId, ownerUserId, ownerDisplayName: ownerDisplayName(dependencies.ownerDisplayName), connectionId, connectedUserId, sessionVersion,
+      status: "pending", pendingCodeHash: codeHash, loginCodeHash: null, codeExpiresAt: expiresAt,
       createdAt: now.toISOString(), connectedAt: null, lastSeenAt: null, expiresAt: null,
       revokedAt: null, revokeReason: null, updatedAt: now.toISOString(),
     };
@@ -179,19 +195,22 @@ export async function redeemCareConnectionCode(code: string, dependencies: Depen
     const connectionRef = firestore.collection(CONNECTIONS_COLLECTION).doc(record.recipientId);
     const connectionDocument = await tx.get(connectionRef);
     const connection = connectionDocument.data() as CareConnection | undefined;
-    if (
-      record.status !== "pending" || Date.parse(record.expiresAt) <= now.getTime() ||
-      !connection || connection.status !== "pending" || connection.pendingCodeHash !== codeHash ||
-      connection.connectionId !== record.connectionId
-    ) throw new Error("INVALID_CONNECTION_CODE");
+    const firstLogin = record.status === "pending" && Date.parse(record.expiresAt) > now.getTime() &&
+      connection?.status === "pending" && connection.pendingCodeHash === codeHash &&
+      connection.connectionId === record.connectionId;
+    const returningLogin = record.status === "active" && connection?.status === "active" &&
+      connection.loginCodeHash === codeHash && connection.connectionId === record.connectionId &&
+      !inactiveAt(connection, now) && (!connection.expiresAt || Date.parse(connection.expiresAt) > now.getTime());
+    if (!connection || (!firstLogin && !returningLogin)) throw new Error("INVALID_CONNECTION_CODE");
     await assertCareAccountActive(firestore, record.recipientId, tx);
     const readModelRef = firestore.collection("careReadModels").doc(record.recipientId);
     const readModel = await tx.get(readModelRef);
     const expiresAt = new Date(now.getTime() + CONNECTED_SESSION_DURATION_SECONDS * 1000).toISOString();
-    tx.set(codeRef, { status: "consumed", consumedAt: now.toISOString() }, { merge: true });
+    const sessionVersion = firstLogin ? connection.sessionVersion : randomUUID();
+    tx.set(codeRef, { status: "active", consumedAt: record.consumedAt ?? now.toISOString() }, { merge: true });
     tx.set(connectionRef, {
-      status: "active", pendingCodeHash: null, codeExpiresAt: null,
-      connectedAt: now.toISOString(), lastSeenAt: now.toISOString(), expiresAt,
+      status: "active", sessionVersion, pendingCodeHash: null, loginCodeHash: codeHash, codeExpiresAt: null,
+      connectedAt: connection.connectedAt ?? now.toISOString(), lastSeenAt: now.toISOString(), expiresAt,
       updatedAt: now.toISOString(),
     }, { merge: true });
     if (readModel.exists) {
@@ -199,11 +218,11 @@ export async function redeemCareConnectionCode(code: string, dependencies: Depen
     }
     return {
       id: connection.connectedUserId,
-      name: "연결 사용자",
+      name: connection.ownerDisplayName?.trim() || "Google 계정 소유자",
       recipientId: connection.recipientId,
       ownerUserId: connection.ownerUserId,
       connectionId: connection.connectionId,
-      sessionVersion: connection.sessionVersion,
+      sessionVersion,
     };
   });
 }
@@ -264,13 +283,14 @@ async function revokeConnection(
     const connection = document.data() as CareConnection | undefined;
     if (!connection) return null;
     if (expected && (connection.connectionId !== expected.connectionId || connection.sessionVersion !== expected.sessionVersion)) return null;
-    const codeRef = connection.pendingCodeHash ? firestore.collection(CODES_COLLECTION).doc(connection.pendingCodeHash) : null;
+    const codeHash = connection.pendingCodeHash ?? connection.loginCodeHash;
+    const codeRef = codeHash ? firestore.collection(CODES_COLLECTION).doc(codeHash) : null;
     const code = codeRef ? await tx.get(codeRef) : null;
     const readModelRef = firestore.collection("careReadModels").doc(recipientId);
     const readModel = await tx.get(readModelRef);
     if (code?.exists && codeRef) tx.set(codeRef, { status: "revoked" }, { merge: true });
     tx.set(ref, {
-      status: reason === "expired" ? "expired" : "revoked", sessionVersion: randomUUID(), pendingCodeHash: null, codeExpiresAt: null,
+      status: reason === "expired" ? "expired" : "revoked", sessionVersion: randomUUID(), pendingCodeHash: null, loginCodeHash: null, codeExpiresAt: null,
       revokedAt: now.toISOString(), revokeReason: reason, updatedAt: now.toISOString(), expiresAt: now.toISOString(),
     }, { merge: true });
     if (readModel.exists) {
@@ -282,14 +302,6 @@ async function revokeConnection(
 
 export async function disconnectCareConnection(ownerUserId: string, dependencies: Dependencies = {}) {
   return revokeConnection(accountRecipientId(ownerUserId), "owner", dependencies);
-}
-
-export async function logoutCareConnection(input: {
-  recipientId: string;
-  connectionId: string;
-  sessionVersion: string;
-}, dependencies: Dependencies = {}) {
-  return revokeConnection(input.recipientId, "logout", dependencies, input);
 }
 
 export async function revokeCareConnectionForAccount(recipientId: string, dependencies: Dependencies = {}) {

@@ -60,7 +60,7 @@ export async function createConnectionCodeAction(
   try {
     const rate = await enforceRateLimit("auth", { userId: session.id });
     if (!rate.allowed) return { status: "error", message: `${rate.retryAfterSeconds}초 뒤 다시 시도해주세요.` };
-    const result = await createCareConnectionCode(session.id);
+    const result = await createCareConnectionCode(session.id, { ownerDisplayName: session.name });
     revalidatePath("/profile");
     return { status: "success", message: "10분 동안 사용할 수 있는 연결 코드를 만들었어요.", ...result };
   } catch (error) {

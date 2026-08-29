@@ -22,7 +22,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   if (!user) redirect("/login");
   const scope = careScopeFor(user);
   const snapshot = await getCareSnapshot(scope);
-  const connection = user.provider === "google" ? await getCareConnection(user.id) : null;
+  const connection = user.provider === "google" ? await getCareConnection(user.id, { ownerDisplayName: user.name }) : null;
   const params = await searchParams;
   const reauthenticating = params.account_reauth === "1";
   return (

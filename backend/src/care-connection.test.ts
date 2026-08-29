@@ -16,10 +16,10 @@ import { deleteRecipientHealthData } from "./health-data-deletion.ts";
 
 const secret = "connection-test-secret-with-more-than-thirty-two-bytes";
 
-test("일회용 코드는 평문을 저장하지 않고 10분 안에 한 번만 교환된다", async () => {
+test("연결 코드는 평문을 저장하지 않고 최초 입력 뒤 재로그인에 사용할 수 있다", async () => {
   const firestore = new MemoryFirestore();
   const clock = fixedClock("2026-08-29T00:00:00.000Z");
-  const dependencies = { firestore, now: clock.now, codeSecret: secret, randomCode: () => "2345ABCD" };
+  const dependencies = { firestore, now: clock.now, codeSecret: secret, randomCode: () => "2345ABCD", ownerDisplayName: "Google 소유자" };
   const issued = await createCareConnectionCode("owner-1", dependencies);
 
   assert.equal(issued.code, "2345-ABCD");
@@ -29,11 +29,15 @@ test("일회용 코드는 평문을 저장하지 않고 10분 안에 한 번만 
 
   const connected = await redeemCareConnectionCode("2345-abcd", dependencies);
   assert.equal(connected.recipientId, "google-owner-1");
+  assert.equal(connected.name, "Google 소유자");
   assert.ok(await validateCareConnectionSession(connected, dependencies));
-  await assert.rejects(redeemCareConnectionCode(issued.code, dependencies), /INVALID_CONNECTION_CODE/);
+  const reconnected = await redeemCareConnectionCode(issued.code, dependencies);
+  assert.notEqual(reconnected.sessionVersion, connected.sessionVersion);
+  assert.equal(await validateCareConnectionSession(connected, dependencies), null);
+  assert.ok(await validateCareConnectionSession(reconnected, dependencies));
 });
 
-test("같은 코드를 동시에 입력해도 한 연결만 성공한다", async () => {
+test("같은 코드로 동시에 로그인해도 마지막 한 기기 세션만 유효하다", async () => {
   const firestore = new MemoryFirestore();
   const dependencies = {
     firestore,
@@ -46,8 +50,10 @@ test("같은 코드를 동시에 입력해도 한 연결만 성공한다", async
     redeemCareConnectionCode(code, dependencies),
     redeemCareConnectionCode(code, dependencies),
   ]);
-  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
-  assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+  const sessions = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  assert.equal(sessions.length, 2);
+  const valid = await Promise.all(sessions.map((session) => validateCareConnectionSession(session, dependencies)));
+  assert.equal(valid.filter(Boolean).length, 1);
 });
 
 test("활성 연결은 추가 발급을 막고 활동 갱신 후 30일 미사용 시 만료된다", async () => {
@@ -69,6 +75,7 @@ test("활성 연결은 추가 발급을 막고 활동 갱신 후 30일 미사용
   clock.advance(CONNECTED_SESSION_DURATION_SECONDS * 1000 + 1);
   assert.equal(await validateCareConnectionSession(connected, dependencies), null);
   assert.equal((await getCareConnection("owner-3", dependencies))?.status, "expired");
+  await assert.rejects(redeemCareConnectionCode(issued.code, dependencies), /INVALID_CONNECTION_CODE/);
   assert.equal((firestore.store.get("pushSubscriptions/connected-device") as { active: boolean }).active, false);
 });
 

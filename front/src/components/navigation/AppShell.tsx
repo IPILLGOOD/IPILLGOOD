@@ -98,7 +98,7 @@ export function AppShell({
               </span>
               <span className="sidebar-user__copy">
                 <strong>{user.name}</strong>
-                <small>{user.provider === "google" ? "Google 계정" : user.provider === "connected" ? "연결 사용자" : "데모 모드"}</small>
+                <small>{user.provider === "google" ? "Google 계정" : user.provider === "connected" ? "연결된 사용자" : "데모 모드"}</small>
               </span>
               <form action="/api/auth/logout" method="post">
                 <button type="submit" aria-label="로그아웃" title="로그아웃">

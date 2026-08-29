@@ -118,6 +118,7 @@ async function readSession(allowDeleting = false): Promise<SessionUser | null> {
         sessionVersion: user.sessionVersion,
       });
       if (!connection || connection.connectedUserId !== user.id || connection.ownerUserId !== user.ownerUserId) return null;
+      user.name = connection.ownerDisplayName?.trim() || user.name;
     }
     if (!allowDeleting && user.provider === "google") {
       const state = await getAccountSessionState(user.id);

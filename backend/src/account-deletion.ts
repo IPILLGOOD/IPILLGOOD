@@ -56,6 +56,10 @@ export async function requestAccountDeletion(input: {
     const connectionRef = firestore.collection("careConnections").doc(recipientId);
     const [existing, connectionDocument] = await Promise.all([tx.get(ref), tx.get(connectionRef)]);
     if (existing.exists && (existing.data() as AccountDeletion).status !== "restored") return existing.data() as AccountDeletion;
+    const connection = connectionDocument.data() as { pendingCodeHash?: string | null; loginCodeHash?: string | null } | undefined;
+    const connectionCodeHash = connection?.pendingCodeHash ?? connection?.loginCodeHash;
+    const connectionCodeRef = connectionCodeHash ? firestore.collection("connectionCodes").doc(connectionCodeHash) : null;
+    const connectionCode = connectionCodeRef ? await tx.get(connectionCodeRef) : null;
     const job: AccountDeletion = {
       requestId: randomUUID(), userId: input.userId, recipientId, status: "pending", stage: "queued",
       policyVersion: policy.version, deleteAfter: accountDeletionDeadline(now),
@@ -65,8 +69,9 @@ export async function requestAccountDeletion(input: {
     if (existing.exists) tx.set(ref, job);
     else tx.create(ref, job);
     if (connectionDocument.exists) {
+      if (connectionCode?.exists && connectionCodeRef) tx.set(connectionCodeRef, { status: "revoked" }, { merge: true });
       tx.set(connectionRef, {
-        status: "revoked", sessionVersion: randomUUID(), pendingCodeHash: null,
+        status: "revoked", sessionVersion: randomUUID(), pendingCodeHash: null, loginCodeHash: null,
         codeExpiresAt: null, revokedAt: now.toISOString(), revokeReason: "account_deletion",
         expiresAt: now.toISOString(), updatedAt: now.toISOString(),
       }, { merge: true });

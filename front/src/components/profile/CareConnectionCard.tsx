@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, Link2, Link2Off } from "lucide-react";
+import { Check, Clock3, Copy, Link2, Link2Off, RefreshCw, ShieldCheck, UsersRound } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
 
 import {
@@ -44,61 +44,85 @@ export function CareConnectionCard({ connection }: { connection: PublicCareConne
   return (
     <section className="card connection-card" aria-labelledby="connection-title">
       <div className="connection-card__heading">
-        <span className="connection-card__icon" aria-hidden="true"><Link2 size={22} /></span>
-        <div>
-          <h2 id="connection-title">공동 사용 연결</h2>
-          <p>한 명을 연결해 같은 돌봄 화면과 기록을 함께 사용할 수 있어요.</p>
+        <div className="connection-card__title">
+          <span className="connection-card__icon" aria-hidden="true"><UsersRound size={22} /></span>
+          <div>
+            <span className="connection-card__eyebrow">함께 돌보기</span>
+            <h2 id="connection-title">돌봄 화면 연결</h2>
+            <p>가족 한 명과 같은 화면, 같은 기록을 안전하게 공유해요.</p>
+          </div>
         </div>
+        <span className={active ? "connection-status-badge connection-status-badge--active" : pending ? "connection-status-badge connection-status-badge--pending" : "connection-status-badge"}>
+          <span aria-hidden="true" />{active ? "연결됨" : pending ? "입력 대기 중" : "연결 가능"}
+        </span>
       </div>
 
       <FormMessage state={disconnectState.status !== "idle" ? disconnectState : createState} />
 
       {active ? (
-        <div className="connection-card__status">
-          <strong>연결 사용자 1명이 이용 중이에요</strong>
-          <dl>
+        <div className="connection-card__status connection-card__status--active">
+          <div className="connection-connected-copy">
+            <span aria-hidden="true"><Check size={19} /></span>
+            <div><strong>한 명이 함께 보고 있어요</strong><p>두 기기의 변경사항이 자동으로 같은 화면에 반영돼요.</p></div>
+          </div>
+          <dl className="connection-stats">
             <div><dt>연결 시각</dt><dd>{formatDate(connection.connectedAt)}</dd></div>
             <div><dt>최근 활동</dt><dd>{formatDate(connection.lastSeenAt)}</dd></div>
             <div><dt>미사용 만료</dt><dd>{formatDate(connection.expiresAt)}</dd></div>
           </dl>
-          <form action={disconnectAction}>
-            <SubmitButton className="button button--secondary" pendingText="연결 해제 중…">
+          <div className="connection-card__footer">
+            <p><ShieldCheck size={15} aria-hidden="true" /> 연결 해제 즉시 상대 기기의 접근이 종료돼요.</p>
+            <form action={disconnectAction}>
+              <SubmitButton className="button button--secondary" pendingText="연결 해제 중…">
               <Link2Off size={17} aria-hidden="true" /> 연결 해제
-            </SubmitButton>
-          </form>
+              </SubmitButton>
+            </form>
+          </div>
         </div>
       ) : (
         <div className="connection-card__status">
           {code && codeExpiresAt ? (
             <div className="connection-code" aria-live="polite">
-              <span>일회용 연결 코드</span>
-              <strong>{code}</strong>
-              <CodeCountdown expiresAt={codeExpiresAt} />
-              <button
-                className="button button--quiet"
-                type="button"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(code);
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 2_000);
-                }}
-              >
+              <div className="connection-code__topline">
+                <span><ShieldCheck size={15} aria-hidden="true" /> 연결 로그인 코드</span>
+                <span className="connection-code__timer"><Clock3 size={14} aria-hidden="true" /><CodeCountdown expiresAt={codeExpiresAt} /></span>
+              </div>
+              <div className="connection-code__value">{code}</div>
+              <button className="connection-code__copy" type="button" onClick={async () => {
+                await navigator.clipboard.writeText(code);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 2_000);
+              }}>
                 {copied ? <Check size={17} aria-hidden="true" /> : <Copy size={17} aria-hidden="true" />}
-                {copied ? "복사했어요" : "코드 복사"}
+                {copied ? "클립보드에 복사했어요" : "코드 복사하기"}
               </button>
             </div>
           ) : (
-            <p>{pending ? "앞서 발급한 코드가 입력을 기다리고 있어요. 보안을 위해 코드는 다시 표시하지 않아요." : "연결된 사용자가 없어요. 코드를 받은 사람은 별도 계정 없이 로그인할 수 있어요."}</p>
+            <div className="connection-empty">
+              <span className="connection-empty__visual" aria-hidden="true"><span>나</span><Link2 size={20} /><span>가족</span></span>
+              <div>
+                <strong>{pending ? "발급한 코드가 입력을 기다리고 있어요" : "가족과 돌봄 화면을 함께 보세요"}</strong>
+                <p>{pending ? "보안을 위해 이전 코드는 다시 표시하지 않아요. 필요하면 새 코드를 발급해주세요." : "별도 회원가입 없이 코드 하나로 연결할 수 있어요."}</p>
+              </div>
+            </div>
           )}
+          <ol className="connection-steps" aria-label="연결 방법">
+            <li><span>1</span><p><strong>코드 발급</strong>10분 동안 유효해요</p></li>
+            <li><span>2</span><p><strong>가족에게 전달</strong>메신저로 복사해 보내요</p></li>
+            <li><span>3</span><p><strong>바로 연결</strong>같은 돌봄 화면을 봐요</p></li>
+          </ol>
           <div className="form-actions">
             <form action={createAction}>
-              <SubmitButton pendingText="코드 만드는 중…">{code || pending ? "새 코드 발급" : "연결 코드 발급"}</SubmitButton>
+              <SubmitButton pendingText="코드 만드는 중…">
+                {code || pending ? <RefreshCw size={17} aria-hidden="true" /> : <Link2 size={17} aria-hidden="true" />}
+                {code || pending ? "새 코드 발급" : "연결 코드 만들기"}
+              </SubmitButton>
             </form>
             {pending ? <form action={disconnectAction}><SubmitButton className="button button--quiet" pendingText="코드 취소 중…">코드 취소</SubmitButton></form> : null}
           </div>
         </div>
       )}
-      <p className="field-hint">코드는 10분 동안 한 번만 사용할 수 있고, 연결 사용자는 한 기기에서만 로그인할 수 있어요.</p>
+      <p className="connection-card__security"><ShieldCheck size={15} aria-hidden="true" /> 최초 연결은 10분 안에 완료해야 해요. 이후에는 같은 코드로 다시 로그인할 수 있고, 한 번에 한 기기만 연결돼요.</p>
     </section>
   );
 }

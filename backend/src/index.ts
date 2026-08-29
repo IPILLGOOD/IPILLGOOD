@@ -146,7 +146,6 @@ export {
   disconnectCareConnection,
   getCareConnection,
   hashConnectionCode,
-  logoutCareConnection,
   normalizeConnectionCode,
   redeemCareConnectionCode,
   revokeCareConnectionForAccount,
