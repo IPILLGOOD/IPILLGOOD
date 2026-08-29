@@ -1,7 +1,6 @@
 "use client";
 
 import { LoaderCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
 type DemoLoginResponse = {
@@ -18,7 +17,6 @@ export function DemoLoginButton({
   className: string;
   pendingLabel?: string;
 }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -37,7 +35,7 @@ export function DemoLoginButton({
       if (!response.ok || !body.redirectTo) {
         throw new Error(body.error ?? "demo_session_failed");
       }
-      router.replace(body.redirectTo);
+      window.location.replace(body.redirectTo);
     } catch {
       setPending(false);
       setErrorMessage("데모를 준비하지 못했어요. 잠시 후 다시 시도해주세요.");
