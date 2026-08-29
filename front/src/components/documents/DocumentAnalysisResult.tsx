@@ -49,8 +49,8 @@ export function DocumentAnalysisResult({ analysis }: { analysis: DocumentAnalysi
         <div className="disease-lookup-status disease-lookup-status--official_match" role="status">
           <CalendarCheck2 size={18} aria-hidden="true" />
           <p>
-            <strong>복약 일정에 반영됨</strong>
-            처방전에서 확인한 약 {analysis.medications.length}개를 오늘 할 일과 복용약에 추가했어요.
+            <strong>복약 후보 초안 생성</strong>
+            처방전에서 약 {analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.
           </p>
         </div>
       ) : null}

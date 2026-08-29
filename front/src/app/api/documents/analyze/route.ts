@@ -7,7 +7,8 @@ import {
   DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   DocumentUploadValidationError,
-  registerDocumentAndSyncMedicationReminders,
+  getMedicationPlanDraft,
+  registerDocument,
   type ClinicalDocumentType,
   validateClinicalDocumentFile,
 } from "@care-atlas/backend";
@@ -93,7 +94,8 @@ export async function POST(request: Request) {
       contentType,
       contentBase64,
     }));
-    const document = await registerDocumentAndSyncMedicationReminders(careScopeFor(session), {
+    const scope = careScopeFor(session);
+    const document = await registerDocument(scope, {
       fileName,
       contentHash,
       documentType: typedDocumentType,
@@ -101,17 +103,19 @@ export async function POST(request: Request) {
       isSample,
       analysis: result.analysis,
     });
+    const draft = document.medicationDraftId
+      ? await getMedicationPlanDraft(scope, document.medicationDraftId)
+      : null;
 
-    const addedMedicationCount =
-      typedDocumentType === "처방전" ? (result.analysis.medications?.length ?? 0) : 0;
     return Response.json({
       message:
-        addedMedicationCount > 0
-          ? `${result.message} 약 ${addedMedicationCount}개를 복약 일정에 추가했어요.`
+        draft
+          ? `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개를 검토하고 확정해주세요.`
           : result.message,
       analysis: result.analysis,
       document,
-      addedMedicationCount,
+      draft,
+      addedMedicationCount: 0,
     });
   } catch (error) {
     if (error instanceof DocumentUploadValidationError) {

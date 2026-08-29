@@ -42,6 +42,10 @@ export interface MedicationPlan {
   commonEffects?: string[];
   precautions?: string[];
   storagePlain?: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  sourceDocumentRevision?: string;
+  stateChangedAt?: string;
 }
 
 export interface PrescriptionMedication {
@@ -54,6 +58,46 @@ export interface PrescriptionMedication {
   endDate?: string;
   purposePlain: string;
   precautions: string[];
+}
+
+export type MedicationDraftState =
+  | "draft"
+  | "needs_review"
+  | "confirmed"
+  | "active"
+  | "expired"
+  | "cancelled";
+
+export interface MedicationPlanCandidate extends PrescriptionMedication {
+  id: string;
+  included: boolean;
+  state: "draft" | "needs_review" | "confirmed" | "active" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MedicationDraftTransition {
+  state: MedicationDraftState;
+  at: string;
+  by: string;
+}
+
+export interface MedicationPlanDraft {
+  id: string;
+  documentId: string;
+  sourceDocumentRevision: string;
+  revision: number;
+  state: MedicationDraftState;
+  candidates: MedicationPlanCandidate[];
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  activatedAt?: string;
+  confirmationIdempotencyKey?: string;
+  activeMedicationPlanIds?: string[];
+  transitionHistory: MedicationDraftTransition[];
 }
 
 export interface DoseEvent {
@@ -232,6 +276,8 @@ export interface ClinicalDocument {
   redacted: boolean;
   sourceLabel: string;
   analysis?: DocumentAnalysis;
+  revision?: string;
+  medicationDraftId?: string;
 }
 
 export type ClinicalDocumentType = "처방전" | "진단서";

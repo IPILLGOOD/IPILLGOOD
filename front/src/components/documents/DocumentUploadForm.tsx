@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { DocumentAnalysisResult } from "@/components/documents/DocumentAnalysisResult";
-import type { ClinicalDocumentType, DocumentAnalysis } from "@care-atlas/backend";
+import { MedicationDraftReview } from "@/components/documents/MedicationDraftReview";
+import type { ClinicalDocumentType, DocumentAnalysis, MedicationPlanDraft } from "@care-atlas/backend";
 
 interface AnalysisResponse {
   message?: string;
   analysis?: DocumentAnalysis;
   addedMedicationCount?: number;
+  draft?: MedicationPlanDraft | null;
 }
 
 export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) {
@@ -21,6 +23,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
+  const [draft, setDraft] = useState<MedicationPlanDraft | null>(null);
   const previewUrl = useMemo(
     () => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : null),
     [file],
@@ -40,6 +43,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         : "문서에서 중요한 내용을 찾고 쉬운 말로 정리하고 있어요.",
     );
     setAnalysis(null);
+    setDraft(null);
 
     try {
       const response = await fetch("/api/documents/analyze", {
@@ -54,6 +58,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
       setStatus("success");
       setMessage(body.message ?? "문서 분석을 마쳤어요.");
       setAnalysis(body.analysis);
+      setDraft(body.draft ?? null);
       router.refresh();
     } catch (error) {
       setStatus("error");
@@ -179,6 +184,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
       ) : null}
 
       {analysis ? <DocumentAnalysisResult analysis={analysis} /> : null}
+      {draft ? <MedicationDraftReview draft={draft} /> : null}
     </div>
   );
 }

@@ -50,14 +50,27 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     await expect(page.getByText("오늘의 몸 상태를 기록했어요.")).toBeVisible();
     await page.goto("/documents");
     const before = await page.locator(".document-item").count();
+    const recipient = fixture.admin.collection("careRecipients").doc(recipientId!);
+    const baselineMedicationCount = (await recipient.collection("medicationPlans").get()).size;
+    const baselineDoseEventCount = (await recipient.collection("doseEvents").get()).size;
     for (const documentType of ["처방전", "진단서"]) {
       await page.getByRole("radio", { name: new RegExp(`^${documentType}`) }).check();
       await page.getByRole("button", { name: `비식별 샘플 ${documentType}으로 체험` }).click();
       await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
       await expect(page.locator(".document-item")).toHaveCount(before + 1);
+      if (documentType === "처방전") {
+        expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount);
+        expect((await recipient.collection("doseEvents").get()).size).toBe(baselineDoseEventCount);
+        await page.getByRole("button", { name: "선택한 약 3개 확정" }).click();
+        await expect(page.getByText("선택한 약 3개를 복약 일정에 반영했어요.")).toBeVisible();
+        expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount + 3);
+      }
       page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: `“비식별_샘플_${documentType}.jpg” 문서 삭제` }).first().click();
       await expect(page.locator(".document-item")).toHaveCount(before);
+      if (documentType === "처방전") {
+        expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount);
+      }
     }
     await page.goto("/today");
     await expect(page.getByLabel("보호자 메모")).toHaveValue("격리된 자동 검증 기록");

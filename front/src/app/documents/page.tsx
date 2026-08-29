@@ -1,12 +1,13 @@
 import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
 
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
+import { MedicationDraftReview } from "@/components/documents/MedicationDraftReview";
 import { DemoDocumentSamples } from "@/components/documents/DemoDocumentSamples";
 import { DeleteDocumentButton } from "@/components/documents/DeleteDocumentButton";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareSnapshot } from "@care-atlas/backend";
+import { getCareSnapshot, getMedicationPlanDraft } from "@care-atlas/backend";
 import { formatDate } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
 
@@ -15,6 +16,13 @@ export const dynamic = "force-dynamic";
 export default async function DocumentsPage() {
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
+  const drafts = new Map((await Promise.all(snapshot.documents.map(async (document) => {
+    if (!document.medicationDraftId || document.status !== "needs_review") return null;
+    const draft = await getMedicationPlanDraft(scope, document.medicationDraftId);
+    return draft && (draft.state === "draft" || draft.state === "needs_review")
+      ? [document.id, draft] as const
+      : null;
+  }))).filter((entry) => entry !== null));
   return (
     <>
       <PageHeader
@@ -49,6 +57,7 @@ export default async function DocumentsPage() {
                 {snapshot.documents.map((document) => {
                   const confirmed = document.status === "confirmed";
                   const Icon = confirmed ? FileCheck2 : FileClock;
+                  const draft = drafts.get(document.id);
                   return (
                     <li className="document-item" key={document.id}>
                       <span className="document-item__icon" aria-hidden="true">
@@ -62,7 +71,7 @@ export default async function DocumentsPage() {
                         </small>
                       </div>
                       <Badge tone={confirmed ? "success" : "warning"}>
-                        {confirmed ? "분석 완료" : "분석 대기"}
+                        {confirmed ? "분석 완료" : document.status === "needs_review" ? "복약 검토 필요" : "분석 대기"}
                       </Badge>
                       <DeleteDocumentButton
                         documentId={document.id}
@@ -85,6 +94,12 @@ export default async function DocumentsPage() {
                               </div>
                             ))}
                           </dl>
+                        </details>
+                      ) : null}
+                      {draft ? (
+                        <details className="saved-analysis saved-medication-draft">
+                          <summary>복약 초안 이어서 검토</summary>
+                          <MedicationDraftReview draft={draft} />
                         </details>
                       ) : null}
                     </li>
