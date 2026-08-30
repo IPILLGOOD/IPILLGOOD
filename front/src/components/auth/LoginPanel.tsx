@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { DemoLoginButton } from "./DemoLoginButton";
+import { ConnectionCodeInput } from "./ConnectionCodeInput";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { GoogleLogo } from "./GoogleLogo";
 
@@ -65,9 +66,9 @@ export function LoginPanel({ errorMessage, successMessage }: { errorMessage?: st
                     <span><strong>초대받은 돌봄 화면 연결하기</strong><small>전달받은 8자리 코드만 입력하면 같은 화면을 바로 볼 수 있어요.</small></span>
                   </div>
                   <form className="connection-login-form" action="/api/auth/connection/redeem" method="post">
-                    <label htmlFor="connection-code">연결 코드</label>
+                    <label id="connection-code-label" htmlFor="connection-code">연결 코드</label>
                     <div className="connection-login-form__row">
-                      <input id="connection-code" name="code" inputMode="text" autoComplete="one-time-code" minLength={8} maxLength={20} placeholder="ABCD-EFGH" required />
+                      <ConnectionCodeInput />
                       <button className="login-demo-button" type="submit">연결하기 <ArrowRight size={17} aria-hidden="true" /></button>
                     </div>
                   </form>

@@ -38,6 +38,19 @@ const viewports = [
 const failures = [];
 const results = [];
 
+async function enableDemoSession(context) {
+  const response = await context.request.post(`${baseUrl}/api/auth/demo`, {
+    headers: {
+      accept: "application/json",
+      origin: new URL(baseUrl).origin,
+      "sec-fetch-site": "same-origin",
+    },
+  });
+  if (!response.ok()) {
+    throw new Error(`Demo login failed during visual QA: HTTP ${response.status()}`);
+  }
+}
+
 for (const viewport of viewports) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
@@ -48,7 +61,7 @@ for (const viewport of viewports) {
 
   for (const route of routes) {
     if (route === "/today") {
-      await context.request.post(`${baseUrl}/api/auth/demo`);
+      await enableDemoSession(context);
     }
     const response = await page.goto(`${baseUrl}${route}`, {
       waitUntil: "networkidle",
@@ -79,7 +92,7 @@ const auditContext = await browser.newContext({ viewport: { width: 1440, height:
 const auditPage = await auditContext.newPage();
 for (const route of routes) {
   if (route === "/today") {
-    await auditContext.request.post(`${baseUrl}/api/auth/demo`);
+    await enableDemoSession(auditContext);
   }
   await auditPage.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
   await auditPage.addScriptTag({ content: axeSource });
@@ -129,7 +142,7 @@ const largeTextContext = await browser.newContext({ viewport: { width: 375, heig
 const largeTextPage = await largeTextContext.newPage();
 for (const route of routes) {
   if (route === "/today") {
-    await largeTextContext.request.post(`${baseUrl}/api/auth/demo`);
+    await enableDemoSession(largeTextContext);
   }
   await largeTextPage.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
   await largeTextPage.addStyleTag({ content: "html { font-size: 125% !important; }" });
@@ -158,6 +171,7 @@ const screenshots = [
   { route: "/dashboard", name: "dashboard-mobile.png", width: 375, height: 812 },
   { route: "/check-in", name: "check-in-mobile.png", width: 375, height: 812 },
   { route: "/medications", name: "medications-desktop.png", width: 1440, height: 1000 },
+  { route: "/medications", name: "medications-mobile.png", width: 375, height: 812 },
   {
     route: "/medications/med-amlodipine",
     name: "medication-detail-desktop.png",
@@ -169,7 +183,7 @@ const screenshots = [
 ];
 for (const shot of screenshots) {
   if (shot.route === "/today") {
-    await screenshotContext.request.post(`${baseUrl}/api/auth/demo`);
+    await enableDemoSession(screenshotContext);
   }
   await screenshotPage.setViewportSize({ width: shot.width, height: shot.height });
   await screenshotPage.goto(`${baseUrl}${shot.route}`, { waitUntil: "networkidle" });

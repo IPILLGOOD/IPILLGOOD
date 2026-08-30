@@ -253,6 +253,10 @@ export async function saveCheckInAction(
     const questionResponse = buildPatientQuestionResponse({
       questionSet,
       answeredBy,
+      responseId:
+        snapshot.todayCheckIn?.questionSetId === questionSetId
+          ? snapshot.todayCheckIn.questionResponseId
+          : undefined,
       answers: Object.fromEntries(
         questionSet.questions.map((question) => [
           question.question_id,
