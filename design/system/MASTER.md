@@ -7,9 +7,9 @@
 ---
 
 **Project:** IPILLGOOD
-**Generated:** 2026-08-16 13:03:19
+**Updated:** 2026-08-29
 **Category:** Medication & Pill Reminder
-**Design Dials:** Variance 4/10 (Balanced / Modern) | Motion 2/10 (Subtle) | Density 7/10 (Standard)
+**Design Dials:** Variance 6/10 (Editorial / Modern) | Motion 2/10 (Subtle) | Density 7/10 (Standard)
 
 > 사용자 요청과 접근성 검토를 반영해 자동 추천의 파란색·영문 폰트·뉴스레터 패턴을 초록색 돌봄 대시보드와 Noto Sans KR로 수동 조정함.
 
@@ -25,10 +25,11 @@
 | On Primary | `#FFFFFF` | `--color-on-primary` |
 | Secondary | `#91B79B` | `--color-secondary` |
 | Accent/CTA | `#176B4D` | `--color-accent` |
-| Background | `#F6F8F4` | `--color-background` |
-| Foreground | `#18342A` | `--color-foreground` |
-| Muted | `#E6EEE5` | `--color-muted` |
-| Border | `#D9E3DA` | `--color-border` |
+| Background | `#F8FAF7` | `--color-background` |
+| Surface | `#FFFFFF` | `--color-surface` |
+| Foreground | `#29463B` | `--color-foreground` |
+| Muted | `#E8F0E8` | `--color-muted` |
+| Border | `#DDE6DE` | `--color-border` |
 | Destructive | `#DC2626` | `--color-destructive` |
 | Ring | `#176B4D` | `--color-ring` |
 
@@ -105,23 +106,27 @@ font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
 }
 ```
 
-### Cards
+### Sections and working surfaces
 
 ```css
 .card {
-  background: #FFFFFF;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: var(--shadow-md);
-  transition: all 200ms ease;
-  cursor: pointer;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  padding: 24px 0;
+  box-shadow: none;
 }
 
-.card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+.working-surface {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #FFFFFF;
+  padding: 24px;
 }
 ```
+
+Use bounded white surfaces only for forms, upload areas, modals, and a single high-priority action. Present repeated information as divided lists, timelines, steps, tables, or inline statistics.
 
 ### Inputs
 
@@ -163,13 +168,13 @@ font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
 
 ## Style Guidelines
 
-**Style:** Soft UI Evolution
+**Style:** Editorial Care
 
-**Keywords:** Evolved soft UI, better contrast, modern aesthetics, subtle depth, accessibility-focused, improved shadows, hybrid
+**Keywords:** Near-white canvas, editorial hierarchy, divided lists, subtle sage emphasis, calm clinical trust, accessible
 
-**Best For:** Modern enterprise apps, SaaS platforms, health/wellness, modern business tools, professional, hybrid
+**Best For:** Caregiver-first health and wellness tools that need warmth without losing clinical clarity
 
-**Key Effects:** Improved shadows (softer than flat, clearer than neumorphism), modern (200-300ms), focus visible, WCAG AA/AAA
+**Key Effects:** Large headings, asymmetric desktop grids, fine rules, minimal shadows, selective green surfaces, visible focus
 
 ### Page Pattern
 
@@ -202,6 +207,9 @@ gsap.from(el, { opacity: 0, y: 12, duration: 0.35, ease: 'power1.out', scrollTri
 - ❌ Complex shadows
 - ❌ 3D effects
 - ❌ Color-only indicators
+- ❌ Repeating the same rounded white card for every section
+- ❌ Large dark-green surfaces outside primary actions and the final landing CTA
+- ❌ Removing or rewriting safety copy to simplify a layout
 
 ### Additional Forbidden Patterns
 

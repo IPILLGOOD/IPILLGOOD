@@ -9,6 +9,7 @@ export {
   getMedicationPlanDraft,
   getCareSnapshot,
   rebuildCareReadModel,
+  getPatientQuestionResponse,
   getPatientQuestionSet,
   getTodayDailyCheckIn,
   medicationPlansFromPrescription,

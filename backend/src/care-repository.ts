@@ -384,6 +384,23 @@ export async function getPatientQuestionSet(
   return document.exists ? (document.data() as PatientQuestionSet) : null;
 }
 
+export async function getPatientQuestionResponse(
+  scope: CareDataScope,
+  responseId: string,
+): Promise<PatientQuestionResponse | null> {
+  assertValidScope(scope);
+  const firestore = scope.firestore ?? await getAdminFirestore();
+  const document = await firestore
+    .collection("careRecipients")
+    .doc(scope.recipientId)
+    .collection("questionResponses")
+    .doc(responseId)
+    .get();
+  if (!document.exists) return null;
+  const response = document.data() as PatientQuestionResponse;
+  return response.subject_ref === scope.recipientId ? response : null;
+}
+
 export async function saveDailyCheckIn(
   scope: CareDataScope,
   input: DailyCheckInInput & { questionResponse: PatientQuestionResponse },
