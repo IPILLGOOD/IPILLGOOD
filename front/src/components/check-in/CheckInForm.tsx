@@ -102,7 +102,7 @@ export function CheckInForm({
             보호자가 확인했어요
           </label>
           <label className="choice-card">
-            <input name="answeredBy" type="radio" value="recipient" {...form.check("answeredBy", "recipient")} required />
+            <input name="answeredBy" type="radio" value="recipient" {...form.check("answeredBy", "recipient", initialCheckIn?.completedBy === "recipient")} required />
             어르신이 직접 답했어요
           </label>
         </div>
@@ -125,7 +125,11 @@ export function CheckInForm({
                   name={`dose_${task.id}`}
                   type="radio"
                   value={option.value}
-                  {...form.check(`dose_${task.id}`, option.value, option.value === task.response)}
+                  {...form.check(
+                    `dose_${task.id}`,
+                    option.value,
+                    task.hasRecordedResponse && option.value === task.response,
+                  )}
                   required
                 />
                 {option.label}
@@ -141,7 +145,7 @@ export function CheckInForm({
         <div className="choice-grid">
           {symptoms.map((symptom) => (
             <label className="choice-card" key={symptom}>
-              <input name="symptoms" type="checkbox" value={symptom} {...form.check("symptoms", symptom)} />
+              <input name="symptoms" type="checkbox" value={symptom} {...form.check("symptoms", symptom, initialCheckIn?.symptoms.includes(symptom) ?? false)} />
               {symptom}
             </label>
           ))}
@@ -153,7 +157,7 @@ export function CheckInForm({
       <div className="form-grid form-grid--check-in-details">
         <div className="field">
           <label htmlFor="severity">불편한 정도</label>
-          <select id="severity" name="severity" {...form.field("severity", "3")}>
+          <select id="severity" name="severity" {...form.field("severity", String(initialCheckIn?.severity || 3))}>
             <option value="1">1 — 아주 조금</option>
             <option value="3">3 — 조금 불편함</option>
             <option value="5">5 — 일상에 영향이 있음</option>
@@ -166,7 +170,7 @@ export function CheckInForm({
           <textarea
             id="note"
             name="note"
-            {...form.field("note")}
+            {...form.field("note", initialCheckIn?.note ?? "")}
             maxLength={500}
             placeholder="예: 걸을 때 잠시 벽을 짚었고, 10분 정도 쉬었어요."
           />

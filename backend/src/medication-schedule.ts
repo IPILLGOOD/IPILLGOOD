@@ -17,6 +17,7 @@ export interface MedicationScheduleTask {
   timeLabel: string;
   scheduledAt: string;
   response: DoseEvent["response"];
+  hasRecordedResponse: boolean;
 }
 
 export interface MedicationReminderSchedule {
@@ -41,17 +42,29 @@ export function activeMedications(medications: MedicationPlan[]) {
 }
 
 export function medicationFrequencyRule(frequency: string) {
-  const dailyMatch = frequency.match(/(?:하루|1일)\s*(\d+)회/);
+  const normalized = frequency.trim();
+  if (/(?:필요\s*시|필요할\s*때|증상\s*시|주\s*\d+회|매주|격주|요일)/.test(normalized)) return null;
+
+  const dailyMatch = normalized.match(/^(?:하루|1일)\s*(\d+)회(?:\s*복용)?$/);
   if (dailyMatch) {
-    return { count: Math.max(1, Number(dailyMatch[1])), intervalDays: 1 };
+    const count = Number(dailyMatch[1]);
+    return Number.isInteger(count) && count >= 1 && count <= 6
+      ? { count, intervalDays: 1 }
+      : null;
   }
 
-  const intervalMatch = frequency.match(/(\d+)일\s*1회/);
+  if (/^매일(?:\s*1회)?$/.test(normalized)) return { count: 1, intervalDays: 1 };
+
+  const intervalMatch = normalized.match(/^(\d+)일\s*1회(?:\s*복용)?$/);
   if (intervalMatch) {
-    return { count: 1, intervalDays: Math.max(1, Number(intervalMatch[1])) };
+    const intervalDays = Number(intervalMatch[1]);
+    return Number.isInteger(intervalDays) && intervalDays >= 1 && intervalDays <= 365
+      ? { count: 1, intervalDays }
+      : null;
   }
 
-  return { count: 1, intervalDays: 1 };
+  // PRN, weekly and unknown text must never silently become a daily schedule.
+  return null;
 }
 
 export { dateKeyInTimeZone } from "./dates.ts";
@@ -69,19 +82,15 @@ export function isMedicationDueOnDate(
   return elapsedDays >= 0 && elapsedDays % intervalDays === 0;
 }
 
-export function timeForMedicationSlot(label: string, index: number, count: number) {
+export function timeForMedicationSlot(label: string, _index: number, _count: number) {
+  const clock = label.match(/(?:^|\D)([01]?\d|2[0-3]):([0-5]\d)(?:\D|$)/);
+  if (clock) return `${clock[1]!.padStart(2, "0")}:${clock[2]}`;
   if (label.includes("아침")) return "08:00";
   if (label.includes("점심")) return "13:00";
   if (label.includes("저녁")) return "19:00";
   if (label.includes("취침") || label.includes("자기 전")) return "21:00";
 
-  const defaults: Record<number, string[]> = {
-    1: ["09:00"],
-    2: ["08:00", "19:00"],
-    3: ["08:00", "13:00", "19:00"],
-    4: ["08:00", "12:00", "16:00", "20:00"],
-  };
-  return defaults[count]?.[index] ?? `${String(8 + index * 4).padStart(2, "0")}:00`;
+  return null;
 }
 
 export function medicationTimingSlots(timing: string, count: number) {
@@ -92,7 +101,7 @@ export function medicationTimingSlots(timing: string, count: number) {
 
   if (pieces.length === count) return pieces;
   if (count === 1) return [timing];
-  return Array.from({ length: count }, (_, index) => `${index + 1}번째 복용`);
+  return [];
 }
 
 function isoAtSeoulTime(dateKey: string, timeLabel: string) {
@@ -128,6 +137,7 @@ export function createMedicationSchedule(
 
   for (const medication of activeMedications(medications)) {
     const rule = medicationFrequencyRule(medication.frequency);
+    if (!rule) continue;
     if (!isMedicationDueOnDate(medication, dateKey, rule.intervalDays)) continue;
 
     const slots = medicationTimingSlots(medication.timing, rule.count);
@@ -144,6 +154,7 @@ export function createMedicationSchedule(
 
     slots.forEach((slotLabel, slotIndex) => {
       const timeLabel = timeForMedicationSlot(slotLabel, slotIndex, rule.count);
+      if (!timeLabel) return;
       const scheduledAt = isoAtSeoulTime(dateKey, timeLabel);
       const exactEvent = eventsForMedication.find(
         (event) => seoulTimeLabel(event.scheduledAt) === timeLabel,
@@ -161,6 +172,7 @@ export function createMedicationSchedule(
         timeLabel,
         scheduledAt,
         response: exactEvent?.response ?? "not_yet",
+        hasRecordedResponse: Boolean(exactEvent),
       });
     });
   }
@@ -183,9 +195,11 @@ export function buildMedicationReminderSchedules(
   const updatedAt = now.toISOString();
   return activeMedications(medications).flatMap((medication) => {
     const rule = medicationFrequencyRule(medication.frequency);
+    if (!rule) return [];
     const slots = medicationTimingSlots(medication.timing, rule.count);
     return slots.flatMap((slotLabel, slotIndex) => {
       const timeLabel = timeForMedicationSlot(slotLabel, slotIndex, rule.count);
+      if (!timeLabel) return [];
       const nextDueAt = nextMedicationDueAt(medication, timeLabel, rule.intervalDays, now);
       if (!nextDueAt) return [];
       return [

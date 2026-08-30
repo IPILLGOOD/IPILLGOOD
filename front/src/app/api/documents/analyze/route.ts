@@ -10,7 +10,7 @@ import {
   getCareSnapshot,
   getDocumentImportReview,
   getMedicationPlanDraft,
-  isServiceHealthDataConsentConfirmed,
+  isServiceCareProfileComplete,
   MedicationDuplicateResolutionRequiredError,
   registerDocument,
   saveDocumentImportReview,
@@ -40,9 +40,9 @@ export async function POST(request: Request) {
   }
 
   const scope = careScopeFor(session);
-  if (!await isServiceHealthDataConsentConfirmed(scope.recipientId)) {
+  if (!await isServiceCareProfileComplete(scope.recipientId)) {
     return Response.json(
-      { message: "건강정보 처리에 동의한 뒤 문서를 분석할 수 있어요." },
+      { message: "돌봄 대상자 정보와 건강정보 처리 동의를 확인한 뒤 문서를 분석할 수 있어요." },
       { status: 403 },
     );
   }
@@ -110,9 +110,9 @@ export async function POST(request: Request) {
     if (session.provider === "google" && !await isServiceAccountActive(session.id)) {
       return Response.json({ message: "회원 탈퇴 처리 중에는 분석할 수 없어요." }, { status: 403 });
     }
-    if (!await isServiceHealthDataConsentConfirmed(scope.recipientId)) {
+    if (!await isServiceCareProfileComplete(scope.recipientId)) {
       return Response.json(
-        { message: "건강정보 처리 동의가 철회되어 분석을 중단했어요." },
+        { message: "돌봄 대상자 정보 또는 건강정보 처리 동의가 변경되어 분석을 중단했어요." },
         { status: 403 },
       );
     }

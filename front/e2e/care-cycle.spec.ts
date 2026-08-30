@@ -48,10 +48,9 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     for (let index = 0; index < await doseResponses.count(); index++) {
       await doseResponses.nth(index).check();
     }
-    const questions = form.locator('select[name^="question_"]');
+    const questions = form.locator(".dynamic-question");
     for (let index = 0; index < await questions.count(); index++) {
-      const question = questions.nth(index);
-      await question.selectOption((await question.locator("option:not([disabled])").first().getAttribute("value"))!);
+      await questions.nth(index).locator('input[type="radio"]').first().check();
     }
     await form.getByRole("button", { name: "오늘의 답변 저장" }).click();
     await expect(page.getByText("오늘의 복약과 몸 상태를 기록했어요.")).toBeVisible();
@@ -134,23 +133,43 @@ test("synthetic account: isolated normal session, read-only Push status, forged 
     expect((await request.post("/api/auth/demo", { headers: { origin: "https://untrusted.invalid" } })).status()).toBe(403);
     await context.addCookies([{ name: "care_atlas_session", value: token, url: process.env.IPILLGOOD_TEST_BASE_URL!, httpOnly: true, sameSite: "Lax" }]);
     await page.goto("/today");
+    await expect(page).toHaveURL(/\/profile\?onboarding=1$/);
+    await expect(page.getByLabel("화면에 표시할 이름")).toHaveValue("");
+    await expect(page.getByLabel("나이", { exact: false })).toHaveValue("");
+    for (const path of ["/documents", "/check-in", "/dashboard", "/report"]) {
+      await page.goto(path);
+      await expect(page).toHaveURL(/\/profile\?onboarding=1$/);
+    }
+    const initialRecipient = await fixture.admin.collection("careRecipients").doc(recipientId).get();
+    expect(initialRecipient.data()).toMatchObject({ displayName: "", ageBand: "", consentConfirmed: false });
+    const beforeProfileAnalysis = await context.request.post("/api/documents/analyze", {
+      multipart: { documentType: "처방전", sample: "true" },
+    });
+    expect(beforeProfileAnalysis.status()).toBe(403);
+    expect((await beforeProfileAnalysis.json()).message).toContain("돌봄 대상자 정보");
+    await page.getByLabel("화면에 표시할 이름").fill("온보딩 검증 대상자");
+    await page.getByLabel("나이", { exact: false }).fill("75");
+    await page.getByRole("checkbox", { name: /건강정보 저장에 동의/ }).check();
+    await page.getByRole("button", { name: "프로필 저장", exact: true }).click();
     await expect(page).toHaveURL(/\/today$/);
     await expect(page.getByRole("heading", { name: "돌봄 기록을 시작해 볼까요" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "프로필과 동의 확인하기" })).toHaveAttribute("href", "/profile");
+    await expect(page.getByRole("link", { name: "첫 문서 등록하기" })).toHaveAttribute("href", "/documents");
     await expect(page.getByRole("form", { name: "오늘의 안부 바로 기록" })).toHaveCount(0);
     for (const collection of ["careAnalyses", "questionSets", "agentRuns"]) {
       expect((await fixture.admin.collection("careRecipients").doc(recipientId).collection(collection).get()).empty).toBe(true);
     }
-    const deniedAnalysis = await context.request.post("/api/documents/analyze", {
+    const deniedSample = await context.request.post("/api/documents/analyze", {
       multipart: { documentType: "처방전", sample: "true" },
     });
-    expect(deniedAnalysis.status()).toBe(403);
-    expect((await deniedAnalysis.json()).message).toContain("동의");
+    expect(deniedSample.status()).toBe(403);
+    expect((await deniedSample.json()).message).toContain("샘플 문서 체험");
     const status = await context.request.get("/api/push/subscriptions?deviceId=test-device-000001");
     expect(status.status()).toBe(200);
     expect((await status.json()).subscribed).toBe(false);
     const model = await fixture.admin.collection("careReadModels").doc(recipientId).get();
     expect(model.exists).toBe(true);
+    expect(model.data()?.recipient).toMatchObject({ displayName: "온보딩 검증 대상자", ageBand: "75", consentConfirmed: true });
+    expect(model.data()?.recipient.profileCompletedAt).toEqual(expect.any(String));
     expect(model.data()?.documents).toEqual([]);
     expect((await fixture.admin.collection("pushSubscriptions").where("recipientId", "==", recipientId).get()).size).toBe(0);
   } finally {

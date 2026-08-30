@@ -1,5 +1,6 @@
 import {
   confirmMedicationPlanDraftAndSyncMedicationReminders,
+  isServiceCareProfileComplete,
   withCareAccountProcessing,
 } from "@care-atlas/backend";
 import { z } from "zod";
@@ -44,6 +45,9 @@ export async function POST(request: Request) {
   }
 
   const scope = careScopeFor(session);
+  if (!scope.useDemoData && !await isServiceCareProfileComplete(scope.recipientId)) {
+    return Response.json({ message: "돌봄 대상자 정보와 건강정보 처리 동의를 먼저 확인해주세요." }, { status: 403 });
+  }
   try {
     const result = await withCareAccountProcessing(scope.recipientId, () =>
       confirmMedicationPlanDraftAndSyncMedicationReminders(scope, {

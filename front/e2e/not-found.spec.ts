@@ -3,6 +3,7 @@ import { SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
 import axe from "axe-core";
 import { emulatorFixture } from "../../backend/test-support/emulator";
+import { seedCareAccount } from "../../backend/test-support/care-fixtures";
 
 test("unknown URLs return 404, remain accessible at all sizes, and recover without history", async ({ page }) => {
   const errors: string[] = [];
@@ -39,6 +40,7 @@ test("signed-in missing resources use the shared 404 and return to today", async
   const userId = `not-found-${randomUUID()}`;
   const recipientId = `google-${userId}`;
   const token = await new SignJWT({ name: "404 검증", provider: "google" }).setProtectedHeader({ alg: "HS256" }).setSubject(userId).setIssuedAt().setExpirationTime("5m").sign(new TextEncoder().encode(process.env.SESSION_SECRET));
+  await seedCareAccount(fixture.firestore, recipientId, { consent: true });
   await context.addCookies([{ name: "care_atlas_session", value: token, url: process.env.IPILLGOOD_TEST_BASE_URL!, httpOnly: true, sameSite: "Lax" }]);
   try {
     for (const path of ["/missing-page-98", "/medications/deleted-medication", "/documents/deleted-document"]) {
@@ -52,7 +54,8 @@ test("signed-in missing resources use the shared 404 and return to today", async
     await expect(page).toHaveURL(/\/today$/);
     await expect(page.getByRole("navigation", { name: "주요 메뉴" })).toBeVisible();
     expect((await page.goto("/medications"))?.status()).toBe(200);
-    // A real render failure must remain a server error, not a missing-resource response.
+    // Orphaned health records must remain a server-side recovery error. The
+    // onboarding redirect must never overwrite them with a fresh profile.
     await fixture.admin.collection("careReadModels").doc(recipientId).delete();
     await fixture.admin.collection("careRecipients").doc(recipientId).delete();
     await fixture.admin.collection("careRecipients").doc(recipientId).collection("medicationPlans").doc("orphan").set({ id: "orphan" });

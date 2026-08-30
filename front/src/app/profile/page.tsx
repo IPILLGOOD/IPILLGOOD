@@ -40,7 +40,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       {params.restored === "1" && <p className="account-deletion-notice" role="status">계정과 돌봄 기록이 복구됐어요. 복약 알림은 이 기기에서 다시 설정해주세요.</p>}
       <div className="profile-layout">
         <Card>
-          <ProfileForm recipient={snapshot.recipient} revision={snapshot.revision} />
+          <ProfileForm recipient={snapshot.recipient} revision={snapshot.revision} onboarding={params.onboarding === "1"} />
         </Card>
         <aside className="profile-aside">
           <Card tone="accent">

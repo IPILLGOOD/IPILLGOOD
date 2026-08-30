@@ -15,6 +15,7 @@ import {
   getCareSnapshot,
   getPatientQuestionSet,
   getQuestionSetAvailability,
+  isServiceCareProfileComplete,
   saveDailyCheckIn,
   updateRecipientProfile,
   type ActionState,
@@ -47,6 +48,14 @@ async function demoWriteGuard(): Promise<ActionState | null> {
   };
 }
 
+async function completedProfileGuard(scope: { recipientId: string; useDemoData?: boolean }): Promise<ActionState | null> {
+  if (scope.useDemoData || await isServiceCareProfileComplete(scope.recipientId)) return null;
+  return {
+    status: "error",
+    message: "돌봄 대상자 정보와 건강정보 처리 동의를 먼저 확인해주세요.",
+  };
+}
+
 export type ConnectionActionState = ActionState & { code?: string; expiresAt?: string };
 
 export async function createConnectionCodeAction(
@@ -60,6 +69,8 @@ export async function createConnectionCodeAction(
     return { status: "error", message: "Google 계정 소유자만 연결 코드를 만들 수 있어요." };
   }
   try {
+    const profileGuard = await completedProfileGuard(careScopeFor(session));
+    if (profileGuard) return profileGuard;
     const rate = await enforceRateLimit("auth", { userId: session.id });
     if (!rate.allowed) return { status: "error", message: `${rate.retryAfterSeconds}초 뒤 다시 시도해주세요.` };
     const result = await createCareConnectionCode(session.id, { ownerDisplayName: session.name });
@@ -113,6 +124,8 @@ export async function deleteDocumentAction(formData: FormData): Promise<void> {
     const session = await getSession();
     if (!session) throw new Error("로그인 정보가 만료되었어요.");
     const scope = careScopeFor(session);
+    const profileGuard = await completedProfileGuard(scope);
+    if (profileGuard) throw new Error(profileGuard.message);
     const snapshot = await getCareSnapshot(scope);
     await deleteDocumentAndSyncMedicationReminders(scope, documentId, snapshot);
     revalidatePath("/documents");
@@ -185,7 +198,10 @@ export async function confirmDiagnosesAction(formData: FormData): Promise<void> 
   }
   const session = await getSession();
   if (!session) throw new Error("로그인 정보가 만료되었어요.");
-  await confirmDocumentDiagnoses(careScopeFor(session), documentId);
+  const scope = careScopeFor(session);
+  const profileGuard = await completedProfileGuard(scope);
+  if (profileGuard) throw new Error(profileGuard.message);
+  await confirmDocumentDiagnoses(scope, documentId);
   revalidatePath("/dashboard");
   revalidatePath("/documents");
   revalidatePath("/nutrition");
@@ -215,6 +231,8 @@ export async function saveCheckInAction(
       };
     }
     const scope = careScopeFor(session);
+    const profileGuard = await completedProfileGuard(scope);
+    if (profileGuard) return profileGuard;
     const snapshot = await getCareSnapshot(scope);
     const expectedRevision = Number(formData.get("expectedRevision"));
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
@@ -308,7 +326,10 @@ export async function recoverCheckInQuestions(): Promise<QuestionSetAvailability
     if (!session) return { status: "unavailable", message: "다시 로그인한 뒤 시도해 주세요." };
     const limit = await enforceRateLimit("checkIn", { userId: session.id });
     if (!limit.allowed) return { status: "unavailable", message: `${limit.retryAfterSeconds}초 뒤 다시 시도해 주세요.` };
-    return await getQuestionSetAvailability({ scope: careScopeFor(session), answerer: "caregiver" });
+    const scope = careScopeFor(session);
+    const profileGuard = await completedProfileGuard(scope);
+    if (profileGuard) return { status: "unavailable", message: profileGuard.message };
+    return await getQuestionSetAvailability({ scope, answerer: "caregiver" });
   } catch {
     return { status: "unavailable", message: "질문을 불러오지 못했어요. 잠시 후 다시 시도해 주세요." };
   }

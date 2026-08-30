@@ -13,6 +13,13 @@ export function syntheticDocument(id: string): RegisterDocumentInput {
 export async function seedCareAccount(firestore: FirestoreLike, recipientId: string, options: { consent?: boolean; medications?: MedicationPlan[] } = {}) {
   const snapshot = createInitialCareSnapshot({ recipientId });
   snapshot.recipient.consentConfirmed = options.consent ?? false;
+  if (snapshot.recipient.consentConfirmed) {
+    const completedAt = new Date().toISOString();
+    snapshot.recipient.displayName = "합성 검증 대상자";
+    snapshot.recipient.ageBand = "75";
+    snapshot.recipient.lastConfirmedAt = completedAt;
+    snapshot.recipient.profileCompletedAt = completedAt;
+  }
   snapshot.medications = options.medications ?? [];
   const recipient = firestore.collection("careRecipients").doc(recipientId);
   const batch = firestore.batch().set(recipient, snapshot.recipient).set(firestore.collection("careReadModels").doc(recipientId), { ...snapshot, revision: 0 });

@@ -89,25 +89,26 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await expect(page).toHaveURL(/\/check-in$/);
   const form = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
   await typeWithKeyboard(page, form.getByLabel("보호자 메모"), "접근성 키보드 검증");
-  const doseResponses = form.locator('input[name^="dose_"][value="completed"]');
-  for (let index = 0; index < await doseResponses.count(); index++) {
-    await tabTo(page, doseResponses.nth(index));
-    await page.keyboard.press("Space");
-    await expect(doseResponses.nth(index)).toBeChecked();
-  }
-  const questions = form.locator('select[name^="question_"]');
-  for (let index = 0; index < await questions.count(); index++) {
-    await tabTo(page, questions.nth(index));
-    if (process.platform === "darwin") {
-      // macOS headless Chromium does not drive native select popups (also reproduced on plain HTML).
-      // This helper verifies selection behavior only; the manual keyboard gate stays open.
-      await questions.nth(index).selectOption((await questions.nth(index).locator("option").last().getAttribute("value"))!);
-    } else {
-      await page.keyboard.press("ArrowDown");
+  const doseQuestions = form.locator(".dose-question");
+  for (let index = 0; index < await doseQuestions.count(); index++) {
+    const question = doseQuestions.nth(index);
+    const selected = question.locator('input[type="radio"]:checked');
+    const first = question.locator('input[type="radio"]').first();
+    const completed = question.locator('input[type="radio"][value="completed"]');
+    await tabTo(page, await selected.count() > 0 ? selected : first);
+    for (let move = 0; move < await question.locator('input[type="radio"]').count() && !await completed.isChecked(); move++) {
+      await page.keyboard.press("ArrowLeft");
     }
-    await expect(questions.nth(index)).not.toHaveValue("");
+    await expect(completed).toBeChecked();
   }
-  await info.attach("native-select-keyboard", { body: JSON.stringify({ platform: process.platform, usedSelectionHelper: process.platform === "darwin" }), contentType: "application/json" });
+  const questions = form.locator(".dynamic-question");
+  for (let index = 0; index < await questions.count(); index++) {
+    const firstAnswer = questions.nth(index).locator('input[type="radio"]').first();
+    await tabTo(page, firstAnswer);
+    await page.keyboard.press("Space");
+    await expect(firstAnswer).toBeChecked();
+  }
+  await info.attach("check-in-radio-keyboard", { body: JSON.stringify({ doseGroups: await doseQuestions.count(), dynamicQuestions: await questions.count() }), contentType: "application/json" });
   await tabTo(page, form.getByRole("button", { name: "오늘의 답변 저장" }));
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status")).toContainText("오늘의 복약과 몸 상태를 기록했어요.");

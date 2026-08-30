@@ -16,6 +16,12 @@ for (const path of ["/check-in"]) {
       await seedCareAccount(fixture.firestore, recipientId, { consent: true, medications: [syntheticMedication] });
       await page.goto(path);
       const form = page.getByRole("form", { name: path === "/today" ? "오늘의 안부 바로 기록" : "오늘의 복약과 안부 기록" });
+      const doseGroups = form.locator(".dose-question");
+      for (let index = 0; index < await doseGroups.count(); index++) {
+        const group = doseGroups.nth(index);
+        await expect(group.locator('input[type="radio"]:checked')).toHaveCount(0);
+        await group.locator('input[type="radio"][value="completed"]').check();
+      }
       await form.getByLabel("보호자 메모").fill("새로고침 없이 보존할 메모");
       await form.getByLabel("두통", { exact: true }).check();
       await form.getByLabel("불편한 정도", { exact: true }).selectOption("7");
