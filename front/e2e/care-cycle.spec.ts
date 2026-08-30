@@ -48,10 +48,9 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     for (let index = 0; index < await doseResponses.count(); index++) {
       await doseResponses.nth(index).check();
     }
-    const questions = form.locator('select[name^="question_"]');
+    const questions = form.locator(".dynamic-question");
     for (let index = 0; index < await questions.count(); index++) {
-      const question = questions.nth(index);
-      await question.selectOption((await question.locator("option:not([disabled])").first().getAttribute("value"))!);
+      await questions.nth(index).locator('input[type="radio"]').first().check();
     }
     await form.getByRole("button", { name: "오늘의 답변 저장" }).click();
     await expect(page.getByText("오늘의 복약과 몸 상태를 기록했어요.")).toBeVisible();

@@ -27,12 +27,12 @@ const doseResponses = checkIn.locator('input[name^="dose_"][value="completed"]')
 for (let index = 0; index < (await doseResponses.count()); index += 1) {
   await doseResponses.nth(index).check();
 }
-const dynamicQuestions = checkIn.locator('select[name^="question_"]');
+const dynamicQuestions = checkIn.locator(".dynamic-question");
 for (let index = 0; index < (await dynamicQuestions.count()); index += 1) {
   const question = dynamicQuestions.nth(index);
-  const firstAnswer = await question.locator("option:not([disabled])").first().getAttribute("value");
-  if (!firstAnswer) throw new Error("Dynamic care question did not include an answer option");
-  await question.selectOption(firstAnswer);
+  const firstAnswer = question.locator('input[type="radio"]').first();
+  if (!(await firstAnswer.count())) throw new Error("Dynamic care question did not include an answer option");
+  await firstAnswer.check();
 }
 await checkIn.getByRole("button", { name: "오늘의 답변 저장" }).click();
 await page.getByText("오늘의 복약과 몸 상태를 기록했어요.").waitFor();
