@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { inspectPushClient, enablePushNotifications } from "../src/lib/push/client.ts";
+import { markPushCleanupPending, clearBrowserPush } from "../src/lib/push/browser-cleanup.ts";
 import { pushEndpointHash } from "../src/lib/push/key-validation.ts";
 import { createPushRefresher } from "../src/lib/push/auto-reconnect.ts";
 
@@ -10,7 +11,7 @@ const newKey = keyBytes(2);
 const encoded = (key) => Buffer.from(key).toString("base64url");
 
 function harness(t, options = {}) {
-  const state = { key: options.key ?? oldKey, permission: "granted", registered: true, lastHttpStatus: null, configReads: 0, posts: 0, prompts: 0, unsubscribes: 0, creates: 0, requests: [] };
+  const state = { key: options.key ?? oldKey, permission: "granted", registered: true, lastHttpStatus: null, configReads: 0, posts: 0, activations: 0, prompts: 0, unsubscribes: 0, creates: 0, requests: [] };
   const subscription = (key, endpoint) => ({
     endpoint, expirationTime: null, options: { applicationServerKey: key?.buffer ?? null },
     getKey: (name) => new Uint8Array(name === "auth" ? 16 : 65).fill(3).buffer,
@@ -18,7 +19,7 @@ function harness(t, options = {}) {
   });
   state.current = subscription(options.boundKey === undefined ? oldKey : options.boundKey, "https://fcm.googleapis.com/fcm/send/synthetic-old");
   state.serverEndpoint = state.current.endpoint;
-  const registration = { pushManager: {
+  const registration = { getNotifications: async () => [], pushManager: {
     getSubscription: async () => { state.afterCurrentRead?.(); return state.current; },
     subscribe: async ({ applicationServerKey }) => {
       state.creates++;
@@ -29,10 +30,11 @@ function harness(t, options = {}) {
     },
   } };
   const storage = new Map([["ipillgood:push-device-id", "synthetic-device-00001"]]);
+  state.storage = storage;
   const notification = { get permission() { return state.permission; }, requestPermission: async () => { state.prompts++; return state.permission; } };
   for (const [name, value] of Object.entries({
-    navigator: { userAgent: "Mozilla/5.0 Android Chrome/120.0", serviceWorker: { ready: Promise.resolve(registration) } },
-    window: { PushManager: {}, Notification: notification, matchMedia: () => ({ matches: true }), localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) } },
+    navigator: { userAgent: "Mozilla/5.0 Android Chrome/120.0", serviceWorker: { ready: Promise.resolve(registration), getRegistration: async () => registration } },
+    window: { PushManager: {}, Notification: notification, matchMedia: () => ({ matches: true }), localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) } },
     Notification: notification,
     fetch: async (url, init = {}) => {
       state.requests.push({ url, method: init.method ?? "GET", cache: init.cache });
@@ -40,18 +42,31 @@ function harness(t, options = {}) {
       if (url === "/api/push/config") {
         state.configReads++;
         if (state.configFailure) return Response.json({}, { status: 500 });
-        return Response.json({ configured: true, publicKey: encoded(state.key) });
+        return Response.json({ configured: true, publicKey: encoded(state.key), sessionKey: state.sessionKey ?? "session-a" });
+      }
+      if (init.method === "PATCH") {
+        state.activations++;
+        state.lastActivationSession = init.headers["x-push-session"];
+        if (init.headers["x-push-session"] !== (state.sessionKey ?? "session-a")) return Response.json({}, { status: 409 });
+        state.lastActivation = JSON.parse(init.body);
+        if (state.failActivation) return Response.json({}, { status: 503 });
+        state.registered = true;
+        state.pending = false;
+        if (state.loseActivationResponse) throw new TypeError("response lost");
+        return Response.json({ status: { activeSubscriptionCount: 1, activeScheduleCount: 1, nextReminderAt: null } });
       }
       if (init.method === "POST") {
         state.posts++;
         state.lastUpload = JSON.parse(init.body);
         if (state.failUpload) return Response.json({}, { status: 500 });
         state.serverEndpoint = JSON.parse(init.body).subscription.endpoint;
-        state.registered = true;
+        state.registered = false;
+        state.pending = true;
+        state.afterPrepare?.();
         state.lastHttpStatus = null;
-        return Response.json({ status: { activeSubscriptionCount: 1, activeScheduleCount: 1, nextReminderAt: null } });
+        return Response.json({ prepared: true, bindingId: "binding-a" });
       }
-      return Response.json({ subscribed: state.registered, endpointHash: await pushEndpointHash(state.serverEndpoint), lastHttpStatus: state.lastHttpStatus, status: { activeSubscriptionCount: 1, activeScheduleCount: 1, nextReminderAt: null } });
+      return Response.json({ subscribed: state.registered, pending: state.pending, endpointHash: await pushEndpointHash(state.serverEndpoint), lastHttpStatus: state.lastHttpStatus, status: { activeSubscriptionCount: 1, activeScheduleCount: 1, nextReminderAt: null } });
     },
   })) {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
@@ -281,4 +296,52 @@ test("permission revoked after removing a stale key never opens a permission pro
   assert.equal(result.permission, "default");
   assert.equal(result.subscribed, false);
   assert.equal(state.creates + state.posts + state.prompts, 0);
+});
+
+
+test("lost activation response recovers the committed subscription without another registration", async (t) => {
+  const state = harness(t);
+  state.loseActivationResponse = true;
+  assert.equal((await enablePushNotifications()).status, "subscribed");
+  assert.equal(state.posts, 1);
+  assert.equal(state.activations, 1);
+});
+
+test("failed confirmation is never shown as subscribed and a later retry can complete", async (t) => {
+  const state = harness(t);
+  state.failActivation = true;
+  await assert.rejects(enablePushNotifications(), /활성화/);
+  assert.equal((await inspectPushClient()).subscribed, false);
+  state.failActivation = false;
+  assert.equal((await createPushRefresher()()).subscribed, true);
+});
+
+test("account switch between prepare and confirmation cannot enroll the next account", async (t) => {
+  const state = harness(t);
+  state.afterPrepare = () => { state.sessionKey = "session-b"; };
+  await assert.rejects(enablePushNotifications());
+  assert.equal(state.lastActivationSession, "session-a");
+  assert.equal(state.registered, false);
+});
+
+test("a stale tab cannot enable notifications for a different login even when configuration is fetched after the switch", async (t) => {
+  const state = harness(t);
+  state.sessionKey = "session-b";
+  await assert.rejects(enablePushNotifications(undefined, "session-a"), /SESSION_CHANGED/);
+  assert.equal(state.posts + state.activations + state.unsubscribes + state.creates, 0);
+});
+
+test("browser unsubscribe failure preserves cleanup state and blocks new opt-in until cleanup succeeds", async (t) => {
+  const state = harness(t);
+  markPushCleanupPending();
+  state.refuseUnsubscribe = true;
+  await assert.rejects(clearBrowserPush(), /CLEANUP_PENDING/);
+  assert.equal(state.storage.get("ipillgood:push-cleanup-pending"), "true");
+  await assert.rejects(enablePushNotifications(), /CLEANUP_PENDING/);
+  assert.equal(state.posts, 0);
+  state.refuseUnsubscribe = false;
+  await clearBrowserPush();
+  assert.equal(state.current, null);
+  assert.equal(state.storage.has("ipillgood:push-device-id"), false);
+  assert.equal(state.storage.has("ipillgood:push-cleanup-pending"), false);
 });

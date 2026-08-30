@@ -163,7 +163,8 @@ test("synthetic account: isolated normal session, read-only Push status, forged 
     });
     expect(deniedSample.status()).toBe(403);
     expect((await deniedSample.json()).message).toContain("샘플 문서 체험");
-    const status = await context.request.get("/api/push/subscriptions?deviceId=test-device-000001");
+    const { sessionKey } = await (await context.request.get("/api/push/config")).json();
+    const status = await context.request.get("/api/push/subscriptions?deviceId=test-device-000001", { headers: { "x-push-session": sessionKey } });
     expect(status.status()).toBe(200);
     expect((await status.json()).subscribed).toBe(false);
     const model = await fixture.admin.collection("careReadModels").doc(recipientId).get();
