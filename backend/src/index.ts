@@ -193,9 +193,14 @@ export { AccountDeletingError, getAccountSessionState, isServiceAccountActive, a
 export { getFirebaseAccountAdmin } from "./firebase-account-admin";
 export { withCareAccountProcessing } from "./account-processing";
 export {
+  CareProfileRequiredError,
   HealthDataConsentRequiredError,
+  assertCareProfileComplete,
   assertHealthDataConsentConfirmed,
+  isCareProfileComplete,
+  isCareProfileRecordComplete,
   isHealthDataConsentConfirmed,
+  isServiceCareProfileComplete,
   isServiceHealthDataConsentConfirmed,
 } from "./health-data-consent";
 export { deleteRecipientHealthData, verifyRecipientHealthDataDeleted } from "./health-data-deletion";

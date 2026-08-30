@@ -20,6 +20,7 @@ export interface CareRecipient {
   caregiverNote: string;
   consentConfirmed: boolean;
   lastConfirmedAt: string;
+  profileCompletedAt?: string;
 }
 
 export interface ConfirmedCondition {

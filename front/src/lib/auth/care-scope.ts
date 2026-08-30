@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   isEphemeralDemoSessionId,
+  isServiceCareProfileComplete,
   type CareDataScope,
 } from "@care-atlas/backend";
 import { redirect } from "next/navigation";
@@ -27,14 +28,15 @@ export function careScopeFor(user: SessionUser): CareDataScope {
     };
   }
 
-  return {
-    recipientId: `google-${user.id}`,
-    initialDisplayName: "돌봄 대상자",
-  };
+  return { recipientId: `google-${user.id}` };
 }
 
 export async function requireCareScope() {
   const user = await getSession();
   if (!user) redirect("/login");
-  return careScopeFor(user);
+  const scope = careScopeFor(user);
+  if (!scope.useDemoData && !await isServiceCareProfileComplete(scope.recipientId)) {
+    redirect("/profile?onboarding=1");
+  }
+  return scope;
 }

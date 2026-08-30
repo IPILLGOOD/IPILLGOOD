@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { SignJWT } from "jose";
 import { emulatorFixture } from "../../backend/test-support/emulator";
+import { seedCareAccount } from "../../backend/test-support/care-fixtures";
 
 test("document date stays in Seoul before and after hydration in different browser zones", async ({ browser }) => {
   const fixture = emulatorFixture("admin");
@@ -9,6 +10,7 @@ test("document date stays in Seoul before and after hydration in different brows
   const recipientId = `google-${userId}`;
   const token = await new SignJWT({ name: "날짜 검증", provider: "google" }).setProtectedHeader({ alg: "HS256" }).setSubject(userId).setIssuedAt().setExpirationTime("5m").sign(new TextEncoder().encode(process.env.SESSION_SECRET));
   try {
+    await seedCareAccount(fixture.firestore, recipientId, { consent: true });
     for (const timezoneId of ["UTC", "America/Los_Angeles", "Asia/Seoul"]) {
       const context = await browser.newContext({ baseURL: process.env.IPILLGOOD_TEST_BASE_URL, timezoneId });
       try {

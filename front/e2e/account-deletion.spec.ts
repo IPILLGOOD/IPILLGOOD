@@ -87,7 +87,8 @@ for (const simulateNetworkFailure of [false, true]) test(`soft deletion (${simul
     // A new Firebase UID gets a new empty scope, not an email-keyed restore.
     await context.addCookies([{ name: "care_atlas_session", value: await session(newUid), url: process.env.IPILLGOOD_TEST_BASE_URL!, httpOnly: true, sameSite: "Lax" }]);
     await page.goto("/documents");
-    await expect(page.getByText("아직 등록한 문서가 없어요")).toBeVisible();
+    await expect(page).toHaveURL(/\/profile\?onboarding=1$/);
+    await expect(page.getByLabel("나이", { exact: false })).toHaveValue("");
   } finally {
     await f.admin.recursiveDelete(f.admin.collection("careRecipients").doc(`google-${newUid}`));
     await f.admin.collection("careReadModels").doc(`google-${newUid}`).delete();

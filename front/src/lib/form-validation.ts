@@ -76,6 +76,7 @@ export function buildRecipientProfile(
     caregiverNote: values.caregiverNote,
     consentConfirmed: true,
     lastConfirmedAt: confirmedAt,
+    profileCompletedAt: confirmedAt,
   };
 
   delete recipient.heightCm;

@@ -3,11 +3,11 @@ import test from "node:test";
 import { gettingStartedGuide } from "../src/lib/getting-started.ts";
 
 const empty = (consentConfirmed = false) => ({
-  recipient: { displayName: "돌봄 대상자", ageBand: "67", consentConfirmed },
+  recipient: { displayName: "", ageBand: "", consentConfirmed },
   medications: [], documents: [], doseEvents: [], symptomEvents: [], todayCheckIn: null,
 });
 
-test("new account is guided to profile, never inferred complete from default age/name", () => {
+test("new account is guided to profile without fabricated age or name", () => {
   const input = empty();
   const before = structuredClone(input);
   assert.deepEqual(gettingStartedGuide(input), { consentConfirmed: false, nextHref: "/profile", nextLabel: "프로필과 동의 확인하기" });

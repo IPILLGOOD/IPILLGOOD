@@ -103,7 +103,11 @@ export function CheckInForm({
                   name={`dose_${task.id}`}
                   type="radio"
                   value={option.value}
-                  {...form.check(`dose_${task.id}`, option.value, option.value === task.response)}
+                  {...form.check(
+                    `dose_${task.id}`,
+                    option.value,
+                    task.hasRecordedResponse && option.value === task.response,
+                  )}
                   required
                 />
                 {option.label}

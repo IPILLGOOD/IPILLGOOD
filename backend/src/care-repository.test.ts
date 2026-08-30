@@ -66,8 +66,11 @@ async function consentedSnapshot(scope: { recipientId: string; firestore: Memory
   const current = await getCareSnapshot(scope);
   await updateRecipientProfile(scope, {
     ...current.recipient,
+    displayName: "합성 검증 대상자",
+    ageBand: "75",
     consentConfirmed: true,
     lastConfirmedAt: "2026-08-23T00:00:00.000Z",
+    profileCompletedAt: "2026-08-23T00:00:00.000Z",
   }, current);
   return getCareSnapshot(scope);
 }

@@ -93,8 +93,9 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   for (let index = 0; index < await doseQuestions.count(); index++) {
     const question = doseQuestions.nth(index);
     const selected = question.locator('input[type="radio"]:checked');
+    const first = question.locator('input[type="radio"]').first();
     const completed = question.locator('input[type="radio"][value="completed"]');
-    await tabTo(page, selected);
+    await tabTo(page, await selected.count() > 0 ? selected : first);
     for (let move = 0; move < await question.locator('input[type="radio"]').count() && !await completed.isChecked(); move++) {
       await page.keyboard.press("ArrowLeft");
     }

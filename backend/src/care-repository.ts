@@ -105,12 +105,11 @@ function assertValidScope(scope: CareDataScope) {
 
 export function createInitialCareSnapshot(scope: CareDataScope): CareSnapshot {
   assertValidScope(scope);
-  const now = new Date().toISOString();
   return {
     recipient: {
       id: scope.recipientId,
-      displayName: scope.initialDisplayName?.trim() || "돌봄 대상자",
-      ageBand: "67",
+      displayName: scope.initialDisplayName?.trim() || "",
+      ageBand: "",
       allergies: [],
       conditions: [],
       confirmedConditions: [],
@@ -119,7 +118,7 @@ export function createInitialCareSnapshot(scope: CareDataScope): CareSnapshot {
       accessibilityPreferences: [],
       caregiverNote: "",
       consentConfirmed: false,
-      lastConfirmedAt: now,
+      lastConfirmedAt: "",
     },
     medications: [],
     doseEvents: [],

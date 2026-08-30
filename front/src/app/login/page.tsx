@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { LoginPanel } from "@/components/auth/LoginPanel";
 import { careScopeFor } from "@/lib/auth/care-scope";
 import { getSession } from "@/lib/auth/session";
-import { isServiceHealthDataConsentConfirmed } from "@care-atlas/backend";
+import { isServiceCareProfileComplete } from "@care-atlas/backend";
 
 export const metadata: Metadata = {
   title: "로그인",
@@ -25,7 +25,7 @@ export default async function LoginPage({
   const session = await getSession();
   if (session) {
     const scope = careScopeFor(session);
-    redirect(await isServiceHealthDataConsentConfirmed(scope.recipientId) ? "/today" : "/profile?onboarding=1");
+    redirect(scope.useDemoData || await isServiceCareProfileComplete(scope.recipientId) ? "/today" : "/profile?onboarding=1");
   }
 
   const { error, withdrawn, erased } = await searchParams;

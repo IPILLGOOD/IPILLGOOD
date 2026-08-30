@@ -15,7 +15,7 @@ const confirmedConditionOptions = [
   { id: "condition-knee-osteoarthritis", label: "무릎 골관절염", code: "M17" },
 ] as const;
 
-export function ProfileForm({ recipient, revision }: { recipient: CareRecipient; revision: number }) {
+export function ProfileForm({ recipient, revision, onboarding = false }: { recipient: CareRecipient; revision: number; onboarding?: boolean }) {
   const router = useRouter();
   const [state, action] = useActionState(saveProfileAction, initialState);
   const [baselineRevision, setBaselineRevision] = useState(revision);
@@ -27,6 +27,9 @@ export function ProfileForm({ recipient, revision }: { recipient: CareRecipient;
     }
     if (!state.conflict) conflictRefreshed.current = false;
   }, [router, state.conflict]);
+  useEffect(() => {
+    if (onboarding && state.status === "success") router.replace("/today");
+  }, [onboarding, router, state.status]);
   const error = (field: string) => state.fieldErrors?.[field]?.[0];
   const savedAge = /^\d+$/.test(recipient.ageBand) ? recipient.ageBand : "";
 
