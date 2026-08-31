@@ -140,3 +140,49 @@ test("유니코드·공백 정규화는 양쪽 입력에 같게 적용하고 두
   assert.equal(manual.candidates[0]?.matchType, "exact");
   assert.deepEqual(searchPillCandidates({ ...input, source: "image_features" }, catalog()), manual);
 });
+
+test("분할선이 섞인 실제 표기에서 글자로 검색하되 완전 일치로 승격하지 않는다", () => {
+  const data = catalog([pillRecord({ PRINT_FRONT: "V분할선T" })]);
+  const input = pillObservation({ front: { imprint: "VT", scoreLine: "single" } });
+  const result = searchPillCandidates(input, data);
+  assert.equal(result.status, "candidates_found");
+  assert.equal(result.candidates[0]?.matchType, "incomplete");
+  assert.equal(result.candidates[0]?.variants[0]?.item.front.rawImprint, "V분할선T");
+  assert.equal(result.candidates[0]?.variants[0]?.evidence.find((item) => item.field === "front.imprint")?.match, "exact");
+  assert.equal(result.candidates[0]?.variants[0]?.evidence.find((item) => item.field === "front.imprintDescription")?.match, "unknown");
+  assert.equal(searchPillCandidates({ ...input, front: { imprint: "VX", scoreLine: "single" } }, data).status, "unidentified");
+  assert.equal(searchPillCandidates({ ...input, front: { imprint: "VT", scoreLine: "cross" } }, data).status, "unidentified");
+  const swapped = searchPillCandidates({ ...input, front: input.back, back: input.front }, data);
+  assert.equal(swapped.candidates[0]?.variants[0]?.orientation, "swapped");
+});
+
+test("설명만 있는 면은 글자 없음의 확정이 아니며 마크도 완전 일치 근거가 아니다", () => {
+  const blank = pillObservation({ front: { imprint: "", scoreLine: "single" } });
+  assert.equal(searchPillCandidates(blank, catalog([pillRecord({ PRINT_FRONT: "분할선" })])).candidates[0]?.matchType, "incomplete");
+  assert.equal(searchPillCandidates(blank, catalog([pillRecord({ PRINT_FRONT: "마크" })])).status, "unidentified");
+  const marked = catalog([pillRecord({ PRINT_FRONT: "마크분할선C8" })]);
+  assert.equal(searchPillCandidates(pillObservation({ front: { imprint: "C8", scoreLine: "single" } }), marked).candidates[0]?.matchType, "incomplete");
+  assert.equal(searchPillCandidates(pillObservation(), catalog([pillRecord({ MARK_CODE_FRONT_ANAL: "로고" })])).candidates[0]?.matchType, "incomplete");
+});
+
+test("쉼표로 나뉜 색상은 개별 특징으로 검색하고 투명 누락은 부분 일치다", () => {
+  const data = catalog([pillRecord({ COLOR_CLASS1: "노랑, 투명" })]);
+  assert.equal(searchPillCandidates(pillObservation({ colors: ["노랑", "투명"] }), data).candidates[0]?.matchType, "exact");
+  assert.equal(searchPillCandidates(pillObservation({ colors: ["노랑"] }), data).candidates[0]?.matchType, "partial");
+  assert.equal(searchPillCandidates(pillObservation({ colors: ["하양"] }), data).status, "unidentified");
+});
+
+test("기타 모양은 같은 외형으로 확정하거나 다른 구체적 모양과 불일치로 단정하지 않는다", () => {
+  for (const [observed, official] of [["기타", "기타"], ["원형", "기타"], ["기타", "원형"]]) {
+    const result = searchPillCandidates(pillObservation({ shape: observed }), catalog([pillRecord({ DRUG_SHAPE: official })]));
+    assert.equal(result.candidates[0]?.matchType, "incomplete");
+    assert.equal(result.candidates[0]?.variants[0]?.evidence.find((item) => item.field === "shape")?.match, "unknown");
+  }
+});
+
+test("정제 세부표기로 정규화한 후보도 가루약·반쪽 관찰에는 제시하지 않는다", () => {
+  const data = catalog([pillRecord({ FORM_CODE_NAME: "정제, 미분류" })]);
+  assert.equal(searchPillCandidates(pillObservation(), data).status, "candidates_found");
+  assert.equal(searchPillCandidates(pillObservation({ form: "powder" }), data).status, "unsupported_form");
+  assert.equal(searchPillCandidates(pillObservation({ integrity: "split" }), data).status, "unsupported_form");
+});

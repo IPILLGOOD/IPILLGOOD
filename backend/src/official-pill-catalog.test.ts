@@ -12,12 +12,72 @@ test("낱알 JSON을 정규화하고 공식 변경일과 조회 시각을 구분
   assert.equal(item.form, "tablet");
   assert.equal(item.formName, "필름코팅정");
   assert.deepEqual(item.colors, ["하양"]);
-  assert.deepEqual(item.front, { imprint: "TEST", scoreLine: "single", mark: null });
+  assert.deepEqual(item.front, { rawImprint: "TEST", imprint: "TEST", imprintHasDescription: false, scoreLine: "single", mark: null });
   assert.equal(item.back.scoreLine, "cross");
   assert.equal(item.source.changedAt, "2026-08-01");
   assert.equal(item.source.imageRegisteredAt, "2026-01-01");
   assert.equal(item.source.fetchedAt, fetchedAt);
   assert.match(item.source.url, /15057639/);
+});
+
+// These are synthetic records carrying expressions observed in the 2026-08-31 live sample.
+test("실제 제형 표기의 미분류·괄호와 캡슐 내용물을 구분하고 미상 제형은 추정하지 않는다", () => {
+  for (const [raw, expected] of [
+    ["정제, 미분류", "tablet"], ["추어블정(저작정)", "tablet"],
+    ["서방성다층정", "tablet"], ["구강붕해정", "tablet"],
+    ["경질캡슐제, 산제", "capsule"], ["경질캡슐제, 정제", "capsule"],
+    ["연질캡슐제, 액상", "capsule"], ["캡슐, 미분류", "capsule"],
+    ["스팬슐", "unknown"], ["산제", "unknown"], ["액상", "unknown"],
+    ["새로운정", "unknown"], ["캡슐이 아닌 제형", "unknown"], ["", "unknown"],
+  ]) {
+    const item = parseOfficialPillPage(pillEnvelope([pillRecord({ FORM_CODE_NAME: raw })]), "json", fetchedAt).items[0]!;
+    assert.equal(item.form, expected, raw);
+    assert.equal(item.formName, raw || null);
+  }
+});
+
+test("쉼표와 파이프 색상 목록을 정리하되 투명·혼합색 정보를 버리지 않는다", () => {
+  const item = parseOfficialPillPage(pillEnvelope([pillRecord({
+    COLOR_CLASS1: "노랑， 투명 | 하양", COLOR_CLASS2: "하양, 노랑,, ",
+  })]), "json", fetchedAt).items[0]!;
+  assert.deepEqual(item.colors, ["노랑", "투명", "하양"]);
+});
+
+test("분할선·십자분할선 설명은 글자 각인과 분리하고 원문과 미상 상태를 보존한다", () => {
+  for (const [raw, imprint] of [
+    ["분할선", null], ["십자분할선", null], ["V분할선T", "V T"],
+    ["Λ+분할선16", "Λ+ 16"], ["R분할선0.5", "R 0.5"],
+    ["L분할선1분할선1분할선L", "L 1 1 L"],
+  ]) {
+    const side = parseOfficialPillPage(pillEnvelope([pillRecord({ PRINT_FRONT: raw, LINE_FRONT: "" })]), "json", fetchedAt).items[0]!.front;
+    assert.equal(side.rawImprint, raw);
+    assert.equal(side.imprint, imprint);
+    assert.equal(side.imprintHasDescription, true);
+    assert.equal(side.scoreLine, "unknown");
+  }
+  const conflicting = parseOfficialPillPage(pillEnvelope([pillRecord({ PRINT_FRONT: "십자분할선", LINE_FRONT: "-" })]), "json", fetchedAt).items[0]!.front;
+  assert.equal(conflicting.scoreLine, "single", "PRINT_* must not override LINE_*");
+});
+
+test("마크 설명에서 비교 가능한 글자는 보존하되 마크 존재를 지우지 않는다", () => {
+  for (const [raw, imprint] of [["마크", null], ["마크분할선C8", "C8"], ["TONEX-F 마크", "TONEX-F"]]) {
+    const side = parseOfficialPillPage(pillEnvelope([pillRecord({ PRINT_FRONT: raw })]), "json", fetchedAt).items[0]!.front;
+    assert.equal(side.rawImprint, raw);
+    assert.equal(side.imprint, imprint);
+    assert.equal(side.mark, "마크");
+    assert.equal(side.imprintHasDescription, true);
+  }
+  const side = parseOfficialPillPage(pillEnvelope([pillRecord({ PRINT_FRONT: "마크분할선C8", MARK_CODE_FRONT_ANAL: "P,d" })]), "json", fetchedAt).items[0]!.front;
+  assert.equal(side.mark, "P,d");
+});
+
+test("한글 각인·기호·소수점·0/O는 설명문으로 지우거나 치환하지 않는다", () => {
+  for (const imprint of ["깅코탄", "마이에신 마이에신", "마크론", "40/20", "T/A ER", "Λ+", "0.5", "O0", "-", "+"]) {
+    const side = parseOfficialPillPage(pillEnvelope([pillRecord({ PRINT_FRONT: imprint })]), "json", fetchedAt).items[0]!.front;
+    assert.equal(side.imprint, imprint);
+    assert.equal(side.rawImprint, imprint);
+    assert.equal(side.imprintHasDescription, false);
+  }
 });
 
 test("빈 공식 필드는 각인·분할선 없음으로 단정하지 않고 unknown으로 남긴다", () => {

@@ -89,7 +89,13 @@ function sideEvidence(observed: NonNullable<PillObservation["front"]>, actual: O
   const imprint = compareText(`${label}.imprint`, observed.imprint!, actual.imprint, true);
   // A separate official logo is not evidence of an unmarked surface.
   if (observed.imprint === "" && actual.mark) imprint.match = "mismatch";
-  return [imprint, ...(withScore ? [compareScore(`${label}.scoreLine`, observed.scoreLine, actual.scoreLine)] : [])];
+  return [
+    imprint,
+    // Extracted letters are searchable, but the removed notation/mark was not compared.
+    ...(actual.imprintHasDescription ? [{ field: `${label}.imprintDescription`, observed: "not_compared", official: actual.rawImprint, match: "unknown" as const }] : []),
+    ...(actual.mark ? [{ field: `${label}.mark`, observed: "not_compared", official: actual.mark, match: "unknown" as const }] : []),
+    ...(withScore ? [compareScore(`${label}.scoreLine`, observed.scoreLine, actual.scoreLine)] : []),
+  ];
 }
 
 function matchingSides(input: PillObservation, item: OfficialPillItem, withScore: boolean) {
@@ -143,7 +149,13 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
       : actual.length === wanted.length ? "exact" : "partial";
     return { field: "colors", observed: wanted.join("/"), official: actual.length ? actual.join("/") : null, match };
   });
-  filter("shape", (item) => compareText("shape", observation.shape!, item.shape));
+  filter("shape", (item) => {
+    // Two different irregular shapes can both be classified as 기타.
+    if (normalize(observation.shape!) === "기타" || item.shape && normalize(item.shape) === "기타") {
+      return { field: "shape", observed: observation.shape!, official: item.shape, match: "unknown" };
+    }
+    return compareText("shape", observation.shape!, item.shape);
+  });
   records = records.filter(({ item }) => matchingSides(observation, item, false).length > 0);
   metrics.stages.push({ stage: "imprint", remaining: records.length });
   const variants: PillCandidateVariant[] = [];

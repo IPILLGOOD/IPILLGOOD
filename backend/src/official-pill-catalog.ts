@@ -8,7 +8,9 @@ export type PillForm = "tablet" | "capsule" | "unknown";
 export type PillScoreLine = "none" | "single" | "cross" | "other" | "unknown";
 
 export interface OfficialPillSide {
+  rawImprint: string | null;
   imprint: string | null;
+  imprintHasDescription: boolean;
   scoreLine: PillScoreLine;
   mark: string | null;
 }
@@ -104,13 +106,27 @@ function scoreLine(value: unknown): PillScoreLine {
 }
 
 function side(item: Record<string, unknown>, suffix: "FRONT" | "BACK"): OfficialPillSide {
+  const rawImprint = text(item[`PRINT_${suffix}`]);
+  // Observed official notation, not engraved letters. Do not remove arbitrary Korean text,
+  // punctuation, or a descriptor embedded in a Korean word (e.g. a product's name).
+  const descriptions = rawImprint?.match(/(?<![가-힣])(?:십자분할선|분할선|마크)+(?![가-힣])/gu) ?? [];
+  const imprint = descriptions.length ? rawImprint!.replace(/(?<![가-힣])(?:십자분할선|분할선|마크)+(?![가-힣])/gu, " ").replace(/\s+/g, " ").trim() : rawImprint;
   return {
-    // An empty field may be missing data. It is not proof of an unmarked surface.
-    imprint: text(item[`PRINT_${suffix}`]),
+    rawImprint,
+    // Even a description-only field is not proof of a text-free surface.
+    imprint: imprint || null,
+    imprintHasDescription: descriptions.length > 0,
+    // Only LINE_* supplies the line type; never guess it from PRINT_*.
     scoreLine: scoreLine(item[`LINE_${suffix}`]),
-    mark: text(item[`MARK_CODE_${suffix}_ANAL`]),
+    mark: text(item[`MARK_CODE_${suffix}_ANAL`]) ?? (descriptions.some((part) => part.includes("마크")) ? "마크" : null),
   };
 }
+
+const TABLET_FORMS = new Set([
+  "정제", "나정", "필름코팅정", "당의정", "다층정", "서방정", "서방성다층정",
+  "서방성필름코팅정", "장용성필름코팅정", "구강붕해정", "추어블정(저작정)",
+]);
+const CAPSULE_FORMS = new Set(["캡슐", "경질캡슐제", "연질캡슐제", "서방성캡슐제", "장용성캡슐제"]);
 
 function normalizeItem(raw: unknown, fetchedAt: string): OfficialPillItem {
   const item = record(raw);
@@ -118,10 +134,12 @@ function normalizeItem(raw: unknown, fetchedAt: string): OfficialPillItem {
   const productName = text(item.ITEM_NAME);
   if (!itemSeq || !/^\d{9}$/.test(itemSeq) || !productName) return invalidResponse();
   const formName = text(item.FORM_CODE_NAME);
-  const form: PillForm = formName?.includes("캡슐") ? "capsule"
-    : formName && /(?:정|정제)$/.test(formName) ? "tablet" : "unknown";
+  // The suffix describes capsule contents/subtypes, not a loose powder/liquid observation.
+  const primaryForm = formName?.split(",", 1)[0]?.trim() ?? "";
+  const form: PillForm = CAPSULE_FORMS.has(primaryForm) ? "capsule"
+    : TABLET_FORMS.has(primaryForm) ? "tablet" : "unknown";
   const colors = [...new Set([text(item.COLOR_CLASS1), text(item.COLOR_CLASS2)]
-    .flatMap((color) => color?.split("|").map((part) => part.trim()).filter(Boolean) ?? []))].sort();
+    .flatMap((color) => color?.split(/[,|]/).map((part) => part.trim()).filter(Boolean) ?? []))].sort();
   return {
     itemSeq, productName, manufacturer: text(item.ENTP_NAME), form, formName,
     shape: text(item.DRUG_SHAPE), colors, front: side(item, "FRONT"), back: side(item, "BACK"),
