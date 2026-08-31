@@ -1,4 +1,5 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
+import { enterConnectionCode } from "../test-support/browser-controls";
 import { importPKCS8, SignJWT, decodeJwt } from "jose";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -151,7 +152,7 @@ test("issued sessions: sign in → connect care → withdraw → cancel recovery
     connectedPage.on("pageerror", (error) => pageErrors.push(`connected: ${error.message}`));
     await connectedPage.goto("/login");
     await connectedPage.getByRole("tab", { name: "연결 코드" }).click();
-    await connectedPage.getByLabel("연결 코드").fill(connectionCode);
+    await enterConnectionCode(connectedPage, connectionCode);
     await connectedPage.getByRole("button", { name: /연결하기/ }).click();
     await expect(connectedPage).toHaveURL(/\/today$/);
     await expect(connectedPage.getByText(syntheticMedication.productName, { exact: true }).first()).toBeVisible();

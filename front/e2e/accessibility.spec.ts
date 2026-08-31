@@ -207,19 +207,28 @@ test("mobile reflow and 200 percent text size retain usable controls", async ({ 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   }
   await page.setViewportSize({ width: 320, height: 900 });
-  for (const path of ["/today", "/profile", "/documents", "/check-in"]) {
-    await page.goto(path);
-    await audit(page, `mobile-${path.slice(1)}`, info);
-    // Text-size stress test; actual OS/browser zoom and mobile screen readers are separate manual gates.
-    await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
-    const overflow = await page.locator("body *").evaluateAll((elements) => elements.flatMap((element) => {
-      const rect = element.getBoundingClientRect();
-      return rect.width && (rect.right > innerWidth + 1 || rect.left < -1) && getComputedStyle(element).position !== "fixed"
-        ? [{ tag: element.tagName, className: element.className, width: rect.width, right: rect.right }] : [];
-    }));
-    await info.attach(`overflow-${path.slice(1)}`, { body: JSON.stringify(overflow), contentType: "application/json" });
-    expect.soft(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), JSON.stringify(overflow.slice(0, 12))).toBe(true);
-    await audit(page, `large-text-${path.slice(1)}`, info);
+  for (const path of ["/today", "/profile", "/documents", "/check-in", "/medications"]) {
+    await test.step(`320px and 200% text: ${path}`, async () => {
+      await page.goto(path);
+      await audit(page, `mobile-${path.slice(1)}`, info);
+      // Text-size stress test; actual OS/browser zoom and mobile screen readers are separate manual gates.
+      await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+      const overflow = await page.locator("body *").evaluateAll((elements) => ({
+        viewport: innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        elements: elements.flatMap((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          // Anonymous grid text and pseudo-elements can overflow even when their
+          // parent's border box fits. Include scroll widths in the failure evidence.
+          return rect.width && (rect.right > innerWidth + 1 || rect.left < -1 || element.scrollWidth > element.clientWidth + 1) && style.position !== "fixed"
+            ? [{ tag: element.tagName, className: element.className, width: rect.width, right: rect.right, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth, overflowX: style.overflowX }] : [];
+        }),
+      }));
+      await info.attach(`overflow-${path.slice(1)}`, { body: JSON.stringify(overflow), contentType: "application/json" });
+      expect.soft(overflow.documentWidth, `${path} at 320px / 200% text: ${JSON.stringify(overflow)}`).toBeLessThanOrEqual(overflow.viewport + 1);
+      await audit(page, `large-text-${path.slice(1)}`, info);
+    });
   }
   await page.getByRole("button", { name: "로그아웃" }).click();
   await expect(page).toHaveURL(/\/$/);
