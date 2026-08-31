@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { OfficialPillItem, OfficialPillSide, PillScoreLine } from "./official-pill-catalog.ts";
 import { stableJson } from "./stable-json.ts";
 
+export const PILL_SEARCH_RULES_VERSION = "pill-structured-v2-evidence-order";
+
 const sideSchema = z.object({
   // null = unreadable/unknown; "" = the observer explicitly saw no text.
   imprint: z.string().trim().max(80).nullable(),
@@ -113,6 +115,18 @@ function matchType(evidence: PillFeatureMatch[]): MatchType {
     : evidence.some((entry) => entry.match === "partial") ? "partial" : "exact";
 }
 
+function compareVariantEvidence(a: PillCandidateVariant, b: PillCandidateVariant): number {
+  const imprintMatches = (variant: PillCandidateVariant) => variant.evidence.filter((entry) => entry.field.endsWith(".imprint") && ["exact", "partial"].includes(entry.match));
+  const aImprints = imprintMatches(a);
+  const bImprints = imprintMatches(b);
+  // All incomplete records are not equally supported. Prefer compared surfaces, never a fabricated confidence score.
+  return matchOrder[a.matchType] - matchOrder[b.matchType]
+    || bImprints.length - aImprints.length
+    || bImprints.filter((entry) => entry.match === "exact").length - aImprints.filter((entry) => entry.match === "exact").length
+    || b.evidence.filter((entry) => !entry.field.endsWith(".imprint") && entry.match === "exact").length
+      - a.evidence.filter((entry) => !entry.field.endsWith(".imprint") && entry.match === "exact").length;
+}
+
 /** Pure candidate search: no image model, persistence, AI requests or medication activation. */
 export function searchPillCandidates(input: unknown, catalog?: PillCatalog, options: { limit?: number } = {}): PillSearchResult {
   const metrics: PillSearchMetrics = { catalogRecords: 0, stages: [], candidateCount: 0, returnedCount: 0 };
@@ -164,12 +178,12 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
       const evidence = [...entry.evidence, ...choice.evidence];
       return { item: entry.item, orientation: choice.orientation, matchType: matchType(evidence), evidence };
     }).filter((choice) => choice.evidence.some((feature) => feature.match === "exact" || feature.match === "partial"))
-      .sort((a, b) => matchOrder[a.matchType] - matchOrder[b.matchType]);
+      .sort(compareVariantEvidence);
     if (choices[0]) variants.push(choices[0]);
   }
   metrics.stages.push({ stage: "score_line", remaining: variants.length });
   // Stable code/record tie-breaks, not a fabricated probability or a clinical confidence score.
-  variants.sort((a, b) => matchOrder[a.matchType] - matchOrder[b.matchType] || compare(a.item.itemSeq, b.item.itemSeq) || compare(stableJson(a.item), stableJson(b.item)));
+  variants.sort((a, b) => compareVariantEvidence(a, b) || compare(a.item.itemSeq, b.item.itemSeq) || compare(stableJson(a.item), stableJson(b.item)));
   const grouped = new Map<string, PillCandidate>();
   for (const variant of variants) {
     const candidate = grouped.get(variant.item.itemSeq);

@@ -186,3 +186,39 @@ test("정제 세부표기로 정규화한 후보도 가루약·반쪽 관찰에�
   assert.equal(searchPillCandidates(pillObservation({ form: "powder" }), data).status, "unsupported_form");
   assert.equal(searchPillCandidates(pillObservation({ integrity: "split" }), data).status, "unsupported_form");
 });
+
+test("같은 정보 불충분 등급에서는 각인 근거가 있는 후보가 표시 제한 밖으로 밀리지 않는다", () => {
+  const records = [
+    ...Array.from({ length: 25 }, (_, index) => pillRecord({ ITEM_SEQ: String(209900000 + index), PRINT_FRONT: "", PRINT_BACK: "", LINE_FRONT: "", LINE_BACK: "" })),
+    pillRecord({ ITEM_SEQ: "209900999", LINE_FRONT: "", LINE_BACK: "" }),
+  ];
+  const result = searchPillCandidates(pillObservation(), catalog(records), { limit: 1 });
+  assert.equal(result.candidates[0]!.itemSeq, "209900999");
+  assert.equal(result.candidates[0]!.matchType, "incomplete", "정렬을 바꿔도 확정이나 완전 일치로 승격하지 않는다");
+  assert.equal(result.metrics.candidateCount, 26, "정보가 부족한 다른 후보를 임의 삭제하지 않는다");
+  assert.equal(result.truncated, true);
+  assert.deepEqual(searchPillCandidates(pillObservation(), catalog([...records].reverse()), { limit: 1 }), result);
+});
+
+test("등급을 유지하면서 일치한 면 수·각인 완전 일치 근거 순으로 안정적으로 정렬한다", () => {
+  const records = [
+    pillRecord({ ITEM_SEQ: "209900001", PRINT_FRONT: "", PRINT_BACK: "", LINE_FRONT: "", LINE_BACK: "" }),
+    pillRecord({ ITEM_SEQ: "209900555", PRINT_BACK: "", LINE_FRONT: "", LINE_BACK: "" }),
+    pillRecord({ ITEM_SEQ: "209900777", PRINT_FRONT: "TEST-X", PRINT_BACK: "10-X", LINE_FRONT: "", LINE_BACK: "" }),
+    pillRecord({ ITEM_SEQ: "209900999", LINE_FRONT: "", LINE_BACK: "" }),
+    pillRecord({ ITEM_SEQ: "209900888" }),
+    pillRecord({ ITEM_SEQ: "209900666", PRINT_FRONT: "TEST-X" }),
+  ];
+  const result = searchPillCandidates(pillObservation(), catalog(records));
+  assert.deepEqual(result.candidates.map((candidate) => candidate.itemSeq), ["209900888", "209900666", "209900999", "209900777", "209900555", "209900001"]);
+  assert.deepEqual(result.candidates.map((candidate) => candidate.matchType), ["exact", "partial", "incomplete", "incomplete", "incomplete", "incomplete"]);
+  assert.deepEqual(result.metrics.stages.map((entry) => entry.remaining), [6, 6, 6, 6, 6]);
+});
+
+test("같은 정보 불충분 등급의 양면 방향도 실제 각인 일치 근거가 더 많은 쪽을 선택한다", () => {
+  const input = pillObservation({ front: { imprint: "A", scoreLine: "unknown" }, back: { imprint: "AB", scoreLine: "unknown" } });
+  const result = searchPillCandidates(input, catalog([pillRecord({ PRINT_FRONT: "AB", PRINT_BACK: "", LINE_FRONT: "", LINE_BACK: "" })]));
+  assert.equal(result.candidates[0]!.variants[0]!.orientation, "swapped");
+  assert.equal(result.candidates[0]!.matchType, "incomplete");
+  assert.equal(result.candidates[0]!.variants[0]!.evidence.find((entry) => entry.field === "back.imprint")!.match, "exact");
+});
