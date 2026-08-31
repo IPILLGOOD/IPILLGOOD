@@ -2350,6 +2350,7 @@ input[type="checkbox"]:disabled {
 
 .checkin-form .dose-choice-grid .choice-card {
   min-height: 3.25rem;
+  overflow-wrap: anywhere;
 }
 
 .checkin-form .dynamic-questions {
@@ -2395,6 +2396,29 @@ input[type="checkbox"]:disabled {
 
   .checkin-form .dose-choice-grid .choice-card:last-child {
     grid-column: 1 / -1;
+  }
+}
+
+/* Scale with the available question width and text size, including 200% text.
+   Fixed two-column cards cannot fit the labels and decorations on narrow screens. */
+@container (max-width: 18rem) {
+  .checkin-form .dose-choice-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .checkin-form .dose-choice-grid .choice-card:nth-child(n) {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 12rem) {
+  .checkin-form .dose-choice-grid .choice-card {
+    grid-template-columns: minmax(0, 1fr) 1.25rem;
+    column-gap: var(--space-2);
+  }
+
+  .checkin-form .dose-choice-grid .choice-card::before {
+    display: none;
   }
 }
 
