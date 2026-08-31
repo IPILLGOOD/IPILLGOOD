@@ -27,7 +27,7 @@ node --env-file=front/.env.local --experimental-strip-types backend/scripts/pill
 | 파일 | 용도 |
 | --- | --- |
 | `catalog.json` | 전체 레코드, 출처, 정규화 버전, 두 순회 검증 정보가 들어 있는 카탈로그 |
-| `summary.json` | 건수·제형·미상 제형·중복 품목코드·이미지 URL 수와 예제 파일 경로 |
+| `summary.json` | 건수·수집 당시 제형·중복 품목코드·이미지 URL 수와 예제 파일 경로. 새 실행에는 현재 검색 정책의 지원/비지원/미상 집계인 `searchFormPolicy`도 포함 |
 | `example-1.json` 등 | 공식 필드에서 만든 정제/캡슐/설명 포함 사례의 특징 입력. 가능한 사례만 생성 |
 
 기존 실행 파일은 덮어쓰지 않는다. 새 디렉터리에서 `catalog.pending` 쓰기가 끝나면 `catalog.json`으로 이름을 바꾼다. 디스크 쓰기 오류나 프로세스 중단으로 남은 임시 파일은 성공한 결과로 안내하지 않는다. 설정된 비밀값이 공식 필드에 반사되면 데이터를 변형해서 저장하지 않고 저장 자체를 거절한다.
@@ -45,10 +45,12 @@ node --experimental-strip-types backend/scripts/pill-catalog.ts search --catalog
 - 파일 크기·JSON 구조·정규화 버전·행 수·내용 해시·검증 정보·공식 이미지 호스트를 다시 확인한다. 일부 페이지나 표본 보고서를 전체 카탈로그로 변환하지 않는다.
 - `--max-age-hours`는 반드시 명시한다(정수 1~168). 예제의 24는 로컬 검증 시 사용할 경과 시간 한도이며, 의료적 안전성이나 운영 갱신 주기의 확정값이 아니다.
 - 한도를 넘기거나 검증 시각이 미래인 파일은 `snapshot_expired_or_future`로 거절한다. 파일 시각이나 해시를 수동으로 바꾸지 않는다.
-- `--limit 20`은 표시할 품목 수이며 1~100을 허용한다. 전체 후보 수와 잘림 여부는 별도로 유지한다.
-- 같은 일치 등급에서는 일치한 각인 면 수·각인 완전 일치 수·그 외 특징 완전 일치 수를 먼저 비교하고, 이후 품목코드/레코드로 안정적으로 정렬한다. 검색 규칙 버전은 결과 파일에 남긴다. 근거가 부족한 후보를 확정으로 승격하거나 후보 수를 임의 축소하지 않는다.
+- `--limit 20`은 비교 후보와 보류 항목에 **각각** 적용하며 1~100을 허용한다. `candidateCount`/`returnedCount`/`truncated`와 `heldCandidateCount`/`heldReturnedCount`/`heldTruncated`를 따로 유지한다. 같은 품목의 다른 외형이 양쪽에 있을 수 있으므로 합집합은 `matchedItemCount`로 확인한다.
+- 지원 제형이며 최소 한 면에 비어 있지 않은 문자 각인 일치 근거가 있는 레코드만 `candidates`로 제시한다. 같은 일치 등급에서는 실제 각인 근거를 우선하고 품목코드/레코드로 안정적으로 정렬한다. 확정이나 의료적 확률을 만들지 않는다.
+- 문자 각인 근거 부족·공식 제형 미상은 `heldCandidates`와 각 외형의 `reviewReasons`로 분리한다. 보류만 있으면 `needs_review`이며 정상 실행 결과(exit 0)다. 보류 영역의 약명은 식별 결과가 아니다.
+- `formName` 기반 검색 정책이 비지원으로 분류한 레코드는 양쪽에서 제외한다. 기존 v1 파일의 수집 당시 `form`, 정규화 버전·해시는 바꾸지 않는다. 현재 정책은 `formPolicyVersion`, 검색 규칙은 `searchRulesVersion`으로 결과에 기록한다.
 
-결과는 `verification-artifacts/pill-catalog/search-<실행별 ID>/`의 `result.json`, `result.md`에 저장된다. 콘솔에 나오는 **`reportPath`의 MD 파일을 열면** 후보명·품목코드·공식 이미지 링크·특징별 일치 근거·공식 변경일을 읽을 수 있다. 링크를 직접 열 때는 외부 공식 이미지 사이트에 접속한다.
+결과는 `verification-artifacts/pill-catalog/search-<실행별 ID>/`의 `result.json`, `result.md`에 저장된다. 콘솔에 나오는 **`reportPath`의 MD 파일을 열면** 비교 후보와 보류 영역, 품목코드·공식 이미지 링크·특징별 근거·보류 이유·공식 변경일을 읽을 수 있다. 링크를 직접 열 때는 외부 공식 이미지 사이트에 접속한다.
 
 ## 3. 직접 관찰한 특징으로 바꾸기
 
@@ -68,14 +70,14 @@ node --experimental-strip-types backend/scripts/pill-catalog.ts search --catalog
 - 두 순회의 내용 일치는 원천 API가 시점 고정 스냅샷을 제공했다는 증명이 아니다. 로컬 해시도 서명이 아니므로 출처 인증이나 의도적인 파일 조작 방지를 보장하지 않는다.
 - API 키·원문 오류·사용자 사진은 로그에 남기지 않는다. 사용자가 지정한 특징의 검색 결과는 로컬 결과 파일에 저장되므로 공개 업로드 전에 내용을 확인한다.
 - 품목이 하나만 남아도 약의 확정·복용 허용으로 처리하지 않는다. 복약 계획·일정·알림·복용 완료 기록을 변경하지 않는다.
-- 현재는 공식 각인이 누락된 레코드가 약한 후보로 남아, 입력한 각인과 실제로 대조하지 못해도 `candidates_found`가 나올 수 있다. `incomplete` 근거를 반드시 확인하며, 이 상태의 사용자 화면·실제 사진 식별 제품은 아직 배포 준비가 끝난 것이 아니다. 전체 데이터 검증에서 발견한 내용은 [작업 기록](pill-identification.md)에 남겼다.
+- 양면 글자 없음이나 공식 각인 누락만으로는 후보를 찾았다고 하지 않는다. `needs_review`를 오류·정상 무결과·확정 식별과 혼동하지 않는다. 한 면 문자 근거가 있어도 나머지 정보가 부족하면 `incomplete`이며, 현재 정책이 실제 사진 오인 방지를 보장하지 않는다. 정책 기준과 검증 결과는 [작업 기록](pill-identification.md)에 남겼다.
 - 이 도구는 Node 로컬 개발용이다. 전체 JSON을 Worker 코드에 번들링하거나 사용자 요청마다 읽는 API를 추가하지 않았다.
 - SQLite/D1, 자동 갱신, 중간 재개, 동시 수집 잠금, 운영 버전 전환, 사진 특징 추출 및 앱 UI는 이번 구현에 포함하지 않는다.
 
 ## 5. 회귀 검사
 
 ```powershell
-node --experimental-strip-types --test --test-reporter=spec backend/src/pill-catalog-snapshot.test.ts backend/src/pill-catalog-files.test.ts backend/src/official-pill-catalog.test.ts backend/src/pill-identification.test.ts backend/src/pill-catalog-profile.test.ts
+node --experimental-strip-types --test --test-reporter=spec backend/src/pill-catalog-snapshot.test.ts backend/src/pill-catalog-files.test.ts backend/src/official-pill-catalog.test.ts backend/src/pill-identification.test.ts backend/src/pill-catalog-profile.test.ts backend/src/pill-form-policy.test.ts
 ```
 
 테스트는 합성 데이터와 가짜 페이지 읽기를 사용한다. 파일 테스트의 임시 디렉터리는 해당 테스트가 만든 경로만 정리한다. 오프라인 CLI 테스트는 `fetch` 호출을 실패하도록 막은 상태에서 검색까지 검증한다.

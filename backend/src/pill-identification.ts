@@ -1,8 +1,9 @@
 import { z } from "zod";
 import type { OfficialPillItem, OfficialPillSide, PillScoreLine } from "./official-pill-catalog.ts";
 import { stableJson } from "./stable-json.ts";
+import { classifyPillForm, PILL_FORM_POLICY_VERSION, type PillFormAssessment } from "./pill-form-policy.ts";
 
-export const PILL_SEARCH_RULES_VERSION = "pill-structured-v2-evidence-order";
+export const PILL_SEARCH_RULES_VERSION = "pill-structured-v3-evidence-gate";
 
 const sideSchema = z.object({
   // null = unreadable/unknown; "" = the observer explicitly saw no text.
@@ -32,6 +33,7 @@ export interface PillCatalog {
 }
 type Match = "exact" | "partial" | "unknown" | "mismatch";
 type MatchType = "exact" | "partial" | "incomplete";
+export type PillReviewReason = "no_imprint_evidence" | "unknown_official_form";
 export interface PillFeatureMatch {
   field: string;
   observed: string;
@@ -43,6 +45,8 @@ export interface PillCandidateVariant {
   orientation: "direct" | "swapped";
   matchType: MatchType;
   evidence: PillFeatureMatch[];
+  formAssessment: PillFormAssessment;
+  reviewReasons: PillReviewReason[];
 }
 export interface PillCandidate {
   itemSeq: string;
@@ -51,19 +55,31 @@ export interface PillCandidate {
 }
 export interface PillSearchMetrics {
   catalogRecords: number;
+  /** Non-mismatching records before the final evidence gate; not identified products. */
   stages: Array<{ stage: "form" | "color" | "shape" | "imprint" | "score_line"; remaining: number }>;
+  /** Eligible products only. Held products have separate counts and display limits. */
   candidateCount: number;
   returnedCount: number;
+  heldCandidateCount: number;
+  heldReturnedCount: number;
+  /** Union of product IDs in both groups, since different variants can be in each. */
+  matchedItemCount: number;
+  unsupportedCatalogRecords: number;
 }
 export interface PillSearchResult {
-  status: "candidates_found" | "needs_retake" | "unsupported_form" | "unidentified" | "not_configured" | "unavailable" | "invalid_input";
+  status: "candidates_found" | "needs_review" | "needs_retake" | "unsupported_form" | "unidentified" | "not_configured" | "unavailable" | "invalid_input";
   reason: string;
   message: string;
   notice: string;
   candidates: PillCandidate[];
+  /** Diagnostic comparisons only, not fallback matches or medication identities. */
+  heldCandidates: PillCandidate[];
   metrics: PillSearchMetrics;
   catalogVersion: string | null;
   truncated: boolean;
+  heldTruncated: boolean;
+  searchRulesVersion: string;
+  formPolicyVersion: string;
 }
 
 const NOTICE = "공식 데이터와 외형을 비교한 후보이며 약의 확정이나 복용 가능 여부를 뜻하지 않아요. 원본 약 봉투·처방전·약사 안내와 함께 확인해주세요.";
@@ -115,12 +131,18 @@ function matchType(evidence: PillFeatureMatch[]): MatchType {
     : evidence.some((entry) => entry.match === "partial") ? "partial" : "exact";
 }
 
+function imprintMatches(evidence: PillFeatureMatch[]) {
+  // Matching two blank surfaces is not distinctive lettering evidence.
+  return evidence.filter((entry) => entry.field.endsWith(".imprint") && imprintText(entry.observed).length > 0
+    && (entry.match === "exact" || entry.match === "partial"));
+}
+
 function compareVariantEvidence(a: PillCandidateVariant, b: PillCandidateVariant): number {
-  const imprintMatches = (variant: PillCandidateVariant) => variant.evidence.filter((entry) => entry.field.endsWith(".imprint") && ["exact", "partial"].includes(entry.match));
-  const aImprints = imprintMatches(a);
-  const bImprints = imprintMatches(b);
+  const aImprints = imprintMatches(a.evidence);
+  const bImprints = imprintMatches(b.evidence);
   // All incomplete records are not equally supported. Prefer compared surfaces, never a fabricated confidence score.
-  return matchOrder[a.matchType] - matchOrder[b.matchType]
+  return Number(a.reviewReasons.length > 0) - Number(b.reviewReasons.length > 0)
+    || matchOrder[a.matchType] - matchOrder[b.matchType]
     || bImprints.length - aImprints.length
     || bImprints.filter((entry) => entry.match === "exact").length - aImprints.filter((entry) => entry.match === "exact").length
     || b.evidence.filter((entry) => !entry.field.endsWith(".imprint") && entry.match === "exact").length
@@ -129,9 +151,14 @@ function compareVariantEvidence(a: PillCandidateVariant, b: PillCandidateVariant
 
 /** Pure candidate search: no image model, persistence, AI requests or medication activation. */
 export function searchPillCandidates(input: unknown, catalog?: PillCatalog, options: { limit?: number } = {}): PillSearchResult {
-  const metrics: PillSearchMetrics = { catalogRecords: 0, stages: [], candidateCount: 0, returnedCount: 0 };
+  const metrics: PillSearchMetrics = {
+    catalogRecords: 0, stages: [], candidateCount: 0, returnedCount: 0,
+    heldCandidateCount: 0, heldReturnedCount: 0, matchedItemCount: 0, unsupportedCatalogRecords: 0,
+  };
   const result = (status: PillSearchResult["status"], reason: string, message: string): PillSearchResult => ({
-    status, reason, message, notice: NOTICE, candidates: [], metrics, catalogVersion: catalog?.version ?? null, truncated: false,
+    status, reason, message, notice: NOTICE, candidates: [], heldCandidates: [], metrics,
+    catalogVersion: catalog?.version ?? null, truncated: false, heldTruncated: false,
+    searchRulesVersion: PILL_SEARCH_RULES_VERSION, formPolicyVersion: PILL_FORM_POLICY_VERSION,
   });
   const parsed = pillObservationSchema.safeParse(input);
   const limit = options.limit ?? 20;
@@ -149,13 +176,15 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
   if (catalog.completeness !== "complete" || !catalog.version.trim() || catalog.totalCount !== catalog.items.length) return result("unavailable", "incomplete_catalog", "공식 데이터 수집이 완료되지 않아 후보 검색을 보류했어요.");
 
   metrics.catalogRecords = catalog.items.length;
-  let records = catalog.items.map((item) => ({ item, evidence: [] as PillFeatureMatch[] }));
-  const filter = (stage: PillSearchMetrics["stages"][number]["stage"], evidence: (item: OfficialPillItem) => PillFeatureMatch) => {
-    records = records.map((entry) => ({ ...entry, evidence: [...entry.evidence, evidence(entry.item)] }))
+  const assessed = catalog.items.map((item) => ({ item, formAssessment: classifyPillForm(item.formName), evidence: [] as PillFeatureMatch[] }));
+  metrics.unsupportedCatalogRecords = assessed.filter((entry) => entry.formAssessment.status === "unsupported").length;
+  let records = assessed.filter((entry) => entry.formAssessment.status !== "unsupported");
+  const filter = (stage: PillSearchMetrics["stages"][number]["stage"], evidence: (item: OfficialPillItem, form: PillFormAssessment) => PillFeatureMatch) => {
+    records = records.map((entry) => ({ ...entry, evidence: [...entry.evidence, evidence(entry.item, entry.formAssessment)] }))
       .filter((entry) => entry.evidence.every((feature) => feature.match !== "mismatch"));
     metrics.stages.push({ stage, remaining: records.length });
   };
-  filter("form", (item) => compareText("form", observation.form, item.form === "unknown" ? null : item.form));
+  filter("form", (_item, assessment) => compareText("form", observation.form, assessment.form));
   filter("color", (item) => {
     const wanted = [...new Set(observation.colors.map(normalize))].sort();
     const actual = [...new Set(item.colors.map(normalize))].sort();
@@ -176,7 +205,11 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
   for (const entry of records) {
     const choices = matchingSides(observation, entry.item, true).map((choice) => {
       const evidence = [...entry.evidence, ...choice.evidence];
-      return { item: entry.item, orientation: choice.orientation, matchType: matchType(evidence), evidence };
+      const reviewReasons: PillReviewReason[] = [];
+      if (entry.formAssessment.status !== "supported") reviewReasons.push("unknown_official_form");
+      if (imprintMatches(evidence).length === 0) reviewReasons.push("no_imprint_evidence");
+      return { item: entry.item, orientation: choice.orientation, matchType: matchType(evidence), evidence,
+        formAssessment: entry.formAssessment, reviewReasons };
     }).filter((choice) => choice.evidence.some((feature) => feature.match === "exact" || feature.match === "partial"))
       .sort(compareVariantEvidence);
     if (choices[0]) variants.push(choices[0]);
@@ -185,17 +218,27 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
   // Stable code/record tie-breaks, not a fabricated probability or a clinical confidence score.
   variants.sort((a, b) => compareVariantEvidence(a, b) || compare(a.item.itemSeq, b.item.itemSeq) || compare(stableJson(a.item), stableJson(b.item)));
   const grouped = new Map<string, PillCandidate>();
+  const held = new Map<string, PillCandidate>();
   for (const variant of variants) {
-    const candidate = grouped.get(variant.item.itemSeq);
+    // Partition variants too: a strong variant must not promote weak variants of the same product.
+    const destination = variant.reviewReasons.length ? held : grouped;
+    const candidate = destination.get(variant.item.itemSeq);
     if (candidate) candidate.variants.push(variant);
-    else grouped.set(variant.item.itemSeq, { itemSeq: variant.item.itemSeq, matchType: variant.matchType, variants: [variant] });
+    else destination.set(variant.item.itemSeq, { itemSeq: variant.item.itemSeq, matchType: variant.matchType, variants: [variant] });
   }
   metrics.candidateCount = grouped.size;
+  metrics.heldCandidateCount = held.size;
+  metrics.matchedItemCount = new Set([...grouped.keys(), ...held.keys()]).size;
   const candidates = [...grouped.values()].slice(0, limit);
+  const heldCandidates = [...held.values()].slice(0, limit);
   metrics.returnedCount = candidates.length;
-  if (!candidates.length) return result("unidentified", "no_candidates", "입력한 특징에 맞는 공식 후보가 없어요. 약 이름을 추측하지 않으니 약 봉투와 약사 안내로 확인해주세요.");
+  metrics.heldReturnedCount = heldCandidates.length;
+  if (!candidates.length && !heldCandidates.length) return result("unidentified", "no_candidates", "입력한 특징에 맞는 공식 후보가 없어요. 약 이름을 추측하지 않으니 약 봉투와 약사 안내로 확인해주세요.");
   return {
-    ...result("candidates_found", "comparison_required", "외형이 일치하거나 추가 확인이 필요한 후보예요. 공식 이미지와 각인을 비교해주세요."),
-    candidates, truncated: metrics.candidateCount > candidates.length,
+    ...(candidates.length
+      ? result("candidates_found", "comparison_required", "각인 비교 근거가 있는 후보예요. 약의 확정이 아니므로 공식 이미지와 각인을 함께 비교해주세요.")
+      : result("needs_review", "insufficient_official_evidence", "공식 각인·제형 정보가 부족해 후보 제시를 보류했어요. 약을 찾았다는 뜻이 아니며 약 봉투와 약사 안내로 확인해주세요.")),
+    candidates, heldCandidates, truncated: metrics.candidateCount > candidates.length,
+    heldTruncated: metrics.heldCandidateCount > heldCandidates.length,
   };
 }

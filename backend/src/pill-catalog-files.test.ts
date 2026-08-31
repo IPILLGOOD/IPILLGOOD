@@ -9,7 +9,7 @@ import { officialFeatureExamples, pillSearchMarkdown, pillSnapshotSummary, readB
 import { collectPillCatalogSnapshot, snapshotSearchCatalog, validatePillCatalogSnapshot } from "./pill-catalog-snapshot.ts";
 import { parseOfficialPillPage } from "./official-pill-catalog.ts";
 import { pillObservationSchema, searchPillCandidates } from "./pill-identification.ts";
-import { pillEnvelope, pillRecord } from "../test-support/pill-fixtures.ts";
+import { pillEnvelope, pillObservation, pillRecord } from "../test-support/pill-fixtures.ts";
 
 const cli = fileURLToPath(new URL("../scripts/pill-catalog.ts", import.meta.url));
 const repo = fileURLToPath(new URL("../../", import.meta.url));
@@ -95,6 +95,55 @@ test("공식 특징 예제는 정제·캡슐·설명 포함 사례를 분리하�
   assert.equal(summary.imagesDownloaded, 0);
 });
 
+test("기존 v1 스냅샷을 바꾸지 않고 현재 제형 정책으로 예제·집계를 만든다", async () => {
+  const snapshot = await fixture([
+    pillRecord({ ITEM_SEQ: "209900001", FORM_CODE_NAME: "질정", PRINT_FRONT: "A분할선B" }),
+    pillRecord({ ITEM_SEQ: "209900002", FORM_CODE_NAME: "장용정" }),
+    pillRecord({ ITEM_SEQ: "209900003", FORM_CODE_NAME: "경질캡슐제, 공캡슐" }),
+    pillRecord({ ITEM_SEQ: "209900004", FORM_CODE_NAME: "젤라틴코팅성경질캡슐제" }),
+    pillRecord({ ITEM_SEQ: "209900005", FORM_CODE_NAME: "스팬슐" }),
+  ]);
+  const before = JSON.stringify(snapshot);
+  assert.equal(snapshot.schemaVersion, 1);
+  assert.equal(snapshot.normalizationVersion, "mfds-pill-2026-08-31-v1");
+  const examples = officialFeatureExamples(snapshot);
+  assert.deepEqual(examples.map((entry) => entry.itemSeq), ["209900002", "209900004"]);
+  assert.deepEqual(examples.map((entry) => entry.observation.form), ["tablet", "capsule"]);
+  const summary = pillSnapshotSummary(snapshot);
+  assert.deepEqual(summary.forms, { unknown: 4, capsule: 1 }, "기존 정규화 값은 그대로 보존한다");
+  assert.deepEqual(summary.searchFormPolicy.counts, { tablet: 1, capsule: 1, unsupported: 2, unknown: 1 });
+  const ready = snapshotSearchCatalog(snapshot, { now: new Date(), maxAgeHours: 24 });
+  assert.equal(ready.ok, true);
+  if (!ready.ok) return;
+  const result = searchPillCandidates(examples[0]!.observation, ready.catalog);
+  assert.equal(result.candidates[0]!.itemSeq, "209900002");
+  assert.equal(result.metrics.unsupportedCatalogRecords, 2);
+  assert.equal(validatePillCatalogSnapshot(snapshot).ok, true);
+  assert.equal(JSON.stringify(snapshot), before);
+});
+
+test("보류 결과 문서는 후보 영역과 분리하고 이유·건수·정책 버전을 표시한다", async () => {
+  const snapshot = await fixture([
+    pillRecord({ ITEM_SEQ: "209900001", ITEM_NAME: "[보류](javascript:bad)", PRINT_FRONT: "", PRINT_BACK: "" }),
+    pillRecord({ ITEM_SEQ: "209900002", FORM_CODE_NAME: "스팬슐" }),
+  ]);
+  const ready = snapshotSearchCatalog(snapshot, { now: new Date(), maxAgeHours: 24 });
+  assert.equal(ready.ok, true);
+  if (!ready.ok) return;
+  const result = searchPillCandidates(pillObservation(), ready.catalog, { limit: 1 });
+  const report = pillSearchMarkdown(result, snapshot);
+  assert.equal(result.status, "needs_review");
+  assert.match(report, /비교 후보 0개 중 0개/);
+  assert.match(report, /보류 항목 2개 중 1개/);
+  assert.match(report, /나머지 보류 항목 있음/);
+  assert.match(report, /보류 항목 — 약을 찾았다는 의미가 아님/);
+  assert.match(report, /no_imprint_evidence|unknown_official_form/);
+  assert.match(report, /pill-form-policy-v1/);
+  const heldStart = report.indexOf("## 보류 항목");
+  assert.equal(report.slice(0, heldStart).includes("### "), false);
+  assert.equal(report.includes("[보류](javascript:bad)"), false);
+});
+
 test("결과 문서는 공식 이미지 링크·근거·한계를 보여주고 제품 문구를 마크다운으로 실행하지 않는다", async () => {
   const snapshot = await fixture([pillRecord({ ITEM_NAME: "[링크](javascript:bad) <script>bad</script>" })]);
   const example = officialFeatureExamples(snapshot)[0]!;
@@ -145,4 +194,38 @@ test("실제 CLI에서 파일 입력→오프라인 후보 검색→JSON·읽기
   assert.match(await readFile(output.reportPath, "utf8"), /209900001/);
   const payload = JSON.parse(await readFile(output.jsonPath, "utf8"));
   assert.equal(payload.candidates[0].itemSeq, "209900001");
+});
+
+test("오프라인 CLI는 각인 부족·제형 미상 보류를 정상 결과로 반환하고 비지원은 제외한다", async (context) => {
+  const parent = await temporary(context);
+  const snapshot = await fixture([
+    pillRecord({ PRINT_FRONT: "", PRINT_BACK: "" }),
+    pillRecord({ ITEM_SEQ: "209900002", FORM_CODE_NAME: "스팬슐" }),
+    pillRecord({ ITEM_SEQ: "209900003", FORM_CODE_NAME: "질정" }),
+  ]);
+  const saved = await savePillSnapshot(snapshot, parent, {});
+  const observationPath = join(parent, "observation.json");
+  await writeFile(observationPath, JSON.stringify(pillObservation()));
+  const networkGuard = "data:text/javascript," + encodeURIComponent("globalThis.fetch = () => { throw new Error('No network'); };");
+  const result = spawnSync(process.execPath, ["--import", networkGuard, "--experimental-strip-types", cli, "search", "--catalog", saved.catalogPath,
+    "--observation", observationPath, "--max-age-hours", "24", "--limit", "1"], { encoding: "utf8", timeout: 10_000, cwd: parent });
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  const expectedParent = resolve(repo, "verification-artifacts/pill-catalog");
+  const reportDirectory = dirname(resolve(output.reportPath));
+  assert.equal(dirname(reportDirectory), expectedParent);
+  assert.ok(relative(expectedParent, reportDirectory).startsWith("search-"));
+  assert.equal(relative(expectedParent, reportDirectory).includes(sep), false);
+  context.after(() => rm(reportDirectory, { recursive: true }));
+  assert.equal(output.status, "needs_review");
+  assert.equal(output.candidateCount, 0);
+  assert.equal(output.heldCandidateCount, 2);
+  assert.equal(output.heldTruncated, true);
+  assert.equal(output.unsupportedCatalogRecords, 1);
+  const payload = JSON.parse(await readFile(output.jsonPath, "utf8"));
+  assert.deepEqual(payload.candidates, []);
+  assert.equal(payload.heldCandidates.length, 1);
+  assert.equal(payload.formPolicyVersion, "pill-form-policy-v1");
+  assert.equal(payload.searchRulesVersion, "pill-structured-v3-evidence-gate");
+  assert.match(await readFile(output.reportPath, "utf8"), /보류 이유/);
 });

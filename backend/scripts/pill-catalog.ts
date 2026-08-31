@@ -3,8 +3,9 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { collectPillCatalogSnapshot, MAX_PILL_SNAPSHOT_BYTES, snapshotSearchCatalog, validatePillCatalogSnapshot, type PillCatalogSnapshot } from "../src/pill-catalog-snapshot.ts";
-import { PILL_SEARCH_RULES_VERSION, searchPillCandidates, type PillObservation, type PillSearchResult } from "../src/pill-identification.ts";
+import { searchPillCandidates, type PillObservation, type PillSearchResult } from "../src/pill-identification.ts";
 import { serializePillProfile } from "./profile-pill-catalog.ts";
+import { classifyPillForm, summarizePillFormPolicy } from "../src/pill-form-policy.ts";
 
 const OUTPUT_DIRECTORY = fileURLToPath(new URL("../../verification-artifacts/pill-catalog/", import.meta.url));
 const HELP = `Local pill catalog tooling (run from the repository root):
@@ -56,30 +57,35 @@ export function pillSnapshotSummary(snapshot: PillCatalogSnapshot) {
     totalRecords: snapshot.totalCount, uniqueItemSeqs: occurrences.size,
     repeatedItemSeqCount: [...occurrences.values()].filter((count) => count > 1).length,
     repeatedItemSeqExamples: [...occurrences].filter(([, count]) => count > 1).slice(0, 20).map(([itemSeq, records]) => ({ itemSeq, records })),
-    forms, unknownForms: Object.fromEntries(unknownForms), officialImageUrls: snapshot.items.filter((item) => item.imageUrl !== null).length,
+    forms, unknownForms: Object.fromEntries(unknownForms), searchFormPolicy: summarizePillFormPolicy(snapshot.items),
+    officialImageUrls: snapshot.items.filter((item) => item.imageUrl !== null).length,
     missingChangedDates: snapshot.items.filter((item) => item.source.changedAt === null).length,
     imagesDownloaded: 0,
   };
 }
 
 export function officialFeatureExamples(snapshot: PillCatalogSnapshot) {
-  const eligible = snapshot.items.filter((item) => item.form !== "unknown" && item.shape && item.shape.length <= 40 && item.shape !== "기타"
+  const supported = snapshot.items.flatMap((item) => {
+    const assessment = classifyPillForm(item.formName);
+    return assessment.status === "supported" ? [{ item, form: assessment.form }] : [];
+  });
+  const eligible = supported.filter(({ item }) => item.shape && item.shape.length <= 40 && item.shape !== "기타"
     && item.colors.length > 0 && item.colors.length <= 4 && item.colors.every((color) => color.length <= 20) && item.front.imprint !== null && item.back.imprint !== null
     && item.front.imprint.length <= 80 && item.back.imprint.length <= 80 && item.imageUrl !== null);
-  const chosen = [eligible.find((item) => item.form === "tablet"), eligible.find((item) => item.form === "capsule"),
-    eligible.find((item) => item.front.imprintHasDescription || item.back.imprintHasDescription)];
+  const chosen = [eligible.find((entry) => entry.form === "tablet"), eligible.find((entry) => entry.form === "capsule"),
+    eligible.find(({ item }) => item.front.imprintHasDescription || item.back.imprintHasDescription)];
   const seen = new Set<string>();
-  return chosen.filter((item) => {
-    if (!item || seen.has(item.itemSeq)) return false;
-    seen.add(item.itemSeq);
+  return chosen.filter((entry) => {
+    if (!entry || seen.has(entry.item.itemSeq)) return false;
+    seen.add(entry.item.itemSeq);
     return true;
-  }).map((item) => ({
-    itemSeq: item!.itemSeq, productName: item!.productName, origin: "official_record_self_consistency_only" as const,
+  }).map((entry) => ({
+    itemSeq: entry!.item.itemSeq, productName: entry!.item.productName, origin: "official_record_self_consistency_only" as const,
     observation: {
-      source: "manual", form: item!.form, integrity: "intact", count: 1, overlapping: false, quality: "clear",
-      shape: item!.shape, colors: item!.colors,
-      front: { imprint: item!.front.imprint, scoreLine: item!.front.scoreLine },
-      back: { imprint: item!.back.imprint, scoreLine: item!.back.scoreLine },
+      source: "manual", form: entry!.form, integrity: "intact", count: 1, overlapping: false, quality: "clear",
+      shape: entry!.item.shape, colors: entry!.item.colors,
+      front: { imprint: entry!.item.front.imprint, scoreLine: entry!.item.front.scoreLine },
+      back: { imprint: entry!.item.back.imprint, scoreLine: entry!.item.back.scoreLine },
     } satisfies PillObservation,
   }));
 }
@@ -113,20 +119,35 @@ export async function savePillSnapshot(snapshot: PillCatalogSnapshot, parent: st
 const md = (value: string | null) => (value ?? "미상").replace(/[\\`*_{}\[\]()#+.!|<>]/g, "\\$&").replace(/[\r\n]/g, " ");
 export function pillSearchMarkdown(result: PillSearchResult, snapshot: PillCatalogSnapshot): string {
   const lines = ["# 로컬 알약 후보 검색 결과", "", result.notice, "", `상태: **${result.status}** — ${result.message}`,
-    `카탈로그: ${snapshot.version}`, `검색 규칙: ${PILL_SEARCH_RULES_VERSION}`, `전체 수집 검증 시각: ${snapshot.verifiedAt}`, "",
-    `전체 후보 ${result.metrics.candidateCount}개 중 ${result.metrics.returnedCount}개 표시${result.truncated ? " (나머지 후보 있음)" : ""}.`, "",
+    `카탈로그: ${snapshot.version}`, `검색 규칙: ${result.searchRulesVersion}`, `제형 정책: ${result.formPolicyVersion}`,
+    `전체 수집 검증 시각: ${snapshot.verifiedAt}`, "",
+    `비교 후보 ${result.metrics.candidateCount}개 중 ${result.metrics.returnedCount}개 표시${result.truncated ? " (나머지 후보 있음)" : ""}.`,
+    `보류 항목 ${result.metrics.heldCandidateCount}개 중 ${result.metrics.heldReturnedCount}개 표시${result.heldTruncated ? " (나머지 보류 항목 있음)" : ""}.`,
+    `두 영역의 고유 품목 합집합 ${result.metrics.matchedItemCount}개. 동일 품목의 다른 외형이 각각 포함될 수 있어 두 건수를 단순 합산하지 않습니다.`,
+    `카탈로그에서 비지원 제형으로 제외한 레코드 ${result.metrics.unsupportedCatalogRecords}개.`, "",
     "이 결과는 특징 입력 기반입니다. 사진 인식·복용 가능 판정이 아니며, 제공된 example 파일은 공식 필드로 만든 자기 일관성 점검용 입력입니다.", "",
     "| 검색 단계 | 잔여 레코드 |", "| --- | ---: |", ...result.metrics.stages.map((stage) => `| ${stage.stage} | ${stage.remaining} |`), ""];
-  for (const candidate of result.candidates) {
-    lines.push(`## ${md(candidate.variants[0]!.item.productName)} · ${candidate.itemSeq}`, "", `특징 비교: ${candidate.matchType} · 일치 외형 ${candidate.variants.length}개`, "");
-    for (const variant of candidate.variants) {
-      const item = variant.item;
-      lines.push(`제조사: ${md(item.manufacturer)} / 제형: ${md(item.formName)} / 모양: ${md(item.shape)} / 색상: ${md(item.colors.join("·"))}`, "",
-        `앞면 원문: ${md(item.front.rawImprint)} / 뒷면 원문: ${md(item.back.rawImprint)} / 비교 방향: ${variant.orientation}`, "",
-        `공식 변경일: ${item.source.changedAt ?? "미상"} / 조회 시각: ${item.source.fetchedAt}`, "");
-      if (item.imageUrl) lines.push(`[공식 이미지 열기](<${new URL(item.imageUrl).href.replace(/[<>]/g, (char) => encodeURIComponent(char))}>)`, "");
-      lines.push("| 특징 | 입력 | 공식 정보 | 비교 |", "| --- | --- | --- | --- |",
-        ...variant.evidence.map((entry) => `| ${md(entry.field)} | ${md(entry.observed)} | ${md(entry.official)} | ${entry.match} |`), "");
+  for (const [heading, candidates] of [
+    ["비교 후보 — 확정 결과 아님", result.candidates],
+    ["보류 항목 — 약을 찾았다는 의미가 아님", result.heldCandidates],
+  ] as const) {
+    lines.push(`## ${heading}`, "");
+    if (!candidates.length) lines.push("해당 항목 없음.", "");
+    for (const candidate of candidates) {
+      lines.push(`### ${md(candidate.variants[0]!.item.productName)} · ${candidate.itemSeq}`, "", `특징 비교: ${candidate.matchType} · 비교 레코드 ${candidate.variants.length}개`, "");
+      for (const variant of candidate.variants) {
+        const item = variant.item;
+        lines.push(`제조사: ${md(item.manufacturer)} / 제형: ${md(item.formName)} / 모양: ${md(item.shape)} / 색상: ${md(item.colors.join("·"))}`, "",
+          `검색용 제형 분류: ${variant.formAssessment.status} / ${variant.formAssessment.form ?? "미상 또는 비지원"} / ${variant.formAssessment.reason}`, "",
+          `앞면 원문: ${md(item.front.rawImprint)} / 뒷면 원문: ${md(item.back.rawImprint)} / 비교 방향: ${variant.orientation}`, "",
+          `공식 변경일: ${item.source.changedAt ?? "미상"} / 조회 시각: ${item.source.fetchedAt}`, "");
+        for (const reason of variant.reviewReasons) {
+          lines.push(`보류 이유: ${reason === "no_imprint_evidence" ? "일치한 문자 각인 근거가 없음" : "공식 제형의 지원 여부를 확인하지 못함"} (${reason})`, "");
+        }
+        if (item.imageUrl) lines.push(`[공식 이미지 열기](<${new URL(item.imageUrl).href.replace(/[<>]/g, (char) => encodeURIComponent(char))}>)`, "");
+        lines.push("| 특징 | 입력 | 공식 정보 | 비교 |", "| --- | --- | --- | --- |",
+          ...variant.evidence.map((entry) => `| ${md(entry.field)} | ${md(entry.observed)} | ${md(entry.official)} | ${entry.match} |`), "");
+      }
     }
   }
   return lines.join("\n");
@@ -177,11 +198,12 @@ async function main(args: string[]) {
     const directory = await mkdtemp(join(OUTPUT_DIRECTORY, "search-"));
     const jsonPath = join(directory, "result.json");
     const reportPath = join(directory, "result.md");
-    await writeFile(jsonPath, serializePillProfile({ ...result, searchRulesVersion: PILL_SEARCH_RULES_VERSION }), { flag: "wx", mode: 0o600 });
+    await writeFile(jsonPath, serializePillProfile(result), { flag: "wx", mode: 0o600 });
     // Redact before Markdown escaping too, so an escaped credential cannot bypass redaction.
     const safeResult = JSON.parse(serializePillProfile(result)) as PillSearchResult;
     await writeFile(reportPath, pillSearchMarkdown(safeResult, snapshot.snapshot), { flag: "wx", mode: 0o600 });
-    console.log(serializePillProfile({ status: result.status, reason: result.reason, searchRulesVersion: PILL_SEARCH_RULES_VERSION, ...result.metrics, truncated: result.truncated, reportPath, jsonPath }));
+    console.log(serializePillProfile({ status: result.status, reason: result.reason, searchRulesVersion: result.searchRulesVersion,
+      formPolicyVersion: result.formPolicyVersion, ...result.metrics, truncated: result.truncated, heldTruncated: result.heldTruncated, reportPath, jsonPath }));
     if (["invalid_input", "not_configured", "unavailable"].includes(result.status)) process.exitCode = 1;
     return;
   }
