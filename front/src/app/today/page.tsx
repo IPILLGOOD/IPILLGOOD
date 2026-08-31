@@ -42,6 +42,14 @@ export default async function TodayPage() {
   const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
   const completed = tasks.filter((task) => task.response === "completed").length;
   const progress = tasks.length === 0 ? 0 : Math.round((completed / tasks.length) * 100);
+  const todayCheckIn = snapshot.todayCheckIn;
+  const checkInTime = todayCheckIn
+    ? new Intl.DateTimeFormat("ko-KR", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "Asia/Seoul",
+      }).format(new Date(todayCheckIn.completedAt))
+    : null;
 
   return (
     <>
@@ -55,20 +63,24 @@ export default async function TodayPage() {
 
       <div className="today-workspace">
         <div className="today-workspace__main">
-          <Card className="today-card">
+          <Card className={`today-card${todayCheckIn ? " today-card--completed" : ""}`}>
             <div className="today-card__content">
               <div className="today-card__copy">
                 <span className="today-card__icon" aria-hidden="true">
-                  <ClipboardCheck size={24} />
+                  {todayCheckIn ? <CheckCircle2 size={24} /> : <ClipboardCheck size={24} />}
                 </span>
                 <div>
-                  <Badge tone="success">약 1분</Badge>
-                  <h2>오늘의 안부를 확인할 시간이에요</h2>
-                  <p>복용 여부와 어지러움 같은 몸 상태를 짧게 물어볼게요.</p>
+                  <Badge tone="success">{todayCheckIn ? "오늘 완료" : "약 1분"}</Badge>
+                  <h2>{todayCheckIn ? "오늘의 안부를 기록했어요" : "오늘의 안부를 확인할 시간이에요"}</h2>
+                  <p>
+                    {todayCheckIn
+                      ? `${todayCheckIn.completedBy === "caregiver" ? "보호자" : "어르신"}가 ${checkInTime}에 남긴 기록이에요. 필요한 내용만 다시 수정할 수 있어요.`
+                      : "복용 여부와 어지러움 같은 몸 상태를 짧게 물어볼게요."}
+                  </p>
                 </div>
               </div>
               <Link className="button button--primary" href="/check-in">
-                확인 시작 <ArrowRight size={18} aria-hidden="true" />
+                {todayCheckIn ? "내용 수정" : "확인 시작"} <ArrowRight size={18} aria-hidden="true" />
               </Link>
             </div>
           </Card>
@@ -90,7 +102,7 @@ export default async function TodayPage() {
           </Card> : null}
 
           <Card className="today-tasks-card">
-            <div className="section-heading">
+            <div className="section-heading today-tasks-heading">
               <div>
                 <h2>오늘 해야 하는 일</h2>
                 <p>현재 복용약의 횟수와 주기를 반영한 일정이에요.</p>

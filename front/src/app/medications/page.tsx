@@ -1,8 +1,7 @@
-import { ArrowRight, CalendarDays, CheckCircle2, CircleHelp, Pill } from "lucide-react";
-import Link from "next/link";
+import { Pill } from "lucide-react";
 
-import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { MedicationCabinet } from "@/components/medications/MedicationCabinet";
 import { OfficialMedicationSearch } from "@/components/medications/OfficialMedicationSearch";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
@@ -63,82 +62,28 @@ export default async function MedicationsPage({
         )}
       />
 
+      {medications.length > 0 ? (
+        <MedicationCabinet
+          medications={medications.map((medication) => ({
+            id: medication.id,
+            productName: medication.productName,
+            ingredientName: medication.ingredientName,
+            category: medication.categoryPlain ?? "분류 확인 필요",
+            isNew: medication.isNew,
+            purpose: medication.purposePlain,
+            description: medication.descriptionPlain,
+            dose: medication.doseAmount.replace("한 번에 ", ""),
+            frequency: medication.frequency,
+            timing: medication.timing,
+            watchFor: medication.watchFor,
+            startSummary: `${formatDate(medication.startDate)} 시작 · ${daysSince(medication.startDate)}일째${medication.endDate ? ` · ${formatDate(medication.endDate)}까지` : ""}`,
+            sourceLabel: medication.sourceLabel,
+            clinicianQuestion: medication.clinicianQuestion,
+          }))}
+        />
+      ) : null}
+
       <div className="medication-cards">
-        {medications.map((medication) => (
-          <Card as="article" key={medication.id}>
-            <div className="medication-detail">
-              <div>
-                <div className="medication-detail__title">
-                  <span className="pill-mark" aria-hidden="true">
-                    <Pill size={21} />
-                  </span>
-                  <div>
-                    <div className="medication-row__name">
-                      <h2>{medication.productName}</h2>
-                      <Badge tone="success">{medication.categoryPlain ?? "분류 확인 필요"}</Badge>
-                      {medication.isNew ? <Badge tone="info">새로 시작</Badge> : null}
-                    </div>
-                    <p>성분명: {medication.ingredientName}</p>
-                  </div>
-                </div>
-
-                <div className="plain-explanation">
-                  <strong>이 약은 무엇을 도와주나요?</strong>
-                  <p>{medication.purposePlain}</p>
-                </div>
-                <p>{medication.descriptionPlain}</p>
-
-                <dl className="medication-facts">
-                  <div>
-                    <dt>한 번에</dt>
-                    <dd>{medication.doseAmount.replace("한 번에 ", "")}</dd>
-                  </div>
-                  <div>
-                    <dt>하루 횟수</dt>
-                    <dd>{medication.frequency}</dd>
-                  </div>
-                  <div>
-                    <dt>먹는 시점</dt>
-                    <dd>{medication.timing}</dd>
-                  </div>
-                </dl>
-              </div>
-
-              <div>
-                <h3>보호자가 살펴볼 점</h3>
-                <ul className="watch-list">
-                  {medication.watchFor.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-
-                <div className="source-line">
-                  <CalendarDays size={16} aria-hidden="true" />
-                  <span>
-                    {formatDate(medication.startDate)} 시작 · {daysSince(medication.startDate)}일째
-                    {medication.endDate ? ` · ${formatDate(medication.endDate)}까지` : ""}
-                  </span>
-                </div>
-                <div className="source-line">
-                  <CheckCircle2 size={16} aria-hidden="true" />
-                  <span>{medication.sourceLabel}</span>
-                </div>
-                {medication.clinicianQuestion ? (
-                  <div className="source-line">
-                    <CircleHelp size={16} aria-hidden="true" />
-                    <span>{medication.clinicianQuestion}</span>
-                  </div>
-                ) : null}
-                <Link
-                  className="button button--secondary medication-detail-link"
-                  href={`/medications/${medication.id}`}
-                >
-                  상세 정보 보기 <ArrowRight size={17} aria-hidden="true" />
-                </Link>
-              </div>
-            </div>
-          </Card>
-        ))}
         {medications.length === 0 ? (
           <Card>
             <div className="empty-state" role="status">

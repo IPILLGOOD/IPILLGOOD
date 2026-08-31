@@ -7,9 +7,13 @@ import type { PatientQuestionSet } from "@care-atlas/backend";
 
 const initialState: CheckInActionState = { status: "idle", message: "" };
 
-export function useCheckInForm(initialQuestions: PatientQuestionSet | null, revision: number) {
+export function useCheckInForm(
+  initialQuestions: PatientQuestionSet | null,
+  revision: number,
+  initialDraft: CheckInDraft = {},
+) {
   const [questionSet, setQuestionSet] = useState(initialQuestions);
-  const [draft, setDraft] = useState<CheckInDraft>({});
+  const [draft, setDraft] = useState<CheckInDraft>(initialDraft);
   const [recovering, startRecovery] = useTransition();
   const [recoveryMessage, setRecoveryMessage] = useState("");
   const [state, formAction, pending] = useActionState(async (previous: CheckInActionState, data: FormData) => {

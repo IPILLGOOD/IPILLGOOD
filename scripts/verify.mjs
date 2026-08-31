@@ -20,6 +20,7 @@ for (const directory of [root, resolve(root, "front")]) {
 const temporary = mkdtempSync(resolve(tmpdir(), "ipillgood-verify-"));
 const children = new Set();
 const steps = [];
+let failure;
 mkdirSync(resolve(root, "verification-artifacts"), { recursive: true });
 const log = createWriteStream(resolve(root, fullCycleOnly ? "verification-artifacts/full-cycle.log" : "verification-artifacts/run.log"));
 const env = Object.fromEntries(["PATH", "JAVA_HOME", "TMPDIR", "TEMP", "SystemRoot", "LANG", "PLAYWRIGHT_BROWSERS_PATH"].filter((key) => process.env[key]).map((key) => [key, process.env[key]]));
@@ -46,13 +47,21 @@ function launch(command, args, extraEnv = {}) {
   child.once("exit", () => children.delete(child));
   return child;
 }
-async function run(name, command, args, extraEnv) {
-  console.log(`\n[verify] ${name}`);
+async function run(name, command, args, extraEnv, { continueOnFailure = false } = {}) {
+  const heading = `\n[verify] ${name}\n`;
+  process.stdout.write(heading);
+  log.write(heading);
   const start = Date.now();
   const child = launch(command, args, extraEnv);
   const code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
   steps.push({ name, passed: code === 0, durationMs: Date.now() - start });
-  if (code !== 0) throw new Error(`${name} failed (${code})`);
+  if (code !== 0) {
+    process.exitCode = 1;
+    const message = `${name} failed (${code})`;
+    if (!continueOnFailure) throw new Error(message);
+    console.error(message);
+    log.write(`${message}\n`);
+  }
 }
 async function ready(url, child, timeout = 90_000) {
   const deadline = Date.now() + timeout;
@@ -98,7 +107,9 @@ try {
   if (!fullCycleOnly) {
     const app = launch(process.execPath, ["front/.next/standalone/front/server.js"], { ...guarded, NODE_ENV: "production", PORT: String(appPort), HOSTNAME: "127.0.0.1" });
     await ready(`${env.IPILLGOOD_TEST_BASE_URL}/login`, app);
-    await run("browser-and-api", process.execPath, ["node_modules/@playwright/test/cli.js", "test"], guarded);
+    // These suites use separate accounts and app servers. A UI regression must
+    // not hide an independent failure in login, shared care or account deletion.
+    await run("browser-and-api", process.execPath, ["node_modules/@playwright/test/cli.js", "test"], guarded, { continueOnFailure: true });
   }
   if (fullCycleOnly || process.argv.includes("--account-full-cycle")) {
     const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -121,14 +132,25 @@ try {
     await ready(`${identityEnv.IPILLGOOD_TEST_BASE_URL}/login`, identityApp);
     await run("account-full-cycle (synthetic Google boundary)", process.execPath,
       ["node_modules/@playwright/test/cli.js", "test", "--config", "playwright.full-cycle.config.ts"],
-      { ...guarded, ...identityEnv, IPILLGOOD_TEST_IDENTITY_KEY_PATH: keyPath });
+      { ...guarded, ...identityEnv, IPILLGOOD_TEST_IDENTITY_KEY_PATH: keyPath }, { continueOnFailure: true });
   }
 } catch (error) {
+  failure = error.message;
   console.error(error.message);
+  log.write(`${error.message}\n`);
   process.exitCode = 1;
 } finally {
   await stop();
-  writeFileSync(resolve(root, fullCycleOnly ? "verification-artifacts/verification-full-cycle.json" : "verification-artifacts/verification.json"), JSON.stringify({ project: env.FIREBASE_PROJECT_ID, steps }, null, 2));
+  const resultPath = fullCycleOnly ? "verification-artifacts/verification-full-cycle" : "verification-artifacts/verification";
+  writeFileSync(resolve(root, `${resultPath}.json`), JSON.stringify({ project: env.FIREBASE_PROJECT_ID, passed: !process.exitCode, failure, steps }, null, 2));
+  writeFileSync(resolve(root, `${resultPath}.md`), [
+    `## Isolated verification: ${process.exitCode ? "failed" : "passed"}`,
+    "", `Project: ${env.FIREBASE_PROJECT_ID}`, "",
+    "| Stage | Result | Duration |", "| --- | --- | --- |",
+    ...steps.map((step) => `| ${step.name} | ${step.passed ? "passed" : "failed"} | ${(step.durationMs / 1000).toFixed(1)}s |`),
+    "", ...(failure ? [`Stopped: ${failure}`, ""] : []),
+    "Only listed stages ran. See the verification-results artifact for screenshots, traces and account lifecycle evidence.", "",
+  ].join("\n"));
   log.end();
   rmSync(temporary, { recursive: true, force: true });
 }
