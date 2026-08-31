@@ -13,6 +13,7 @@ import type {
   MedicationPlan,
   MedicationPlanCandidate,
   MedicationPlanDraft,
+  PrescriptionMedication,
   PatientQuestionResponse,
   PatientQuestionSet,
   SymptomEvent,
@@ -757,6 +758,21 @@ function assertValidConfirmationInput(input: ConfirmMedicationPlanDraftInput) {
   }
 }
 
+function verifiedMedicationIdentity(
+  original: PrescriptionMedication,
+  reviewed: Pick<PrescriptionMedication, "productName" | "ingredientName"> = original,
+): Pick<MedicationPlan, "itemSeq"> {
+  const verification = original.verification;
+  const itemSeq = verification?.officialItemCode?.trim();
+  const identityText = (value: string) => value.normalize("NFC").trim();
+  if (original.reviewStatus !== "verified" || verification?.status !== "verified" ||
+      !Array.isArray(verification.warnings) || verification.warnings.length > 0 || !itemSeq || !/^\d{9}$/.test(itemSeq) ||
+      identityText(original.productName) !== identityText(reviewed.productName) ||
+      identityText(original.ingredientName) !== identityText(reviewed.ingredientName)) return {};
+  // OCR itemCode can be an insurance code. Only the server-verified official code is canonical.
+  return { itemSeq };
+}
+
 function confirmedMedicationPlan(
   draft: MedicationPlanDraft,
   candidate: MedicationPlanCandidate,
@@ -774,6 +790,7 @@ function confirmedMedicationPlan(
   }
   return {
     id: `rx-${draft.documentId}-${candidate.id.slice(-12)}`,
+    ...verifiedMedicationIdentity(candidate, input),
     productName: input.productName.trim(),
     ingredientName: input.ingredientName.trim() || "성분 확인 필요",
     categoryPlain: "처방약",
@@ -985,6 +1002,7 @@ export function medicationPlansFromPrescription(
       if (!endDate || endDate < startDate) return [];
       return {
         id: `rx-${document.id}-${index + 1}`,
+        ...verifiedMedicationIdentity(medication),
         productName: medication.productName.trim(),
         ingredientName: medication.ingredientName.trim() || "성분 확인 필요",
         categoryPlain: "처방약",

@@ -543,6 +543,63 @@ test("사용자가 수정·선택해 확정한 약만 활성화하고 확인자�
   assert.equal((await getCareSnapshot(scope)).medications.length, 1);
 });
 
+test("식약처 검증 코드만 처방 초안에서 복용약·read model·재시도 결과까지 보존한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-verified-item-code", firestore };
+  await consentedSnapshot(scope);
+  const base = prescriptionUpload("official-code");
+  const upload = { ...base, analysis: { ...base.analysis, medications: base.analysis.medications.map((medication, index) => ({
+    ...medication,
+    itemCode: "원문 보험코드",
+    verification: { status: "verified" as const, sourceLabel: "식약처 제품 허가정보", officialItemCode: `20990000${index + 1}`, warnings: [] },
+  })) } };
+  const document = await registerDocument(scope, upload);
+  const draft = (await getMedicationPlanDraft(scope, document.medicationDraftId!))!;
+  assert.equal(draft.candidates[0]?.verification?.officialItemCode, "209900001");
+  const input = { draftId: draft.id, revision: draft.revision, idempotencyKey: "confirm-official-code", confirmedBy: "google:user", candidates: confirmationCandidates(draft) };
+  const confirmed = await confirmMedicationPlanDraft(scope, input);
+  assert.deepEqual(confirmed.medications.map((item) => item.itemSeq), ["209900001", "209900002"]);
+  assert.deepEqual((await getCareSnapshot(scope)).medications.map((item) => item.itemSeq), ["209900001", "209900002"]);
+  assert.deepEqual((await confirmMedicationPlanDraft(scope, input)).medications.map((item) => item.itemSeq), ["209900001", "209900002"]);
+  const rebuilt = await rebuildCareReadModel(scope);
+  assert.deepEqual(rebuilt.snapshot.medications.map((item) => item.itemSeq).sort(), ["209900001", "209900002"]);
+  assert.deepEqual(medicationPlansFromPrescription({ id: document.id, documentType: "처방전", uploadedAt: document.uploadedAt, analysis: upload.analysis })
+    .map((item) => item.itemSeq), ["209900001", "209900002"]);
+});
+
+test("사용자가 제품명·성분을 수정하면 이전 검증 품목코드를 잘못 연결하지 않는다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-edited-item-code", firestore };
+  await consentedSnapshot(scope);
+  const base = prescriptionUpload("edited-code");
+  const upload = { ...base, analysis: { ...base.analysis, medications: base.analysis.medications.map((medication, index) => ({
+    ...medication, itemCode: `20990000${index + 1}`,
+    verification: { status: "verified" as const, sourceLabel: "식약처 제품 허가정보", officialItemCode: `20990000${index + 1}`, warnings: [] },
+  })) } };
+  const document = await registerDocument(scope, upload);
+  const draft = (await getMedicationPlanDraft(scope, document.medicationDraftId!))!;
+  const candidates = confirmationCandidates(draft);
+  candidates[0]!.productName = "다른 약";
+  candidates[1]!.ingredientName = "다른 성분";
+  const result = await confirmMedicationPlanDraft(scope, { draftId: draft.id, revision: draft.revision, idempotencyKey: "confirm-edited-code", confirmedBy: "google:user", candidates });
+  assert.equal(result.medications.every((item) => !("itemSeq" in item)), true);
+});
+
+test("공식 검증 없는 원문 코드·잘못된 공식 코드·데모에는 itemSeq를 새로 부여하지 않는다", () => {
+  const base = prescriptionUpload("unverified-code");
+  for (const verification of [
+    undefined,
+    { status: "mismatch" as const, sourceLabel: "test", officialItemCode: "209900001", warnings: [] },
+    { status: "verified" as const, sourceLabel: "test", officialItemCode: "not-a-code", warnings: [] },
+    { status: "verified" as const, sourceLabel: "test", officialItemCode: "209900001", warnings: ["검토 필요"] },
+  ]) {
+    const analysis = { ...base.analysis, medications: base.analysis.medications.map((item) => ({ ...item, itemCode: "209900001", verification })) };
+    const plans = medicationPlansFromPrescription({ id: "test-code", documentType: "처방전", uploadedAt: "2026-08-17T00:00:00Z", analysis });
+    assert.equal(plans.length, 2);
+    assert.equal(plans.every((item) => !("itemSeq" in item)), true);
+  }
+});
+
 test("분석·확정 재시도와 동시 확정은 같은 초안·복약 계획을 중복 생성하지 않는다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-draft-idempotent", firestore };

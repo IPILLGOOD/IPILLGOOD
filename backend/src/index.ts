@@ -120,6 +120,23 @@ export {
   type OfficialDiseaseLookupResult,
 } from "./official-disease-api";
 export {
+  fetchOfficialPillPage,
+  parseOfficialPillPage,
+  PILL_API_ENDPOINT,
+  PILL_SOURCE_URL,
+  type OfficialPillItem,
+  type OfficialPillPage,
+  type OfficialPillPageResult,
+} from "./official-pill-catalog";
+export {
+  pillObservationSchema,
+  searchPillCandidates,
+  type PillCatalog,
+  type PillObservation,
+  type PillCandidate,
+  type PillSearchResult,
+} from "./pill-identification";
+export {
   MAX_DOCUMENT_FILE_BYTES,
   MAX_DOCUMENT_IMAGE_DIMENSION,
   MAX_DOCUMENT_IMAGE_PIXELS,
