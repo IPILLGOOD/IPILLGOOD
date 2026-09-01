@@ -182,11 +182,27 @@ test("OpenAI 미설정 시에도 기록에서 안전 폴백 분석을 만든다"
   assert.ok(result.output.findings.some((finding) => finding.event_refs.includes("symptom-1")));
 });
 
-async function generationFixture() {
+async function generationFixture(options: { withDocument?: boolean } = {}) {
   const firestore = new MemoryFirestore();
-  const stored = { ...structuredClone(snapshot), dataSource: "firestore" as const };
+  const stored = {
+    ...structuredClone(snapshot),
+    documents: options.withDocument ? [{
+      id: "source-document",
+      fileName: "source.pdf",
+      documentType: "진단서",
+      uploadedAt: "2026-08-15T00:00:00.000Z",
+      status: "confirmed" as const,
+      redacted: true,
+      sourceLabel: "테스트",
+    }] : [],
+    dataSource: "firestore" as const,
+  };
   const scope = { recipientId: stored.recipient.id, firestore };
   await firestore.collection("careRecipients").doc(scope.recipientId).set(stored.recipient);
+  if (stored.documents[0]) {
+    await firestore.collection(`careRecipients/${scope.recipientId}/clinicalDocuments`)
+      .doc(stored.documents[0].id).set(stored.documents[0]);
+  }
   return { firestore, input: { scope, snapshot: stored, targetDate: "2026-08-16", answerer: "caregiver" as const } };
 }
 
@@ -224,6 +240,23 @@ test("Care Agent 실행 중 동의가 철회되면 결과와 실패 기록을 �
   }), /동의/);
 
   assert.equal(calls, 1);
+  for (const collection of ["questionGenerations", "questionGenerationAttempts", "questionSets", "careAnalyses", "agentRuns"]) {
+    assert.equal((await firestore.collection(`careRecipients/${input.scope.recipientId}/${collection}`).get()).docs.length, 0);
+  }
+});
+
+test("Care Agent 실행 중 근거 문서가 삭제되면 실패 checkpoint와 attempt도 남기지 않는다", async () => {
+  const { firestore, input } = await generationFixture({ withDocument: true });
+
+  await assert.rejects(getOrCreateQuestionSet(input, {
+    runAgent: async (request) => {
+      const batch = firestore.batch();
+      batch.delete(firestore.collection(`careRecipients/${input.scope.recipientId}/clinicalDocuments`).doc("source-document"));
+      await batch.commit();
+      return runCareAgent({ ...request, apiKey: "" });
+    },
+  }), /근거가 변경/);
+
   for (const collection of ["questionGenerations", "questionGenerationAttempts", "questionSets", "careAnalyses", "agentRuns"]) {
     assert.equal((await firestore.collection(`careRecipients/${input.scope.recipientId}/${collection}`).get()).docs.length, 0);
   }

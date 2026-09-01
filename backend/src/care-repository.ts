@@ -57,6 +57,37 @@ type StoredCareReadModel = Omit<CareSnapshot, "dataSource" | "revision"> & {
   revision?: number;
 };
 
+type StoredRow = Record<string, unknown>;
+
+const DOCUMENT_DERIVED_COLLECTIONS = [
+  "questionSets",
+  "questionResponses",
+  "careAnalyses",
+  "agentRuns",
+  "questionGenerations",
+  "questionGenerationAttempts",
+  "documentAnalysisJobs",
+  "documentImportRequests",
+  "documentImportReviews",
+  "medicationPlanDrafts",
+  "medicationDraftConfirmations",
+  "dailyCheckIns",
+  "clinicianQuestions",
+] as const;
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function hasSourceDocument(row: StoredRow, documentId: string) {
+  return stringArray(row.sourceDocumentIds).includes(documentId);
+}
+
+function documentAnalysisJobMatches(row: StoredRow, documentId: string) {
+  const result = row.result as { document?: { id?: string } } | undefined;
+  return row.contentHash === documentId || result?.document?.id === documentId;
+}
+
 const seed = demoSeed as DemoSeed;
 
 function patientAnswerLabel(
@@ -1133,9 +1164,64 @@ export function medicationPlansFromPrescription(
 
 export async function deleteDocument(scope: CareDataScope, documentId: string, currentSnapshot?: CareSnapshot) {
   if (!/^[^/]{1,256}$/.test(documentId)) throw new Error("올바르지 않은 문서 식별자입니다.");
+  const deletedAt = new Date().toISOString();
   return mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
-    const document = await tx.get(ref.collection("clinicalDocuments").doc(documentId));
-    if (!document.exists) return { snapshot, result: snapshot, unchanged: true };
+    const receiptRef = ref.collection("documentDeletionReceipts").doc(documentId);
+    const [document, receipt, ...collections] = await Promise.all([
+      tx.get(ref.collection("clinicalDocuments").doc(documentId)),
+      tx.get(receiptRef),
+      ...DOCUMENT_DERIVED_COLLECTIONS.map((name) => tx.get(ref.collection(name))),
+    ]);
+    const rows = new Map(
+      DOCUMENT_DERIVED_COLLECTIONS.map((name, index) => [name, collections[index]!.docs]),
+    );
+
+    const questionSets = rows.get("questionSets")!.filter((item) =>
+      hasSourceDocument(item.data() as StoredRow, documentId));
+    const questionSetIds = new Set(questionSets.map((item) => item.id));
+    const questionResponses = rows.get("questionResponses")!.filter((item) =>
+      questionSetIds.has(String((item.data() as StoredRow).question_set_id ?? "")));
+    const questionResponseIds = new Set(questionResponses.map((item) => item.id));
+    const generations = rows.get("questionGenerations")!.filter((item) =>
+      hasSourceDocument(item.data() as StoredRow, documentId));
+    const generationIds = new Set(generations.map((item) => item.id));
+    const drafts = rows.get("medicationPlanDrafts")!.filter((item) =>
+      (item.data() as StoredRow).documentId === documentId);
+    const draftIds = new Set(drafts.map((item) => item.id));
+
+    const deletedRows = {
+      questionSets,
+      questionResponses,
+      careAnalyses: rows.get("careAnalyses")!.filter((item) => hasSourceDocument(item.data() as StoredRow, documentId)),
+      agentRuns: rows.get("agentRuns")!.filter((item) => hasSourceDocument(item.data() as StoredRow, documentId)),
+      questionGenerations: generations,
+      questionGenerationAttempts: rows.get("questionGenerationAttempts")!.filter((item) =>
+        generationIds.has(String((item.data() as StoredRow).generationId ?? ""))),
+      documentAnalysisJobs: rows.get("documentAnalysisJobs")!.filter((item) =>
+        documentAnalysisJobMatches(item.data() as StoredRow, documentId)),
+      documentImportRequests: rows.get("documentImportRequests")!.filter((item) => {
+        const row = item.data() as StoredRow;
+        return row.contentHash === documentId || row.documentId === documentId;
+      }),
+      documentImportReviews: rows.get("documentImportReviews")!.filter((item) =>
+        (item.data() as StoredRow).contentHash === documentId),
+      medicationPlanDrafts: drafts,
+      medicationDraftConfirmations: rows.get("medicationDraftConfirmations")!.filter((item) =>
+        draftIds.has(String((item.data() as StoredRow).draftId ?? ""))),
+      clinicianQuestions: rows.get("clinicianQuestions")!.filter((item) =>
+        questionSetIds.has(String((item.data() as StoredRow).sourceQuestionSetId ?? ""))),
+    };
+    const dailyCheckIns = rows.get("dailyCheckIns")!.flatMap((item) => {
+      const row = item.data() as DailyCheckIn;
+      if (!questionSetIds.has(row.questionSetId ?? "") && !questionResponseIds.has(row.questionResponseId ?? "")) return [];
+      const { questionSetId: _questionSetId, questionResponseId: _questionResponseId, ...retained } = row;
+      return [{ ref: item.ref, value: retained }];
+    });
+    const derivedTargets = Object.values(deletedRows).flat();
+    if (!document.exists && receipt.exists && derivedTargets.length === 0 && dailyCheckIns.length === 0) {
+      return { snapshot, result: snapshot, unchanged: true };
+    }
+
     const confirmedConditions = (snapshot.recipient.confirmedConditions ?? []).filter(
       (condition) => condition.sourceDocumentId !== documentId,
     );
@@ -1147,16 +1233,40 @@ export async function deleteDocument(scope: CareDataScope, documentId: string, c
       recipient,
       medications: snapshot.medications.filter((item) => item.sourceDocumentId !== documentId),
       documents: snapshot.documents.filter((item) => item.id !== documentId),
+      clinicianQuestions: snapshot.clinicianQuestions.filter((item) =>
+        !questionSetIds.has(item.sourceQuestionSetId ?? "")),
+      todayCheckIn: snapshot.todayCheckIn && (
+        questionSetIds.has(snapshot.todayCheckIn.questionSetId ?? "") ||
+        questionResponseIds.has(snapshot.todayCheckIn.questionResponseId ?? "")
+      )
+        ? (() => {
+            const {
+              questionSetId: _questionSetId,
+              questionResponseId: _questionResponseId,
+              ...retained
+            } = snapshot.todayCheckIn!;
+            return retained;
+          })()
+        : snapshot.todayCheckIn,
     };
-    tx.delete(document.ref);
+    if (document.exists) tx.delete(document.ref);
     if (recipient !== snapshot.recipient) tx.set(ref, recipient);
-    const storedDocument = document.data() as ClinicalDocument;
-    if (storedDocument.medicationDraftId) {
-      tx.delete(ref.collection("medicationPlanDrafts").doc(storedDocument.medicationDraftId));
-    }
     for (const medication of snapshot.medications) {
       if (medication.sourceDocumentId === documentId) tx.delete(ref.collection("medicationPlans").doc(medication.id));
     }
+    for (const target of derivedTargets) tx.delete(target.ref);
+    for (const checkIn of dailyCheckIns) tx.set(checkIn.ref, checkIn.value);
+    tx.set(receiptRef, {
+      schemaVersion: "document-deletion-receipt.v1",
+      status: "completed",
+      deletedAt,
+      deletedDocument: document.exists,
+      deletedCounts: Object.fromEntries(
+        Object.entries(deletedRows).map(([collection, targets]) => [collection, targets.length]),
+      ),
+      retainedCheckIns: dailyCheckIns.length,
+      retainedFields: ["medicationResponses", "symptoms", "severity", "note", "completedAt", "completedBy"],
+    });
     return { snapshot: nextSnapshot, result: nextSnapshot };
   }, { affectsMedications: true });
 }
