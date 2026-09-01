@@ -26,18 +26,20 @@ export function CheckInForm({
   initialCheckIn,
   initialQuestionResponse,
   revision,
+  observationIdempotencyKey,
 }: {
   tasks: MedicationScheduleTask[];
   questionSet: PatientQuestionSet | null;
   initialCheckIn: DailyCheckIn | null;
   initialQuestionResponse: PatientQuestionResponse | null;
   revision: number;
+  observationIdempotencyKey: string;
 }) {
   const router = useRouter();
   const initialDraft = {
     ...(initialCheckIn
       ? {
-          answeredBy: [initialCheckIn.completedBy],
+          reportSource: [initialReportSource(initialCheckIn)],
           symptoms: initialCheckIn.symptoms,
           severity: [String(initialCheckIn.severity ?? 3)],
           note: [initialCheckIn.note],
@@ -86,6 +88,8 @@ export function CheckInForm({
   return (
     <form className="checkin-form" action={formAction} onReset={(event) => event.preventDefault()} aria-label="오늘의 복약과 안부 기록">
       <input type="hidden" name="expectedRevision" value={form.baselineRevision} />
+      <input type="hidden" name="checkInScope" value="full" />
+      <input type="hidden" name="observationIdempotencyKey" value={observationIdempotencyKey} />
       {!form.recoveryMessage && <FormMessage state={state} />}
       {state.conflict ? (
         <button className="button button--secondary" type="button" disabled={!form.latestRevisionReady} onClick={form.acceptLatestRevision}>
@@ -95,15 +99,24 @@ export function CheckInForm({
       {(state.recoverQuestions || form.recoveryMessage) && recovery}
 
       <fieldset className="question-block">
-        <legend>1. 누가 오늘의 상태를 확인했나요?</legend>
+        <legend>1. 누가 어떻게 오늘의 상태를 확인했나요?</legend>
+        <p className="question-block__helper">기록의 근거가 화면과 상담용 보고서에 함께 표시돼요.</p>
         <div className="choice-grid">
           <label className="choice-card">
-            <input name="answeredBy" type="radio" value="caregiver" {...form.check("answeredBy", "caregiver", !initialCheckIn)} required />
-            보호자가 확인했어요
+            <input name="reportSource" type="radio" value="caregiver_observed" {...form.check("reportSource", "caregiver_observed", !initialCheckIn)} required />
+            보호자가 직접 보거나 확인했어요
           </label>
           <label className="choice-card">
-            <input name="answeredBy" type="radio" value="recipient" {...form.check("answeredBy", "recipient", initialCheckIn?.completedBy === "recipient")} required />
+            <input name="reportSource" type="radio" value="recipient_self_reported" {...form.check("reportSource", "recipient_self_reported", initialCheckIn?.completedBy === "recipient")} required />
             어르신이 직접 답했어요
+          </label>
+          <label className="choice-card">
+            <input name="reportSource" type="radio" value="caregiver_relayed" {...form.check("reportSource", "caregiver_relayed")} required />
+            보호자가 전달받아 확인했어요
+          </label>
+          <label className="choice-card">
+            <input name="reportSource" type="radio" value="unconfirmed" {...form.check("reportSource", "unconfirmed")} required />
+            확인하지 못했어요
           </label>
         </div>
       </fieldset>
@@ -141,7 +154,7 @@ export function CheckInForm({
 
       <fieldset className="question-block">
         <legend>{tasks.length + 2}. 오늘 평소와 다른 몸 상태가 있었나요?</legend>
-        <p className="question-block__helper">없으면 선택하지 않아도 괜찮아요.</p>
+        <p className="question-block__helper">없으면 선택하지 않아도 괜찮아요. 여러 증상은 각각 저장 시각의 관찰로 남아요.</p>
         <div className="choice-grid">
           {symptoms.map((symptom) => (
             <label className="choice-card" key={symptom}>
@@ -178,6 +191,21 @@ export function CheckInForm({
         </div>
       </div>
 
+      {initialCheckIn ? (
+        <div className="field">
+          <label htmlFor="correctionReason">기존 기록을 수정하는 이유</label>
+          <textarea
+            id="correctionReason"
+            name="correctionReason"
+            {...form.field("correctionReason")}
+            maxLength={300}
+            required
+            placeholder="예: 어르신에게 다시 확인해 복용 여부를 바로잡아요."
+          />
+          <p className="field-hint">이전 기록은 지우지 않고 정정 전후 내용, 확인한 사람과 시각을 함께 보존해요.</p>
+        </div>
+      ) : null}
+
       <div className="form-actions">
         <Link className="button button--quiet" href="/today">
           나중에 하기
@@ -188,4 +216,12 @@ export function CheckInForm({
       </div>
     </form>
   );
+}
+
+function initialReportSource(checkIn: DailyCheckIn) {
+  const evidence = checkIn.wellbeingEvidenceLevel ?? checkIn.medicationEvidenceLevel ?? checkIn.evidenceLevel;
+  if (evidence === "self_reported") return "recipient_self_reported";
+  if (evidence === "relayed_confirmation") return "caregiver_relayed";
+  if (evidence === "unconfirmed") return "unconfirmed";
+  return checkIn.completedBy === "recipient" ? "recipient_self_reported" : "caregiver_observed";
 }

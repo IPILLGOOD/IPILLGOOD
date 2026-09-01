@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adherenceSummary, careTimelineItems, recentCareRecords, uniqueSymptomDays } from "../src/lib/recent-care-records.ts";
+import { adherenceSummary, careTimelineItems, observationEvidenceCounts, recentCareRecords, uniqueSymptomDays } from "../src/lib/recent-care-records.ts";
 
 const now = new Date("2026-08-28T03:00:00Z");
 const dose = (id, scheduledAt, response = "completed") => ({ id, scheduledAt, response });
@@ -46,6 +46,18 @@ test("symptom days use Seoul dates and retain actual symptom types", () => {
   assert.equal(uniqueSymptomDays(recent.symptomEvents), 2);
   assert.equal(recent.symptomEvents.filter((event) => event.symptomType === "어지러움").length, 0);
   assert.match(careTimelineItems([], recent.symptomEvents)[0].title, /두통/);
+});
+
+test("timeline and report distinguish self reports from third-party evidence", () => {
+  const events = [
+    { ...symptom("self", "2026-08-27T09:00:00+09:00"), reporterType: "recipient_reported", evidenceLevel: "self_reported" },
+    { ...symptom("relayed", "2026-08-27T10:00:00+09:00"), reporterType: "caregiver_observed", evidenceLevel: "relayed_confirmation" },
+  ];
+  assert.match(careTimelineItems([], events)[0].detail, /전달받아 확인/);
+  assert.deepEqual(observationEvidenceCounts(events), [
+    { label: "어르신 자가보고", count: 1 },
+    { label: "보호자가 전달받아 확인", count: 1 },
+  ]);
 });
 
 test("year and leap-month boundaries use calendar arithmetic", () => {
