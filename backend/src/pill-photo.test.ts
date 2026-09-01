@@ -4,7 +4,8 @@ import { observedSide, pillEnvelope, pillObservation, pillRecord } from "../test
 import { PILL_PHOTO_CASES, PILL_PHOTO_FILES } from "../test-support/pill-photo-review.ts";
 import { parseOfficialPillPage } from "./official-pill-catalog.ts";
 import { comparePillPhotoFeatures, migratePillPhotoFeaturesV1, PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, pillPhotoFeaturesV1Schema } from "./pill-photo-features.ts";
-import { applyReviewedPhotoMaskGate, assessReviewedPhotoMask, extractReviewedPillPhotos, MIN_REVIEWED_PILL_MASK_SOLIDITY, parsePillPhotoResponse, pillPhotoRequest, prepareReviewedPillPhoto, reviewedPhotoIndex } from "./pill-photo-experiment.ts";
+import { PILL_PHOTO_OCR_PROMPT_VERSION, PILL_PHOTO_OCR_SCHEMA_VERSION, pillPhotoOcrFeaturesSchema } from "./pill-photo-ocr.ts";
+import { applyReviewedPhotoMaskGate, assessReviewedPhotoMask, extractReviewedPillPhotos, MIN_REVIEWED_PILL_MASK_SOLIDITY, parsePillPhotoOcrResponse, parsePillPhotoResponse, pillPhotoOcrRequest, pillPhotoRequest, prepareReviewedPillPhoto, reviewedPhotoIndex } from "./pill-photo-experiment.ts";
 import { parsePillPhotoArgs, readReviewedPhoto, renderPillPhotoReport, scorePillPhotoCase, type PillPhotoReport } from "../scripts/pill-photo.ts";
 
 function features() {
@@ -37,7 +38,7 @@ test("고정 prompt-v1 사진 특징은 원본과 분리해 pill-observation.v2�
   assert.equal(migrated.observation.schemaVersion, "pill-observation.v2");
   assert.deepEqual(migrated.observation.front, observedSide(null, "unknown"));
   assert.deepEqual(migrated.observation.back, observedSide("", "none"));
-  assert.equal(PILL_PHOTO_PROMPT_VERSION, "pill-photo-observation-v2");
+  assert.equal(PILL_PHOTO_PROMPT_VERSION, "pill-photo-observation-v3-multiview");
 });
 
 test("사진 특징 계약은 기존 검색에 연결되며 입력을 변경하거나 약을 확정하지 않는다", () => {
@@ -123,12 +124,20 @@ test("공개 검수 명세는 중복 없는 SHA256·9개 파일·4개 독립 코
 });
 
 test("외부 요청에는 사진·추출 계약만 있고 정답 코드·약명·경로·검색 예제가 없다", () => {
-  const request = pillPhotoRequest(Buffer.from("fake-image-A"), Buffer.from("fake-image-B"), "test-model");
-  const serialized = JSON.stringify(request);
+  const first = { context: Buffer.from("fake-context-A"), alignedColor: Buffer.from("fake-detail-A") };
+  const second = { context: Buffer.from("fake-context-B"), alignedColor: Buffer.from("fake-detail-B") };
+  const request = pillPhotoRequest(first, second, "test-model");
+  const ocrImages = [Buffer.from("ocr-0"), Buffer.from("ocr-90"), Buffer.from("ocr-180"), Buffer.from("ocr-270")] as const;
+  const ocrRequest = pillPhotoOcrRequest(ocrImages, ocrImages, "test-model");
+  const serialized = JSON.stringify({ request, ocrRequest });
   assert.equal(request.store, false);
+  assert.equal(ocrRequest.store, false);
   assert.equal(request.text.format.strict, true);
-  assert.equal(request.input[0]?.content.filter((part) => part.type === "input_image").length, 2);
+  assert.equal(ocrRequest.text.format.strict, true);
+  assert.equal(request.input[0]?.content.filter((part) => part.type === "input_image").length, 4);
+  assert.equal(ocrRequest.input[0]?.content.filter((part) => part.type === "input_image").length, 8);
   assert.equal("tools" in request, false);
+  assert.equal("tools" in ocrRequest, false);
   assert.ok(serialized.includes('"imprintCandidates"'));
   assert.ok(serialized.includes('"maxItems":5'));
   assert.ok(serialized.includes('"pill-observation.v2"'));
@@ -140,6 +149,8 @@ test("외부 요청에는 사진·추출 계약만 있고 정답 코드·약명�
   assert.ok(!serialized.includes("테스트 전용 정제"));
   for (const forbidden of ["drugName", "ingredientName", "itemSeq", "productName"]) assert.ok(!serialized.includes(`"${forbidden}"`));
   assert.equal(request.text.format.schema.additionalProperties, false);
+  assert.equal(ocrRequest.text.format.schema.additionalProperties, false);
+  assert.equal(PILL_PHOTO_OCR_PROMPT_VERSION, "pill-photo-imprint-ocr-cardinal-v1");
 });
 
 test("미동의·미검수·잘못된 입력은 디코더나 네트워크 호출 없이 거절한다", async () => {
@@ -164,6 +175,15 @@ test("구조화 출력은 completed 메시지와 안전한 토큰 수만 읽고 
   }
   const badUsage = parsePillPhotoResponse({ ...response(), usage: { input_tokens: -1, output_tokens: "x" } });
   assert.equal(badUsage.ok && badUsage.usage, null);
+
+  const ocr = {
+    schemaVersion: PILL_PHOTO_OCR_SCHEMA_VERSION,
+    front: { imprintCandidates: ["T0"], noImprintObserved: false, imprintVisibility: "clear" },
+    back: { imprintCandidates: ["10"], noImprintObserved: false, imprintVisibility: "clear" },
+  };
+  const parsedOcr = parsePillPhotoOcrResponse(response(JSON.stringify(ocr)));
+  assert.equal(parsedOcr.ok, true);
+  assert.equal(pillPhotoOcrFeaturesSchema.safeParse(ocr).success, true);
 });
 
 test("거절·잘린 응답·비JSON·추가 식별 주장·여러 메시지·도구 호출을 성공으로 취급하지 않는다", () => {
@@ -176,6 +196,7 @@ test("거절·잘린 응답·비JSON·추가 식별 주장·여러 메시지·�
     { ...response(), output: [{ type: "function_call" }] }, { ...response(), output: [{ ...response().output[0], role: "user" }] }]) {
     assert.equal(parsePillPhotoResponse(value).ok, false);
   }
+  assert.deepEqual(parsePillPhotoOcrResponse(response(JSON.stringify({ productName: "임의 약" }))), { ok: false, reason: "ocr_failed" });
 });
 
 test("로컬 명령은 명시적 이중 전송 플래그와 고정 사례만 허용한다", () => {
@@ -208,7 +229,7 @@ test("평가는 보류·미실행·단순 무검색 결과를 올바른 약 또�
 });
 
 test("정적 HTML은 모델·제품 텍스트를 이스케이프하고 외부 이미지를 자동 요청하지 않는다", () => {
-  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "public-rgba-alpha-bounds-white-1024-v1", prompt: "pill-photo-observation-v2", maskPolicy: "reviewed-alpha-solidity-v1" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
+  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "pill-photo-alpha-pca-detail-contrast-v1", prompt: "pill-photo-observation-v3-multiview", ocrPrompt: "pill-photo-imprint-ocr-cardinal-v1", fusion: "pill-photo-vision-ocr-consensus-v1", maskPolicy: "reviewed-alpha-solidity-v1" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
     sourceUrl: "javascript:alert(1)", rows: [{ id: "<script>alert(1)</script>", kind: "candidate", expectedItemSeq: "209900001", expectedProduct: "<img src=x onerror=alert(1)>", evidenceUrl: null, photos: ["0", "1"], extraction: null, maskAssessments: [], comparison: null, evaluation: scorePillPhotoCase("209900001", null) }] };
   const rendered = renderPillPhotoReport(report);
   assert.ok(!rendered.includes("<script>"));

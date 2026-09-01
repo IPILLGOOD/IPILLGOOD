@@ -40,7 +40,7 @@
 
 현재 실험은 코드에 고정한 **9개 공개 파일의 크기와 SHA256이 정확히 일치할 때만** 전송된다. 파일은 Git 공통 fixture의 `images/`에서 읽는다. CLI에서 임의 사진·URL·허용 목록을 받을 수 없다. 허용 목록 확대도 출처·이용조건·개인정보·사진 내용 검토 후 코드 리뷰 대상이다. 해시는 모델 정확도 인증이나 동의 체계의 대체물이 아니다.
 
-실제 호출에는 `--live --confirm-public-transfer` 둘 다 필요하다. 최대 6건을 순차 실행하며 재시도하지 않는다. 인증 실패·429·통신 장애 등은 다음 호출을 중단한다. 개별 응답 거절·구조 오류는 성공이나 식별 무결과와 구분한다.
+실제 호출에는 `--live --confirm-public-transfer` 둘 다 필요하다. 최대 6건을 순차 실행하며 현재 파이프라인은 사례당 Vision·OCR 두 요청, 전체 최대 12요청이고 재시도하지 않는다. 인증 실패·429·통신 장애 등은 다음 호출을 중단한다. 개별 응답 거절·구조 오류는 성공이나 식별 무결과와 구분한다.
 
 공식 `https://api.openai.com/v1/responses`만 호출하고 리다이렉트를 금지한다. `store: false`, 최대 출력 2,400토큰, 요청당 45초 제한, 응답 256KiB 제한을 사용한다. 이는 외부 전송 자체가 없거나 제공자가 아무 데이터도 보존하지 않는다는 보장은 아니다. 실제 사용자 적용 시 데이터 처리 조건을 별도 검토해야 한다.
 
@@ -157,7 +157,7 @@ npm run pill:regression --workspace @care-atlas/backend
 # 외부 전송 없음. Git에 포함된 사진을 사용하되 별도 최신 카탈로그가 필요하다.
 node --experimental-strip-types backend/scripts/pill-photo.ts review --catalog verification-artifacts/pill-catalog/run-MLjAAj/catalog.json --max-age-hours 24
 
-# 실제 외부 AI 호출/과금 발생. 검수된 공개 사진만, 최대 6건.
+# 실제 외부 AI 호출/과금 발생. 검수된 공개 사진만, 최대 6건·사례당 최대 2요청.
 node --env-file=front/.env.local --experimental-strip-types backend/scripts/pill-photo.ts evaluate --catalog verification-artifacts/pill-catalog/run-MLjAAj/catalog.json --max-age-hours 24 --live --confirm-public-transfer
 
 # 한 사례만 시험하려면 마지막에 --case oval-tablet 등 고정 ID 추가
@@ -170,7 +170,16 @@ node --experimental-strip-types --test backend/src/pill-photo.test.ts
 node --experimental-strip-types --test backend/test-support/pill-photo-local.test.ts
 ```
 
-`review`는 API 키 없이 실행한다. `evaluate`만 `front/.env.local`의 `OPENAI_API_KEY`/`OPENAI_MODEL`을 로드한다. 키·원문 오류·전체 API 응답을 출력하지 않고 실패 코드만 남긴다. 각 실행은 새 `run-*` 폴더를 만들고 이전 결과를 덮어쓰지 않는다. `replay`의 식별 누락/보류는 실행 장애와 다른 진단 결과라 exit 0일 수 있다. `regression`은 합의한 안전·검색 조건이 깨지면 exit 1이지만, **exit 0도 정상 실사진을 정확하게 식별했다는 뜻은 아니다.**
+`review`는 API 키 없이 실행한다. `evaluate`만 `front/.env.local`의 `OPENAI_API_KEY`/`OPENAI_MODEL`을 로드한다. 한 사례에서 범용 Vision과 네 방향 각인 OCR을 순차적으로 한 번씩 호출하며 재시도하지 않는다. 따라서 전체 6건이 모두 두 단계에 도달하면 최대 12요청이다. 키·원문 오류·전체 API 응답을 출력하지 않고 실패 코드만 남긴다. 각 실행은 새 `run-*` 폴더를 만들고 이전 결과를 덮어쓰지 않는다. `replay`의 식별 누락/보류는 실행 장애와 다른 진단 결과라 exit 0일 수 있다. `regression`은 합의한 안전·검색 조건이 깨지면 exit 1이지만, **exit 0도 정상 실사진을 정확하게 식별했다는 뜻은 아니다.**
+
+## 2026-09-01 전처리·Vision/OCR 결합 구현
+
+- `pill-photo-alpha-pca-detail-contrast-v1`은 검수된 원본 해시를 확인한 뒤 전체 색상 화면, 주축 정렬 컬러 화면, 회색조 대비 강화 화면을 결정적으로 만든다. 원형·불확실 마스크는 억지 회전하지 않는다.
+- 범용 Vision 요청은 각 면의 전체 화면과 정렬 컬러 화면을 함께 보되 같은 사진을 두 알로 세지 않도록 계약했다. 별도 각인 OCR 요청은 대비 화면의 `0°·90°·180°·270°`를 모두 검사한다.
+- 두 구조화 출력에는 약명·성분·품목코드가 없으며, OCR 계약은 각인 후보·직접 확인한 무각인·부분/판독 불가만 반환한다.
+- 결정형 결합은 양쪽 신호의 동일 후보를 먼저 두고, Vision 단독/OCR 단독 후보를 번갈아 남겨 어느 한 신호의 5개 오독이 다른 신호를 모두 밀어내지 못하게 한다. 후보 집합이 다르면 `partial`로 제한하고, 원문·출처·순서·불일치·상한 절단을 감사 근거에 보존한다.
+- 현재 단계는 모의 OpenAI 응답으로 두 요청과 결합을 검증한 상태다. validation/holdout 실제 결과를 아직 보지 않았으므로 최초 정상 사진 0/4 수치를 갱신하거나 인식 개선을 주장하지 않는다.
+- 백엔드 307개·프론트 89개, 총 396개 테스트와 타입 검사·변경 파일 strict 타입 검사·ESLint를 통과했다. 안전 회귀는 6/6, 외부 요청은 0회였다.
 
 ## 검증과 다음 작업
 

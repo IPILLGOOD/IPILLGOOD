@@ -82,7 +82,7 @@ verification-artifacts/        Git 제외 유지
 node --env-file=front/.env.local --experimental-strip-types backend/scripts/pill-photo.ts evaluate --catalog <실제-catalog.json-경로> --max-age-hours 24 --live --confirm-public-transfer --case oval-tablet
 ```
 
-- 이 분석에 필요한 키는 **`OPENAI_API_KEY`**다. 전체 사례를 실행하려면 `--case`를 생략한다(최대 6회, 재시도 없음).
+- 이 분석에 필요한 키는 **`OPENAI_API_KEY`**다. 전체 사례를 실행하려면 `--case`를 생략한다. 사례당 범용 Vision 1회와 각인 OCR 1회를 순차 실행하므로 최대 12요청이며 재시도는 없다.
 - 새 카탈로그를 수집할 때는 별도로 **식약처 낱알 API 키**가 필요하다. [카탈로그 수집 안내](pill-catalog-local.md)를 따른다.
 - Git의 `.gz` 고정 카탈로그는 오프라인 과거 비교용이다. `evaluate`에서 자동으로 이를 읽거나 만료 검사를 생략하는 fallback은 없다. 고정 자료의 시간/해시를 고쳐 현재 데이터처럼 사용하지 않는다.
 - 이미 승인·수집한 최신 카탈로그가 있다면 공유된 9장과 자신의 AI 키로 실행할 수 있다. 새 카탈로그 버전을 썼다면 과거 기준선과 데이터 조건도 달라졌다는 점을 기록한다.

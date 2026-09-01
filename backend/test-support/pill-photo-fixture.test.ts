@@ -56,7 +56,7 @@ test("저장된 특징 재생은 네트워크 없이 현재 검색기로 비교�
     assert.equal(report.maxAgeHours, null);
     assert.equal(report.replay?.recordedRequests, 6);
     assert.equal(report.replay?.recordedAt, baseline.createdAt);
-    assert.equal(report.versions.prompt, "pill-photo-observation-v2");
+    assert.equal(report.versions.prompt, "pill-photo-observation-v3-multiview");
     assert.equal(report.replay?.recordedVersions.prompt, "pill-photo-observation-v1");
     assert.equal(report.rows.every((row) => row.extraction?.ok && row.extraction.features.observation.schemaVersion === "pill-observation.v2"), true);
     assert.equal(baseline.rows.every((row) => !("schemaVersion" in row.extraction.features.observation)), true);

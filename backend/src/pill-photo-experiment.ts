@@ -4,20 +4,42 @@ import sharp from "sharp";
 import { z } from "zod";
 import { PILL_PHOTO_FILES, PILL_PHOTO_REVIEW_VERSION } from "../test-support/pill-photo-review.ts";
 import { PILL_PHOTO_INSTRUCTIONS, PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, type PillPhotoFeatures } from "./pill-photo-features.ts";
-import { prepareValidatedPillPhotoVariants } from "./pill-photo-preprocessing.ts";
+import {
+  PILL_PHOTO_FUSION_VERSION,
+  PILL_PHOTO_OCR_INSTRUCTIONS,
+  PILL_PHOTO_OCR_PROMPT_VERSION,
+  fusePillPhotoSignals,
+  pillPhotoOcrFeaturesSchema,
+  type PillPhotoFusionEvidence,
+  type PillPhotoOcrFeatures,
+} from "./pill-photo-ocr.ts";
+import {
+  PILL_PHOTO_VARIANT_PREPROCESSING_VERSION,
+  preparePillPhotoOcrRotationViews,
+  prepareValidatedPillPhotoVariants,
+  type PillPhotoOcrRotationViews,
+  type PillPhotoPreprocessingVariants,
+} from "./pill-photo-preprocessing.ts";
 
-export const PILL_PHOTO_PREPROCESSING_VERSION = "public-rgba-alpha-bounds-white-1024-v1";
+export const PILL_PHOTO_PREVIEW_PREPROCESSING_VERSION = "public-rgba-alpha-bounds-white-1024-v1";
+export const PILL_PHOTO_PREPROCESSING_VERSION = PILL_PHOTO_VARIANT_PREPROCESSING_VERSION;
 export const PILL_PHOTO_MASK_POLICY_VERSION = "reviewed-alpha-solidity-v1";
 export const MIN_REVIEWED_PILL_MASK_SOLIDITY = 0.92;
 const ENDPOINT = "https://api.openai.com/v1/responses";
 const MAX_INPUT_BYTES = 5 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_OUTPUT_TEXT = 16 * 1024;
+const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 export const PILL_PHOTO_TIMEOUT_MS = 45_000;
-type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error";
+type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error" | "ocr_failed" | "fusion_failed";
 type Usage = { inputTokens: number; outputTokens: number };
+export interface PhotoExtractionSignals {
+  vision: { features: PillPhotoFeatures; usage: Usage | null };
+  ocr: { features: PillPhotoOcrFeatures; usage: Usage | null };
+  fusion: PillPhotoFusionEvidence;
+}
 export type PhotoExtractionResult =
-  | { ok: true; features: PillPhotoFeatures; usage: Usage | null }
+  | { ok: true; features: PillPhotoFeatures; usage: Usage | null; signals?: PhotoExtractionSignals }
   | { ok: false; reason: PhotoFailure };
 
 export function reviewedPhotoIndex(bytes: Uint8Array): number {
@@ -130,21 +152,54 @@ export async function prepareReviewedPillPhotoVariants(bytes: Uint8Array) {
   return prepareValidatedPillPhotoVariants(bytes, PILL_PHOTO_FILES[index]!);
 }
 
-export function pillPhotoRequest(first: Buffer, second: Buffer, model: string) {
+const inputImage = (bytes: Buffer) => ({
+  type: "input_image" as const,
+  image_url: `data:image/png;base64,${bytes.toString("base64")}`,
+  detail: "high" as const,
+});
+
+/** General visual observation over context and aligned-color views. The repeated views are one pill per side. */
+export function pillPhotoRequest(
+  first: Pick<PillPhotoPreprocessingVariants, "context" | "alignedColor">,
+  second: Pick<PillPhotoPreprocessingVariants, "context" | "alignedColor">,
+  model: string,
+) {
   return {
     model, store: false, max_output_tokens: 2400, reasoning: { effort: "low" },
     instructions: PILL_PHOTO_INSTRUCTIONS,
     input: [{ role: "user", content: [
-      { type: "input_text", text: "Image A (first view):" },
-      { type: "input_image", image_url: `data:image/png;base64,${first.toString("base64")}`, detail: "high" },
-      { type: "input_text", text: "Image B (second view):" },
-      { type: "input_image", image_url: `data:image/png;base64,${second.toString("base64")}`, detail: "high" },
+      { type: "input_text", text: "Image A context and aligned-color detail show the same first surface. Do not count them twice:" },
+      inputImage(first.context), inputImage(first.alignedColor),
+      { type: "input_text", text: "Image B context and aligned-color detail show the same second surface. Do not count them twice:" },
+      inputImage(second.context), inputImage(second.alignedColor),
     ] }],
     text: { format: { type: "json_schema", name: "pill_visible_features", strict: true, schema: z.toJSONSchema(pillPhotoFeaturesSchema) } },
   };
 }
 
-export function parsePillPhotoResponse(value: unknown): PhotoExtractionResult {
+/** Imprint-only request. Every group is one surface repeated at 0/90/180/270 degrees. */
+export function pillPhotoOcrRequest(
+  first: PillPhotoOcrRotationViews,
+  second: PillPhotoOcrRotationViews,
+  model: string,
+) {
+  return {
+    model, store: false, max_output_tokens: 1000, reasoning: { effort: "low" },
+    instructions: PILL_PHOTO_OCR_INSTRUCTIONS,
+    input: [{ role: "user", content: [
+      { type: "input_text", text: "Image A OCR rotations in this exact order: 0, 90, 180, 270 degrees." },
+      ...first.map(inputImage),
+      { type: "input_text", text: "Image B OCR rotations in this exact order: 0, 90, 180, 270 degrees." },
+      ...second.map(inputImage),
+    ] }],
+    text: { format: { type: "json_schema", name: "pill_imprint_ocr", strict: true, schema: z.toJSONSchema(pillPhotoOcrFeaturesSchema) } },
+  };
+}
+
+type ParsedProviderText = { ok: true; text: string; usage: Usage | null }
+  | { ok: false; reason: "refused" | "incomplete_response" | "invalid_response" };
+
+function parseProviderText(value: unknown): ParsedProviderText {
   if (!value || typeof value !== "object") return { ok: false, reason: "invalid_response" };
   const response = value as { status?: unknown; output?: unknown; usage?: unknown };
   if (response.status !== "completed") return { ok: false, reason: "incomplete_response" };
@@ -164,12 +219,31 @@ export function parsePillPhotoResponse(value: unknown): PhotoExtractionResult {
     }
   }
   if (texts.length !== 1 || texts[0]!.length > MAX_OUTPUT_TEXT) return { ok: false, reason: "invalid_response" };
+  const usage = z.object({ input_tokens: z.number().int().nonnegative(), output_tokens: z.number().int().nonnegative() }).safeParse(response.usage);
+  return { ok: true, text: texts[0]!, usage: usage.success ? { inputTokens: usage.data.input_tokens, outputTokens: usage.data.output_tokens } : null };
+}
+
+export function parsePillPhotoResponse(value: unknown): PhotoExtractionResult {
+  const output = parseProviderText(value);
+  if (!output.ok) return output;
   try {
-    const parsed = pillPhotoFeaturesSchema.safeParse(JSON.parse(texts[0]!));
+    const parsed = pillPhotoFeaturesSchema.safeParse(JSON.parse(output.text));
     if (!parsed.success) return { ok: false, reason: "invalid_response" };
-    const usage = z.object({ input_tokens: z.number().int().nonnegative(), output_tokens: z.number().int().nonnegative() }).safeParse(response.usage);
-    return { ok: true, features: parsed.data, usage: usage.success ? { inputTokens: usage.data.input_tokens, outputTokens: usage.data.output_tokens } : null };
+    return { ok: true, features: parsed.data, usage: output.usage };
   } catch { return { ok: false, reason: "invalid_response" }; }
+}
+
+export function parsePillPhotoOcrResponse(value: unknown):
+  | { ok: true; features: PillPhotoOcrFeatures; usage: Usage | null }
+  | { ok: false; reason: "refused" | "incomplete_response" | "ocr_failed" } {
+  const output = parseProviderText(value);
+  if (!output.ok) return { ok: false, reason: output.reason === "invalid_response" ? "ocr_failed" : output.reason };
+  try {
+    const parsed = pillPhotoOcrFeaturesSchema.safeParse(JSON.parse(output.text));
+    return parsed.success
+      ? { ok: true, features: parsed.data, usage: output.usage }
+      : { ok: false, reason: "ocr_failed" };
+  } catch { return { ok: false, reason: "ocr_failed" }; }
 }
 
 async function boundedResponse(response: Response): Promise<unknown> {
@@ -194,6 +268,41 @@ async function boundedResponse(response: Response): Promise<unknown> {
   } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
 }
 
+async function requestPillPhotoProvider(
+  body: unknown,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+): Promise<{ ok: true; value: unknown } | { ok: false; reason: PhotoFailure }> {
+  const serialized = JSON.stringify(body);
+  if (Buffer.byteLength(serialized, "utf8") > MAX_REQUEST_BODY_BYTES) return { ok: false, reason: "invalid_photo" };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PILL_PHOTO_TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(ENDPOINT, {
+      method: "POST", redirect: "error", signal: controller.signal,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: serialized,
+    });
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      return { ok: false, reason: response.status === 401 || response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "provider_unavailable" };
+    }
+    if (response.redirected || response.url && response.url !== ENDPOINT) {
+      await response.body?.cancel().catch(() => undefined);
+      return { ok: false, reason: "invalid_response" };
+    }
+    try { return { ok: true, value: await boundedResponse(response) }; }
+    catch { return { ok: false, reason: controller.signal.aborted ? "timeout" : "invalid_response" }; }
+  } catch { return { ok: false, reason: controller.signal.aborted ? "timeout" : "network_error" }; }
+  finally { clearTimeout(timer); }
+}
+
+function totalUsage(first: Usage | null, second: Usage | null): Usage | null {
+  return first && second
+    ? { inputTokens: first.inputTokens + second.inputTokens, outputTokens: first.outputTokens + second.outputTokens }
+    : null;
+}
+
 /** All current network paths enforce the compiled public-image hash allowlist and explicit opt-in. */
 export async function extractReviewedPillPhotos(
   photos: readonly [Uint8Array, Uint8Array],
@@ -205,32 +314,42 @@ export async function extractReviewedPillPhotos(
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
   const model = options.model ?? process.env.OPENAI_MODEL ?? "gpt-5.6-luna";
   if (!apiKey?.trim() || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(model)) return { ok: false, reason: "not_configured" };
-  let prepared: [Buffer, Buffer];
-  try { prepared = [await prepareReviewedPillPhoto(photos[0]), await prepareReviewedPillPhoto(photos[1])]; }
-  catch { return { ok: false, reason: "invalid_photo" }; }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PILL_PHOTO_TIMEOUT_MS);
+  let prepared: [PillPhotoPreprocessingVariants, PillPhotoPreprocessingVariants];
+  let ocrViews: [PillPhotoOcrRotationViews, PillPhotoOcrRotationViews];
   try {
-    const response = await (options.fetchImpl ?? fetch)(ENDPOINT, {
-      method: "POST", redirect: "error", signal: controller.signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(pillPhotoRequest(prepared[0], prepared[1], model)),
-    });
-    if (!response.ok) {
-      await response.body?.cancel().catch(() => undefined);
-      return { ok: false, reason: response.status === 401 || response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "provider_unavailable" };
-    }
-    if (response.redirected || response.url && response.url !== ENDPOINT) {
-      await response.body?.cancel().catch(() => undefined);
-      return { ok: false, reason: "invalid_response" };
-    }
-    try { return parsePillPhotoResponse(await boundedResponse(response)); }
-    catch { return { ok: false, reason: controller.signal.aborted ? "timeout" : "invalid_response" }; }
-  } catch { return { ok: false, reason: controller.signal.aborted ? "timeout" : "network_error" }; }
-  finally { clearTimeout(timer); }
+    prepared = [await prepareReviewedPillPhotoVariants(photos[0]), await prepareReviewedPillPhotoVariants(photos[1])];
+    ocrViews = [
+      await preparePillPhotoOcrRotationViews(prepared[0].alignedContrast),
+      await preparePillPhotoOcrRotationViews(prepared[1].alignedContrast),
+    ];
+  }
+  catch { return { ok: false, reason: "invalid_photo" }; }
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const visionResponse = await requestPillPhotoProvider(pillPhotoRequest(prepared[0], prepared[1], model), apiKey, fetchImpl);
+  if (!visionResponse.ok) return visionResponse;
+  const vision = parsePillPhotoResponse(visionResponse.value);
+  if (!vision.ok) return vision;
+  const ocrResponse = await requestPillPhotoProvider(pillPhotoOcrRequest(ocrViews[0], ocrViews[1], model), apiKey, fetchImpl);
+  if (!ocrResponse.ok) return ocrResponse;
+  const ocr = parsePillPhotoOcrResponse(ocrResponse.value);
+  if (!ocr.ok) return ocr;
+  try {
+    const fused = fusePillPhotoSignals(vision.features, ocr.features);
+    return {
+      ok: true,
+      features: fused.features,
+      usage: totalUsage(vision.usage, ocr.usage),
+      signals: {
+        vision: { features: vision.features, usage: vision.usage },
+        ocr: { features: ocr.features, usage: ocr.usage },
+        fusion: fused.evidence,
+      },
+    };
+  } catch { return { ok: false, reason: "fusion_failed" }; }
 }
 
 export const pillPhotoExperimentVersions = {
   review: PILL_PHOTO_REVIEW_VERSION, preprocessing: PILL_PHOTO_PREPROCESSING_VERSION,
-  prompt: PILL_PHOTO_PROMPT_VERSION, maskPolicy: PILL_PHOTO_MASK_POLICY_VERSION,
+  prompt: PILL_PHOTO_PROMPT_VERSION, ocrPrompt: PILL_PHOTO_OCR_PROMPT_VERSION,
+  fusion: PILL_PHOTO_FUSION_VERSION, maskPolicy: PILL_PHOTO_MASK_POLICY_VERSION,
 } as const;

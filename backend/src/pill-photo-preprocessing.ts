@@ -55,6 +55,8 @@ export interface PillPhotoPreprocessingVariants {
   metadata: PillPhotoPreprocessingMetadata;
 }
 
+export type PillPhotoOcrRotationViews = readonly [Buffer, Buffer, Buffer, Buffer];
+
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const rounded = (value: number) => Number(value.toFixed(6));
 
@@ -191,4 +193,17 @@ export async function prepareValidatedPillPhotoVariants(
       variants: { context: contextInfo, alignedColor: alignedColorInfo, alignedContrast: alignedContrastInfo },
     },
   };
+}
+
+/** OCR must not assume that the pill axis is the text axis or that the principal-axis direction is upright. */
+export async function preparePillPhotoOcrRotationViews(alignedContrast: Uint8Array): Promise<PillPhotoOcrRotationViews> {
+  const metadata = await sharp(alignedContrast, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" }).metadata();
+  if (metadata.format !== "png" || metadata.hasAlpha || metadata.channels !== 1 || !metadata.width || !metadata.height) {
+    throw new Error("invalid_preprocessed_photo");
+  }
+  const rotations = await Promise.all([0, 90, 180, 270].map((degrees) => degrees === 0
+    ? Buffer.from(alignedContrast)
+    : sharp(alignedContrast, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" })
+      .rotate(degrees).toColourspace("b-w").png({ compressionLevel: 9 }).toBuffer()));
+  return [rotations[0]!, rotations[1]!, rotations[2]!, rotations[3]!];
 }

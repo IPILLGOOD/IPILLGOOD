@@ -19,7 +19,7 @@ const HELP = `Reviewed public pill photo experiment (NOT a user-upload service):
 
 replay is offline: Git fixtures + SAVED AI features + current search, with no API key or freshness claim.
 review is offline: verifies hashes, decodes images, and creates a local HTML review sheet (fresh catalog required).
-evaluate sends at most six reviewed public photo pairs to OpenAI, sequentially, without retries.
+evaluate sends at most six reviewed public photo pairs through two independent OpenAI requests per pair, sequentially, without retries.
 Only the compiled allowlist is accepted. No arbitrary photo paths, URLs or manifests.
 Expected product codes/filenames never enter AI requests. The FULL catalog is searched.
 Outputs are ignored under verification-artifacts/pill-photo/. Existing runs are not overwritten.
@@ -186,10 +186,16 @@ export async function runPillPhotoExperiment(args: string[]) {
   }
   await writeFile(join(directory, "preflight.json"), serializePillProfile({ ...report, files: [...originals.keys()].map((index) => PILL_PHOTO_FILES[index]) }), { flag: "wx", mode: 0o600 });
   if (options.command === "evaluate") {
+    const countedFetch: typeof fetch = async (input, init) => {
+      report.requests++;
+      return fetch(input, init);
+    };
     for (const [index, item] of options.cases.entries()) {
       const row = report.rows[index]!;
-      report.requests++;
-      row.extraction = await extractReviewedPillPhotos([originals.get(item.photos[0])!, originals.get(item.photos[1])!], { allowExternalTransfer: true });
+      row.extraction = await extractReviewedPillPhotos(
+        [originals.get(item.photos[0])!, originals.get(item.photos[1])!],
+        { allowExternalTransfer: true, fetchImpl: countedFetch },
+      );
       if (row.extraction.ok) row.comparison = comparePillPhotoFeatures(applyReviewedPhotoMaskGate(row.extraction.features, row.maskAssessments), searchable.catalog);
       row.evaluation = scorePillPhotoCase(item.expectedItemSeq, row.comparison, PILL_PHOTO_EXPECTED_REJECTIONS[item.id]);
       await writeFile(join(directory, `case-${item.id}.json`), serializePillProfile(row), { flag: "wx", mode: 0o600 });
