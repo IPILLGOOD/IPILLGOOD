@@ -3,7 +3,7 @@ import type { OfficialPillItem, OfficialPillSide, PillScoreLine } from "./offici
 import { stableJson } from "./stable-json.ts";
 import { classifyPillForm, PILL_FORM_POLICY_VERSION, type PillFormAssessment } from "./pill-form-policy.ts";
 
-export const PILL_SEARCH_RULES_VERSION = "pill-structured-v4-imprint-first";
+export const PILL_SEARCH_RULES_VERSION = "pill-structured-v5-clear-imprint-grade";
 export const PILL_OBSERVATION_SCHEMA_VERSION = "pill-observation.v2";
 export const PILL_IMPRINT_CONFUSION_RULES_VERSION = "pill-imprint-confusion-v1";
 export const MAX_IMPRINT_CANDIDATES_PER_SIDE = 5;
@@ -369,12 +369,17 @@ function imprintMatches(evidence: PillFeatureMatch[]) {
     && (entry.match === "exact" || entry.match === "partial"));
 }
 
-function candidateGrade(evidence: PillFeatureMatch[], conflicts: PillFeatureMatch[], reviewReasons: PillReviewReason[]): PillCandidateGrade {
+function candidateGrade(
+  evidence: PillFeatureMatch[],
+  conflicts: PillFeatureMatch[],
+  reviewReasons: PillReviewReason[],
+  allObservedSurfacesClear: boolean,
+): PillCandidateGrade {
   const imprints = evidence.filter((entry) => entry.field.endsWith(".imprint"));
   const hasDistinctiveImprint = imprintMatches(evidence).length > 0;
   const exactObservedSurfaces = imprints.every((entry) => entry.match === "exact"
     && entry.imprintReading?.origin === "observed_candidate");
-  return reviewReasons.length === 0 && conflicts.length === 0 && hasDistinctiveImprint
+  return allObservedSurfacesClear && reviewReasons.length === 0 && conflicts.length === 0 && hasDistinctiveImprint
     && exactObservedSurfaces && matchType(evidence) === "exact" ? "strong" : "possible";
 }
 
@@ -454,6 +459,8 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
     front: prepareObservedSide(observation.front),
     back: prepareObservedSide(observation.back),
   };
+  const allObservedSurfacesClear = observation.front.imprintVisibility === "clear"
+    && observation.back.imprintVisibility === "clear";
   imprintExpansion = { front: prepared.front.summary, back: prepared.back.summary };
   if (!catalog) return result("not_configured", "catalog_not_configured", "공식 낱알 카탈로그가 아직 연결되지 않았어요.");
   if (catalog.completeness !== "complete" || !catalog.version.trim() || catalog.totalCount !== catalog.items.length) return result("unavailable", "incomplete_catalog", "공식 데이터 수집이 완료되지 않아 후보 검색을 보류했어요.");
@@ -481,7 +488,7 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
       if (entry.formAssessment.status !== "supported") reviewReasons.push("unknown_official_form");
       if (imprintMatches(evidence).length === 0) reviewReasons.push("no_imprint_evidence");
       return { item: entry.item, orientation: choice.orientation, matchType: matchType(evidence),
-        grade: candidateGrade(evidence, conflicts, reviewReasons), evidence, conflicts,
+        grade: candidateGrade(evidence, conflicts, reviewReasons, allObservedSurfacesClear), evidence, conflicts,
         formAssessment: entry.formAssessment, reviewReasons };
     }).filter((choice) => choice.evidence.some((feature) => feature.match === "exact" || feature.match === "partial"))
       .sort(compareVariantEvidence);

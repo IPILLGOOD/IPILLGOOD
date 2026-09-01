@@ -46,7 +46,7 @@ node --experimental-strip-types backend/scripts/pill-catalog.ts search --catalog
 - `--max-age-hours`는 반드시 명시한다(정수 1~168). 예제의 24는 로컬 검증 시 사용할 경과 시간 한도이며, 의료적 안전성이나 운영 갱신 주기의 확정값이 아니다.
 - 한도를 넘기거나 검증 시각이 미래인 파일은 `snapshot_expired_or_future`로 거절한다. 파일 시각이나 해시를 수동으로 바꾸지 않는다.
 - `--limit 20`은 비교 후보와 보류 항목에 **각각** 적용하며 1~100을 허용한다. `candidateCount`/`returnedCount`/`truncated`와 `heldCandidateCount`/`heldReturnedCount`/`heldTruncated`를 따로 유지한다. 같은 품목의 다른 외형이 양쪽에 있을 수 있으므로 합집합은 `matchedItemCount`로 확인한다.
-- 지원 제형이며 최소 한 면에 비어 있지 않은 문자 각인 일치 근거가 있는 레코드만 `candidates`로 제시한다. 같은 일치 등급에서는 실제 각인 근거를 우선하고 품목코드/레코드로 안정적으로 정렬한다. 확정이나 의료적 확률을 만들지 않는다.
+- 지원 제형이며 최소 한 면에 비어 있지 않은 문자 각인 일치 근거가 있는 레코드만 `candidates`로 제시한다. 관찰 원문 각인과 제한된 서버 혼동 확장 근거를 시각 특징보다 우선하고 품목코드/레코드로 안정적으로 정렬한다. 확정이나 의료적 확률을 만들지 않는다.
 - 문자 각인 근거 부족·공식 제형 미상은 `heldCandidates`와 각 외형의 `reviewReasons`로 분리한다. 보류만 있으면 `needs_review`이며 정상 실행 결과(exit 0)다. 보류 영역의 약명은 식별 결과가 아니다.
 - `formName` 기반 검색 정책이 비지원으로 분류한 레코드는 양쪽에서 제외한다. 기존 v1 파일의 수집 당시 `form`, 정규화 버전·해시는 바꾸지 않는다. 현재 정책은 `formPolicyVersion`, 검색 규칙은 `searchRulesVersion`으로 결과에 기록한다.
 
@@ -57,9 +57,12 @@ node --experimental-strip-types backend/scripts/pill-catalog.ts search --catalog
 생성된 `example-*.json`을 참고해 별도 JSON 파일에 관찰값을 작성하고 `--observation`에 그 파일을 지정한다. 원본 사진은 받지 않는다.
 
 - `form`: 온전한 `tablet`/`capsule`이 지원 범위다. 가루/과립/액상, 반쪽/훼손은 별도 상태로 처리한다.
-- `front.imprint`, `back.imprint`: 양면에서 직접 읽은 문자. `null`은 판독 불가, `""`는 해당 면에 글자가 없음을 직접 확인했다는 의미다. 추측으로 빈 문자열을 넣지 않는다.
+- `schemaVersion`: 현재 입력은 `pill-observation.v2`다. 새 수동 입력에 과거 v1의 단일 `imprint` 필드를 사용하지 않는다.
+- `front.imprintCandidates`, `back.imprintCandidates`: 각 면에서 가능한 원문 판독 후보를 강한 순서대로 최대 5개 기록한다. 서버가 제한된 혼동 문자를 별도 확장하므로 원문을 임의 교정하지 않는다.
+- `noImprintObserved`: 해당 면에 글자가 없음을 직접 확인한 경우에만 `true`다. 판독 실패를 무각인으로 바꾸지 않는다.
+- `imprintVisibility`: `clear`, `partial`, `unreadable`을 구분한다. 부분 판독 면이 하나라도 있으면 결과가 정확히 일치해도 `strong`이 아닌 최대 `possible`이다.
 - `scoreLine`: `none`, `single`, `cross`, `other`, `unknown`. 보이지 않는 분할선을 없다고 추정하지 않는다.
-- `shape`, `colors`: 관찰한 모양·색상. 현행 검색은 알려진 색상 불일치를 제외하므로 사진 조명 오차를 자동 보정하지 않는다.
+- `shape`, `colors`: 관찰한 모양·색상. 알려진 불일치는 후보를 삭제하지 않고 `conflicts`에 남겨 각인 근거 뒤에서 재정렬한다. 이는 조명·촬영 오차를 자동 보정하거나 색상 오류를 무시한다는 뜻은 아니다.
 - `source: manual`과 명시적 상태 값으로 검색을 검증한다. `image_features`로 바꾸어도 실제 사진 추출기가 실행되는 것은 아니다.
 
 **자동 생성된 예제의 의미:** 공식 레코드에서 입력 특징을 복사했기 때문에 그 품목이 후보에 남는지 확인하는 자기 일관성 점검이다. 독립적인 정답 이미지 세트가 아니며, top-1/top-3 정확도나 실제 사진 식별 성능으로 보고하지 않는다. 실제 촬영·관찰 입력 평가는 별도 단계다.

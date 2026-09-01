@@ -150,6 +150,21 @@ test("복수 관찰 각인 중 하나가 공식 각인과 맞으면 원문 후�
   assert.equal(reading?.observedCandidateIndex, 1);
   assert.equal(reading?.origin, "observed_candidate");
   assert.deepEqual(reading?.substitutions, []);
+  assert.equal(result.candidates[0]?.grade, "possible", "부분 판독 면이 있으면 strong으로 승격하지 않는다");
+});
+
+test("부분 판독 각인은 모든 비교값이 정확해도 strong으로 승격하지 않는다", () => {
+  const clear = searchPillCandidates(pillObservation(), catalog());
+  const partialFront = {
+    ...observedSide("TEST", "single"),
+    imprintVisibility: "partial" as const,
+  };
+  const partial = searchPillCandidates(pillObservation({ front: partialFront }), catalog());
+  assert.equal(clear.candidates[0]?.grade, "strong");
+  assert.equal(partial.status, "candidates_found");
+  assert.equal(partial.candidates[0]?.matchType, "exact");
+  assert.deepEqual(partial.candidates[0]?.variants[0]?.conflicts, []);
+  assert.equal(partial.candidates[0]?.grade, "possible");
 });
 
 test("허용된 혼동 문자만 결정적으로 확장하며 모든 서버 치환은 원문과 위치를 기록한다", () => {
