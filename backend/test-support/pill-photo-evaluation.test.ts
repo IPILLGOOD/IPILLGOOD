@@ -6,6 +6,7 @@ import { PILL_PHOTO_FILES } from "./pill-photo-review.ts";
 test("미사용 공개사진 16장을 검증·보류 평가 4쌍씩 해시와 함께 고정한다", async () => {
   const { manifest } = await loadPillPhotoEvaluationFixture();
   assert.equal(manifest.fixtureVersion, PILL_PHOTO_EVALUATION_VERSION);
+  assert.equal(manifest.schemaVersion, 2);
   assert.equal(manifest.scope.claim, "capture_level_repeatability_only");
   assert.equal(manifest.products.length, 4);
   assert.equal(manifest.images.length, 16);
@@ -33,6 +34,7 @@ test("모델용 입력에는 정답 품목·접수번호·공식 면·해시가 
     assert.equal(input.photos.every((path) => path.endsWith(".png")), true);
     const serialized = JSON.stringify(input);
     assert.doesNotMatch(serialized, /expectedItemSeq|receipt|officialSide|sha256/);
+    assert.doesNotMatch(serialized, /mappingEvidenceUrl|expectedOfficialRecordSha256|pharm\.or\.kr/);
     assert.doesNotMatch(serialized, /201505259|201800300|201906970|200801352/);
     assert.doesNotMatch(serialized, /29002|40792|41107|41344|IMG_/);
   }
@@ -40,6 +42,8 @@ test("모델용 입력에는 정답 품목·접수번호·공식 면·해시가 
 
 test("정답 특징은 고정 식약처 카탈로그와 연결되고 품목별 공식 양면을 포함한다", async () => {
   const { manifest } = await loadPillPhotoEvaluationFixture();
+  assert.equal(new Set(manifest.products.map((product) => product.mappingEvidenceUrl)).size, 4);
+  assert.equal(manifest.products.every((product) => /^[a-f0-9]{64}$/.test(product.expectedOfficialRecordSha256)), true);
   const imageByPath = new Map(manifest.images.map((image) => [image.path, image]));
   for (const fixtureCase of manifest.cases) {
     assert.deepEqual(

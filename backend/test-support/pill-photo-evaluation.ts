@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { loadFrozenPillPhotoFixture, readBoundedFixtureFile } from "./pill-photo-fixture.ts";
+import { auditPillPhotoOfficialLabels } from "./pill-photo-label-audit.ts";
 import { PILL_PHOTO_FILES } from "./pill-photo-review.ts";
 
-export const PILL_PHOTO_EVALUATION_VERSION = "pill-photo-capture-eval-2026-09-01-v1";
+export const PILL_PHOTO_EVALUATION_VERSION = "pill-photo-capture-eval-2026-09-02-v2";
 export const PILL_PHOTO_EVALUATION_DIRECTORY = fileURLToPath(new URL("./pill-photo-evaluation/", import.meta.url));
 
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -20,9 +21,16 @@ const expectedObservationSchema = z.object({
   frontImprint: z.string().min(1).nullable(),
   backImprint: z.string().min(1).nullable(),
 }).strict();
+const mappingEvidenceUrlSchema = z.string().url().refine((value) => {
+  const url = new URL(value);
+  return url.protocol === "https:" && ["pharm.or.kr", "www.pharm.or.kr"].includes(url.hostname)
+    && url.pathname === "/search/drugidfy/show.asp" && /^\d+$/.test(url.searchParams.get("idx") ?? "");
+});
 const productSchema = z.object({
   receipt: z.string().regex(/^\d{5}$/),
   expectedItemSeq: itemSeqSchema,
+  mappingEvidenceUrl: mappingEvidenceUrlSchema,
+  expectedOfficialRecordSha256: digestSchema,
   expectedObservation: expectedObservationSchema,
 }).strict();
 const imageSchema = z.object({
@@ -41,7 +49,7 @@ const caseSchema = z.object({
   photos: z.array(imagePathSchema).length(2),
 }).strict();
 const manifestSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   fixtureVersion: z.literal(PILL_PHOTO_EVALUATION_VERSION),
   purpose: z.literal("feature_extraction_and_candidate_recall_evaluation"),
   reviewedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -71,15 +79,13 @@ export type PillPhotoEvaluationSplit = PillPhotoEvaluationManifest["cases"][numb
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const resolveImage = (relativePath: string) => join(PILL_PHOTO_EVALUATION_DIRECTORY, ...relativePath.split("/"));
 
-function sameStrings(left: readonly string[], right: readonly string[]) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
 function validateManifestRelationships(manifest: PillPhotoEvaluationManifest) {
   const productByReceipt = new Map(manifest.products.map((product) => [product.receipt, product]));
   const imageByPath = new Map(manifest.images.map((image) => [image.path, image]));
   if (productByReceipt.size !== 4 || imageByPath.size !== 16) throw new Error("evaluation_fixture_duplicate_entry");
   if (new Set(manifest.products.map((product) => product.expectedItemSeq)).size !== 4) throw new Error("evaluation_fixture_duplicate_product");
+  if (new Set(manifest.products.map((product) => product.mappingEvidenceUrl)).size !== 4) throw new Error("evaluation_fixture_duplicate_mapping_evidence");
+  if (new Set(manifest.products.map((product) => product.expectedOfficialRecordSha256)).size !== 4) throw new Error("evaluation_fixture_duplicate_official_record");
   if (new Set(manifest.images.map((image) => image.sha256)).size !== 16) throw new Error("evaluation_fixture_duplicate_image");
   if (manifest.images.some((image) => PILL_PHOTO_FILES.some((existing) => existing.sha256 === image.sha256))) {
     throw new Error("evaluation_fixture_overlaps_development_images");
@@ -116,15 +122,8 @@ function validateManifestRelationships(manifest: PillPhotoEvaluationManifest) {
 async function validateOfficialLabels(manifest: PillPhotoEvaluationManifest) {
   const frozen = await loadFrozenPillPhotoFixture();
   if (frozen.manifest.fixtureVersion !== manifest.catalogFixtureVersion) throw new Error("evaluation_fixture_catalog_version_mismatch");
-  for (const product of manifest.products) {
-    const matches = frozen.snapshot.items.filter((item) => item.itemSeq === product.expectedItemSeq);
-    const expected = product.expectedObservation;
-    if (!matches.some((item) => item.form === expected.form && item.shape === expected.shape
-      && sameStrings(item.colors, expected.colors) && item.front.imprint === expected.frontImprint
-      && item.back.imprint === expected.backImprint)) {
-      throw new Error("evaluation_fixture_official_label_mismatch");
-    }
-  }
+  const audit = auditPillPhotoOfficialLabels(manifest.products, frozen.snapshot.items);
+  if (!audit.ok) throw new Error("evaluation_fixture_official_label_mismatch");
 }
 
 /** Fixed Git fixture only. It validates labels separately and returns label-free model inputs. */

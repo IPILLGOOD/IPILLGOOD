@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 1,
-  "fixtureVersion": "pill-photo-capture-eval-2026-09-01-v1",
+  "schemaVersion": 2,
+  "fixtureVersion": "pill-photo-capture-eval-2026-09-02-v2",
   "purpose": "feature_extraction_and_candidate_recall_evaluation",
-  "reviewedAt": "2026-09-01",
+  "reviewedAt": "2026-09-02",
   "catalogFixtureVersion": "pill-photo-shared-2026-08-31-v1",
   "scope": {
     "productCount": 4,
@@ -19,6 +19,8 @@
     {
       "receipt": "29002",
       "expectedItemSeq": "201505259",
+      "mappingEvidenceUrl": "https://www.pharm.or.kr/search/drugidfy/show.asp?idx=36176",
+      "expectedOfficialRecordSha256": "24982f6f3824710fc34261a8570ca5e9fcf32a5e38116c55c0cb635cafdd3f1f",
       "expectedObservation": {
         "form": "capsule",
         "shape": "타원형",
@@ -30,6 +32,8 @@
     {
       "receipt": "40792",
       "expectedItemSeq": "201800300",
+      "mappingEvidenceUrl": "https://pharm.or.kr/search/drugidfy/show.asp?idx=48009",
+      "expectedOfficialRecordSha256": "c96c64557da8da81d1ea8c9337c6aedb6abe4618aabee36e954973834fd201cc",
       "expectedObservation": {
         "form": "capsule",
         "shape": "장방형",
@@ -41,6 +45,8 @@
     {
       "receipt": "41107",
       "expectedItemSeq": "201906970",
+      "mappingEvidenceUrl": "https://www.pharm.or.kr/search/drugidfy/show.asp?idx=48324",
+      "expectedOfficialRecordSha256": "667f6b2bb5dd3400a3675223811d09d5dfe014be33678bfa75549bfd3411cfcc",
       "expectedObservation": {
         "form": "capsule",
         "shape": "장방형",
@@ -52,6 +58,8 @@
     {
       "receipt": "41344",
       "expectedItemSeq": "200801352",
+      "mappingEvidenceUrl": "https://pharm.or.kr/search/drugidfy/show.asp?idx=48561",
+      "expectedOfficialRecordSha256": "128fc1b85264197ce633ec739ca5b08f003d1c6994b05603d780af5774f740a6",
       "expectedObservation": {
         "form": "tablet",
         "shape": "타원형",

@@ -8,11 +8,13 @@
     "./dates": "./src/dates.ts"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test src/*.test.ts test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts test-support/pill-photo-preprocessing.test.ts test-support/pill-photo-score.test.ts",
+    "test": "node --experimental-strip-types --test src/*.test.ts test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts test-support/pill-photo-label-audit.test.ts test-support/pill-photo-preprocessing.test.ts test-support/pill-photo-score.test.ts",
     "pill:replay": "node --experimental-strip-types scripts/pill-photo.ts replay",
     "pill:regression": "node --experimental-strip-types scripts/pill-regression.ts",
     "pill:score": "node --experimental-strip-types scripts/pill-photo-score.ts",
-    "pill:verify": "node --experimental-strip-types --test test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts test-support/pill-photo-preprocessing.test.ts test-support/pill-photo-score.test.ts",
+    "pill:labels": "node --experimental-strip-types scripts/pill-photo-label-audit.ts",
+    "pill:labels:live": "node --env-file=../front/.env.local --experimental-strip-types scripts/pill-photo-label-audit.ts --live",
+    "pill:verify": "node --experimental-strip-types --test test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts test-support/pill-photo-label-audit.test.ts test-support/pill-photo-preprocessing.test.ts test-support/pill-photo-score.test.ts",
     "verify:live": "node --experimental-strip-types scripts/verify-live-apis.mjs",
     "seed": "node scripts/seed-firestore.mjs",
     "deploy": "firebase deploy --only firestore:rules,firestore:indexes"
