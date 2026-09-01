@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { collectPillCatalogSnapshot, MAX_PILL_SNAPSHOT_BYTES, snapshotSearchCatalog, validatePillCatalogSnapshot, type PillCatalogSnapshot } from "../src/pill-catalog-snapshot.ts";
-import { searchPillCandidates, type PillObservation, type PillSearchResult } from "../src/pill-identification.ts";
+import { PILL_OBSERVATION_SCHEMA_VERSION, migrateObservedPillSideV1, searchPillCandidates, type PillObservation, type PillSearchResult } from "../src/pill-identification.ts";
 import { serializePillProfile } from "./profile-pill-catalog.ts";
 import { classifyPillForm, summarizePillFormPolicy } from "../src/pill-form-policy.ts";
 
@@ -82,10 +82,10 @@ export function officialFeatureExamples(snapshot: PillCatalogSnapshot) {
   }).map((entry) => ({
     itemSeq: entry!.item.itemSeq, productName: entry!.item.productName, origin: "official_record_self_consistency_only" as const,
     observation: {
-      source: "manual", form: entry!.form, integrity: "intact", count: 1, overlapping: false, quality: "clear",
+      schemaVersion: PILL_OBSERVATION_SCHEMA_VERSION, source: "manual", form: entry!.form, integrity: "intact", count: 1, overlapping: false, quality: "clear",
       shape: entry!.item.shape, colors: entry!.item.colors,
-      front: { imprint: entry!.item.front.imprint, scoreLine: entry!.item.front.scoreLine },
-      back: { imprint: entry!.item.back.imprint, scoreLine: entry!.item.back.scoreLine },
+      front: migrateObservedPillSideV1({ imprint: entry!.item.front.imprint, scoreLine: entry!.item.front.scoreLine }),
+      back: migrateObservedPillSideV1({ imprint: entry!.item.back.imprint, scoreLine: entry!.item.back.scoreLine }),
     } satisfies PillObservation,
   }));
 }

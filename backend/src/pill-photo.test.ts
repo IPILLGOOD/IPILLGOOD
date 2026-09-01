@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pillEnvelope, pillObservation, pillRecord } from "../test-support/pill-fixtures.ts";
+import { observedSide, pillEnvelope, pillObservation, pillRecord } from "../test-support/pill-fixtures.ts";
 import { PILL_PHOTO_CASES, PILL_PHOTO_FILES } from "../test-support/pill-photo-review.ts";
 import { parseOfficialPillPage } from "./official-pill-catalog.ts";
-import { comparePillPhotoFeatures, pillPhotoFeaturesSchema } from "./pill-photo-features.ts";
+import { comparePillPhotoFeatures, migratePillPhotoFeaturesV1, PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, pillPhotoFeaturesV1Schema } from "./pill-photo-features.ts";
 import { extractReviewedPillPhotos, parsePillPhotoResponse, pillPhotoRequest, prepareReviewedPillPhoto, reviewedPhotoIndex } from "./pill-photo-experiment.ts";
 import { parsePillPhotoArgs, renderPillPhotoReport, scorePillPhotoCase, type PillPhotoReport } from "../scripts/pill-photo.ts";
 
@@ -18,6 +18,27 @@ function catalog(records = [pillRecord()]) {
 function response(text = JSON.stringify(features())) {
   return { status: "completed", output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }], usage: { input_tokens: 100, output_tokens: 20 } };
 }
+
+test("고정 prompt-v1 사진 특징은 원본과 분리해 pill-observation.v2로 변환한다", () => {
+  const current = features();
+  const legacy = {
+    ...current,
+    observation: {
+      form: current.observation.form, integrity: current.observation.integrity, count: current.observation.count,
+      overlapping: current.observation.overlapping, quality: current.observation.quality, shape: current.observation.shape,
+      colors: current.observation.colors, front: { imprint: null, scoreLine: "unknown" }, back: { imprint: "", scoreLine: "none" },
+    },
+  };
+  const before = JSON.stringify(legacy);
+  assert.equal(pillPhotoFeaturesV1Schema.safeParse(legacy).success, true);
+  assert.equal(pillPhotoFeaturesSchema.safeParse(legacy).success, false);
+  const migrated = migratePillPhotoFeaturesV1(legacy);
+  assert.equal(JSON.stringify(legacy), before);
+  assert.equal(migrated.observation.schemaVersion, "pill-observation.v2");
+  assert.deepEqual(migrated.observation.front, observedSide(null, "unknown"));
+  assert.deepEqual(migrated.observation.back, observedSide("", "none"));
+  assert.equal(PILL_PHOTO_PROMPT_VERSION, "pill-photo-observation-v2");
+});
 
 test("사진 특징 계약은 기존 검색에 연결되며 입력을 변경하거나 약을 확정하지 않는다", () => {
   const input = features(), data = catalog();
@@ -49,7 +70,7 @@ test("외부 출력의 약명·품목코드·임의 색상·source 추가와 누
 });
 
 test("사진 각인 미상·흐림·복수 약·지원하지 않는 제형은 기존 안전 상태를 유지한다", () => {
-  for (const patch of [{ quality: "blurred" }, { count: 2 }, { overlapping: true }, { back: null }, { front: { imprint: null, scoreLine: "unknown" } }]) {
+  for (const patch of [{ quality: "blurred" }, { count: 2 }, { overlapping: true }, { back: null }, { front: observedSide(null, "unknown") }]) {
     assert.equal(comparePillPhotoFeatures({ ...features(), observation: { ...features().observation, ...patch } }, catalog()).search?.status, "needs_retake");
   }
   for (const form of ["powder", "granule", "liquid", "other"]) {
@@ -60,12 +81,13 @@ test("사진 각인 미상·흐림·복수 약·지원하지 않는 제형은 �
   }
 });
 
-test("각인 null과 빈 문자열·0/O를 구분하고 공식 각인 근거 부족은 보류한다", () => {
-  assert.equal(pillPhotoFeaturesSchema.parse({ ...features(), observation: { ...features().observation, front: { imprint: "T0", scoreLine: "unknown" } } }).observation.front?.imprint, "T0");
+test("복수 각인과 판독 불가·직접 확인한 무각인을 구분하고 공식 각인 근거 부족은 보류한다", () => {
+  const multiple = { ...observedSide("T0", "unknown"), imprintCandidates: ["T0", "TO"] };
+  assert.deepEqual(pillPhotoFeaturesSchema.parse({ ...features(), observation: { ...features().observation, front: multiple } }).observation.front?.imprintCandidates, ["T0", "TO"]);
   const noImprints = catalog([pillRecord({ PRINT_FRONT: "", PRINT_BACK: "" })]);
   assert.equal(comparePillPhotoFeatures(features(), noImprints).search?.status, "needs_review");
-  const blank = { ...features(), observation: { ...features().observation, front: { imprint: "", scoreLine: "unknown" } } };
-  assert.equal(pillPhotoFeaturesSchema.parse(blank).observation.front?.imprint, "");
+  const blank = { ...features(), observation: { ...features().observation, front: observedSide("", "unknown") } };
+  assert.equal(pillPhotoFeaturesSchema.parse(blank).observation.front?.noImprintObserved, true);
 });
 
 test("사진 앞뒤 방향이 뒤집혀도 기존 검색의 각인·분할선 쌍 비교를 유지한다", () => {
@@ -94,12 +116,16 @@ test("외부 요청에는 사진·추출 계약만 있고 정답 코드·약명�
   assert.equal(request.text.format.strict, true);
   assert.equal(request.input[0]?.content.filter((part) => part.type === "input_image").length, 2);
   assert.equal("tools" in request, false);
+  assert.ok(serialized.includes('"imprintCandidates"'));
+  assert.ok(serialized.includes('"maxItems":5'));
+  assert.ok(serialized.includes('"pill-observation.v2"'));
   for (const item of PILL_PHOTO_CASES) {
     if (item.expectedItemSeq) assert.ok(!serialized.includes(item.expectedItemSeq));
     assert.ok(!serialized.includes(item.id));
   }
   for (const file of PILL_PHOTO_FILES) assert.ok(!serialized.includes(file.path));
   assert.ok(!serialized.includes("테스트 전용 정제"));
+  for (const forbidden of ["drugName", "ingredientName", "itemSeq", "productName"]) assert.ok(!serialized.includes(`"${forbidden}"`));
   assert.equal(request.text.format.schema.additionalProperties, false);
 });
 
@@ -169,7 +195,7 @@ test("평가는 보류·미실행·단순 무검색 결과를 올바른 약 또�
 });
 
 test("정적 HTML은 모델·제품 텍스트를 이스케이프하고 외부 이미지를 자동 요청하지 않는다", () => {
-  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "public-rgba-alpha-bounds-white-1024-v1", prompt: "pill-photo-observation-v1" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
+  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "public-rgba-alpha-bounds-white-1024-v1", prompt: "pill-photo-observation-v2" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
     sourceUrl: "javascript:alert(1)", rows: [{ id: "<script>alert(1)</script>", kind: "candidate", expectedItemSeq: "209900001", expectedProduct: "<img src=x onerror=alert(1)>", evidenceUrl: null, photos: ["0", "1"], extraction: null, comparison: null, evaluation: scorePillPhotoCase("209900001", null) }] };
   const rendered = renderPillPhotoReport(report);
   assert.ok(!rendered.includes("<script>"));

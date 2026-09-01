@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PILL_PHOTO_CASES, PILL_PHOTO_FILES, PILL_PHOTO_SOURCE_URL, PILL_PHOTO_EXPECTED_REJECTIONS } from "../test-support/pill-photo-review.ts";
 import { extractReviewedPillPhotos, pillPhotoExperimentVersions, prepareReviewedPillPhoto, reviewedPhotoIndex, type PhotoExtractionResult } from "../src/pill-photo-experiment.ts";
-import { comparePillPhotoFeatures } from "../src/pill-photo-features.ts";
+import { comparePillPhotoFeatures, migratePillPhotoFeaturesV1 } from "../src/pill-photo-features.ts";
 import { MAX_PILL_SNAPSHOT_BYTES, snapshotSearchCatalog, validatePillCatalogSnapshot } from "../src/pill-catalog-snapshot.ts";
 import { readBoundedJson } from "./pill-catalog.ts";
 import { serializePillProfile } from "./profile-pill-catalog.ts";
@@ -174,8 +174,8 @@ export async function runPillPhotoExperiment(args: string[]) {
   if (frozen) {
     for (const row of report.rows) {
       const saved = frozen.baseline.rows.find((item) => item.id === row.id)!;
-      row.extraction = saved.extraction;
-      row.comparison = comparePillPhotoFeatures(saved.extraction.features, searchable.catalog);
+      row.extraction = { ...saved.extraction, features: migratePillPhotoFeaturesV1(saved.extraction.features) };
+      row.comparison = comparePillPhotoFeatures(row.extraction.features, searchable.catalog);
       row.evaluation = scorePillPhotoCase(row.expectedItemSeq, row.comparison, PILL_PHOTO_EXPECTED_REJECTIONS[row.id]);
     }
   }

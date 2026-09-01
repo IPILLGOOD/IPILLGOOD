@@ -4,15 +4,14 @@ import { stableJson } from "./stable-json.ts";
 import { classifyPillForm, PILL_FORM_POLICY_VERSION, type PillFormAssessment } from "./pill-form-policy.ts";
 
 export const PILL_SEARCH_RULES_VERSION = "pill-structured-v3-evidence-gate";
+export const PILL_OBSERVATION_SCHEMA_VERSION = "pill-observation.v2";
 
-const sideSchema = z.object({
-  // null = unreadable/unknown; "" = the observer explicitly saw no text.
+const legacySideSchema = z.object({
   imprint: z.string().trim().max(80).nullable(),
   scoreLine: z.enum(["none", "single", "cross", "other", "unknown"]),
 }).strict();
 
-export const pillObservationSchema = z.object({
-  source: z.enum(["manual", "image_features"]),
+const commonObservationFields = {
   form: z.enum(["tablet", "capsule", "powder", "granule", "liquid", "other", "unknown"]),
   integrity: z.enum(["intact", "split", "damaged", "unknown"]),
   count: z.number().int().min(0).max(100),
@@ -20,11 +19,74 @@ export const pillObservationSchema = z.object({
   quality: z.enum(["clear", "blurred", "dark", "too_small", "unknown"]),
   shape: z.string().trim().min(1).max(40).nullable(),
   colors: z.array(z.string().trim().min(1).max(20)).max(4),
-  front: sideSchema.nullable(),
-  back: sideSchema.nullable(),
+} as const;
+
+/** Historical input only. New callers must use pillObservationSchema. */
+export const pillObservationBodyV1Schema = z.object({
+  ...commonObservationFields,
+  front: legacySideSchema.nullable(),
+  back: legacySideSchema.nullable(),
+}).strict();
+export const pillObservationV1Schema = pillObservationBodyV1Schema.extend({
+  source: z.enum(["manual", "image_features"]),
+}).strict();
+
+const imprintCandidateSchema = z.string().max(80).refine((value) => value.trim().length > 0, "blank_imprint_candidate");
+export const observedPillSideSchema = z.object({
+  // Preserve model/manual text exactly. Normalization and server expansions happen later with provenance.
+  imprintCandidates: z.array(imprintCandidateSchema).max(5),
+  noImprintObserved: z.boolean(),
+  imprintVisibility: z.enum(["clear", "partial", "unreadable"]),
+  scoreLine: z.enum(["none", "single", "cross", "other", "unknown"]),
+}).strict().superRefine((side, context) => {
+  if (side.noImprintObserved && (side.imprintCandidates.length > 0 || side.imprintVisibility !== "clear")) {
+    context.addIssue({ code: "custom", path: ["noImprintObserved"], message: "invalid_no_imprint_state" });
+  }
+  if (side.imprintVisibility === "unreadable" && (side.noImprintObserved || side.imprintCandidates.length > 0)) {
+    context.addIssue({ code: "custom", path: ["imprintVisibility"], message: "invalid_unreadable_state" });
+  }
+  if (side.imprintVisibility === "clear" && !side.noImprintObserved && side.imprintCandidates.length === 0) {
+    context.addIssue({ code: "custom", path: ["imprintCandidates"], message: "clear_imprint_requires_observation" });
+  }
+});
+
+export const pillObservationBodySchema = z.object({
+  schemaVersion: z.literal(PILL_OBSERVATION_SCHEMA_VERSION),
+  ...commonObservationFields,
+  front: observedPillSideSchema.nullable(),
+  back: observedPillSideSchema.nullable(),
+}).strict();
+export const pillObservationSchema = pillObservationBodySchema.extend({
+  source: z.enum(["manual", "image_features"]),
 }).strict();
 
 export type PillObservation = z.infer<typeof pillObservationSchema>;
+export type PillObservationV1 = z.infer<typeof pillObservationV1Schema>;
+export type ObservedPillSide = z.infer<typeof observedPillSideSchema>;
+
+export function migrateObservedPillSideV1(value: z.infer<typeof legacySideSchema> | null): ObservedPillSide | null {
+  if (value === null) return null;
+  if (value.imprint === null) return { imprintCandidates: [], noImprintObserved: false, imprintVisibility: "unreadable", scoreLine: value.scoreLine };
+  if (value.imprint === "") return { imprintCandidates: [], noImprintObserved: true, imprintVisibility: "clear", scoreLine: value.scoreLine };
+  return { imprintCandidates: [value.imprint], noImprintObserved: false, imprintVisibility: "clear", scoreLine: value.scoreLine };
+}
+
+export function migratePillObservationBodyV1(value: unknown): z.infer<typeof pillObservationBodySchema> {
+  const parsed = pillObservationBodyV1Schema.parse(value);
+  return pillObservationBodySchema.parse({
+    ...parsed,
+    schemaVersion: PILL_OBSERVATION_SCHEMA_VERSION,
+    front: migrateObservedPillSideV1(parsed.front),
+    back: migrateObservedPillSideV1(parsed.back),
+  });
+}
+
+export function migratePillObservationV1(value: unknown): PillObservation {
+  const parsed = pillObservationV1Schema.parse(value);
+  const { source, ...body } = parsed;
+  return pillObservationSchema.parse({ ...migratePillObservationBodyV1(body), source });
+}
+
 export interface PillCatalog {
   items: OfficialPillItem[];
   totalCount: number;
@@ -78,6 +140,7 @@ export interface PillSearchResult {
   catalogVersion: string | null;
   truncated: boolean;
   heldTruncated: boolean;
+  observationSchemaVersion: string;
   searchRulesVersion: string;
   formPolicyVersion: string;
 }
@@ -87,6 +150,7 @@ const matchOrder: Record<MatchType, number> = { exact: 0, partial: 1, incomplete
 const normalize = (text: string) => text.normalize("NFKC").trim().toUpperCase();
 const imprintText = (text: string) => normalize(text).replace(/\s+/g, "");
 const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+const primaryObservedImprint = (side: ObservedPillSide) => side.noImprintObserved ? "" : side.imprintCandidates[0] ?? null;
 
 function compareText(field: string, observed: string, official: string | null, partial = false): PillFeatureMatch {
   const normalizer = partial ? imprintText : normalize;
@@ -104,9 +168,9 @@ function compareScore(field: string, observed: PillScoreLine, official: PillScor
 }
 
 function sideEvidence(observed: NonNullable<PillObservation["front"]>, actual: OfficialPillSide, label: string, withScore: boolean): PillFeatureMatch[] {
-  const imprint = compareText(`${label}.imprint`, observed.imprint!, actual.imprint, true);
+  const imprint = compareText(`${label}.imprint`, primaryObservedImprint(observed)!, actual.imprint, true);
   // A separate official logo is not evidence of an unmarked surface.
-  if (observed.imprint === "" && actual.mark) imprint.match = "mismatch";
+  if (observed.noImprintObserved && actual.mark) imprint.match = "mismatch";
   return [
     imprint,
     // Extracted letters are searchable, but the removed notation/mark was not compared.
@@ -158,6 +222,7 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
   const result = (status: PillSearchResult["status"], reason: string, message: string): PillSearchResult => ({
     status, reason, message, notice: NOTICE, candidates: [], heldCandidates: [], metrics,
     catalogVersion: catalog?.version ?? null, truncated: false, heldTruncated: false,
+    observationSchemaVersion: PILL_OBSERVATION_SCHEMA_VERSION,
     searchRulesVersion: PILL_SEARCH_RULES_VERSION, formPolicyVersion: PILL_FORM_POLICY_VERSION,
   });
   const parsed = pillObservationSchema.safeParse(input);
@@ -169,7 +234,7 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
   if (observation.count === 0) return result("unidentified", "no_pill", "확인할 알약 한 개가 필요해요.");
   if (observation.count !== 1 || observation.overlapping) return result("needs_retake", "multiple_or_overlapping", "약을 한 개씩 분리하고 겹치지 않게 확인해주세요.");
   if (observation.quality !== "clear" || observation.integrity === "unknown") return result("needs_retake", "unclear_observation", "밝은 곳에서 단색 배경에 약 한 개를 놓고 가까이 초점을 맞춰 앞뒤를 확인해주세요.");
-  if (!observation.front || !observation.back || observation.front.imprint === null || observation.back.imprint === null) return result("needs_retake", "missing_surface", "같은 약의 앞면과 뒷면 각인을 모두 확인해주세요. 글자가 없는 면도 직접 확인이 필요해요.");
+  if (!observation.front || !observation.back || primaryObservedImprint(observation.front) === null || primaryObservedImprint(observation.back) === null) return result("needs_retake", "missing_surface", "같은 약의 앞면과 뒷면 각인을 모두 확인해주세요. 글자가 없는 면도 직접 확인이 필요해요.");
   if (!observation.shape || observation.colors.length === 0) return result("needs_retake", "missing_features", "모양과 색상을 확인할 수 있도록 다시 관찰하거나 촬영해주세요.");
   if (observation.form === "unknown") return result("unidentified", "unknown_form", "온전한 정제·캡슐인지 확인하지 못했어요.");
   if (!catalog) return result("not_configured", "catalog_not_configured", "공식 낱알 카탈로그가 아직 연결되지 않았어요.");

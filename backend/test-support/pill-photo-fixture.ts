@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { MAX_PILL_SNAPSHOT_BYTES, validatePillCatalogSnapshot } from "../src/pill-catalog-snapshot.ts";
-import { pillPhotoFeaturesSchema } from "../src/pill-photo-features.ts";
+import { pillPhotoFeaturesV1Schema } from "../src/pill-photo-features.ts";
 import { PILL_PHOTO_FILES, PILL_PHOTO_CASES, PILL_PHOTO_REVIEW_VERSION } from "./pill-photo-review.ts";
 
 export const PILL_PHOTO_FIXTURE_DIRECTORY = fileURLToPath(new URL("./pill-photo-fixtures/", import.meta.url));
@@ -30,7 +30,7 @@ const baselineSchema = z.object({
   catalogVersion: z.string(), catalogRecords: z.number().int().positive(), catalogVerifiedAt: z.string().datetime(),
   requests: z.number().int().positive(),
   rows: z.array(z.object({ id: z.string(), expectedItemSeq: z.string().regex(/^\d{9}$/).nullable(), photos: z.array(z.string()).length(2),
-    extraction: z.object({ ok: z.literal(true), features: pillPhotoFeaturesSchema,
+    extraction: z.object({ ok: z.literal(true), features: pillPhotoFeaturesV1Schema,
       usage: z.object({ inputTokens: z.number().int().nonnegative(), outputTokens: z.number().int().nonnegative() }).nullable() }),
     evaluation: z.object({ outcome: z.string(), expectedRank: z.number().int().positive().nullable(), expectedHeld: z.boolean(), expectedGateObserved: z.boolean().nullable() }),
   })).length(6),

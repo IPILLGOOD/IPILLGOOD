@@ -1,4 +1,4 @@
-import type { PillObservation } from "../src/pill-identification.ts";
+import { PILL_OBSERVATION_SCHEMA_VERSION, type ObservedPillSide, type PillObservation } from "../src/pill-identification.ts";
 
 // Synthetic feature records, not real products or a photo-accuracy evaluation set.
 export function pillRecord(overrides: Record<string, unknown> = {}) {
@@ -14,12 +14,18 @@ export function pillRecord(overrides: Record<string, unknown> = {}) {
 
 export function pillObservation(overrides: Partial<PillObservation> = {}): PillObservation {
   return {
-    source: "manual", form: "tablet", integrity: "intact", count: 1,
+    schemaVersion: PILL_OBSERVATION_SCHEMA_VERSION, source: "manual", form: "tablet", integrity: "intact", count: 1,
     overlapping: false, quality: "clear", shape: "원형", colors: ["하양"],
-    front: { imprint: "TEST", scoreLine: "single" },
-    back: { imprint: "10", scoreLine: "cross" },
+    front: observedSide("TEST", "single"),
+    back: observedSide("10", "cross"),
     ...overrides,
   };
+}
+
+export function observedSide(imprint: string | null, scoreLine: ObservedPillSide["scoreLine"]): ObservedPillSide {
+  if (imprint === null) return { imprintCandidates: [], noImprintObserved: false, imprintVisibility: "unreadable", scoreLine };
+  if (imprint === "") return { imprintCandidates: [], noImprintObserved: true, imprintVisibility: "clear", scoreLine };
+  return { imprintCandidates: [imprint], noImprintObserved: false, imprintVisibility: "clear", scoreLine };
 }
 
 export function pillEnvelope(items: unknown[], overrides: Record<string, unknown> = {}) {

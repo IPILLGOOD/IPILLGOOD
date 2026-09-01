@@ -130,8 +130,11 @@ export {
   type OfficialPillPageResult,
 } from "./official-pill-catalog";
 export {
+  PILL_OBSERVATION_SCHEMA_VERSION,
+  observedPillSideSchema,
   pillObservationSchema,
   searchPillCandidates,
+  type ObservedPillSide,
   type PillCatalog,
   type PillObservation,
   type PillCandidate,
