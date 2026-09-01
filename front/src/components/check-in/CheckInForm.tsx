@@ -10,7 +10,7 @@ import { DynamicQuestionFields } from "@/components/check-in/DynamicQuestionFiel
 import { FormMessage } from "@/components/ui/FormMessage";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import type { MedicationScheduleTask } from "@/lib/presentation";
-import type { DailyCheckIn, PatientQuestionSet } from "@care-atlas/backend";
+import type { DailyCheckIn, PatientQuestionResponse, PatientQuestionSet } from "@care-atlas/backend";
 const doseOptions = [
   { value: "completed", label: "모두 먹었어요" },
   { value: "partial", label: "일부만 먹었어요" },
@@ -22,17 +22,39 @@ const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청�
 
 export function CheckInForm({
   tasks,
-  checkIn,
   questionSet: initialQuestions,
+  initialCheckIn,
+  initialQuestionResponse,
   revision,
 }: {
   tasks: MedicationScheduleTask[];
-  checkIn: DailyCheckIn | null;
   questionSet: PatientQuestionSet | null;
+  initialCheckIn: DailyCheckIn | null;
+  initialQuestionResponse: PatientQuestionResponse | null;
   revision: number;
 }) {
   const router = useRouter();
-  const form = useCheckInForm(initialQuestions, revision);
+  const initialDraft = {
+    ...(initialCheckIn
+      ? {
+          answeredBy: [initialCheckIn.completedBy],
+          symptoms: initialCheckIn.symptoms,
+          severity: [String(initialCheckIn.severity ?? 3)],
+          note: [initialCheckIn.note],
+        }
+      : {}),
+    ...Object.fromEntries(
+      (initialQuestionResponse?.responses ?? []).map((response) => [
+        `question_${response.question_id}`,
+        Array.isArray(response.answer)
+          ? response.answer.map(String)
+          : response.answer === null
+            ? []
+            : [String(response.answer)],
+      ]),
+    ),
+  };
+  const form = useCheckInForm(initialQuestions, revision, initialDraft);
   const { state, formAction, questionSet } = form;
   useEffect(() => { if (state.conflict) router.refresh(); }, [router, state.conflict]);
   const recovery = <QuestionRecovery unavailable={!questionSet} pending={form.pending} message={form.recoveryMessage} onRetry={form.recover} />;
@@ -76,11 +98,11 @@ export function CheckInForm({
         <legend>1. 누가 오늘의 상태를 확인했나요?</legend>
         <div className="choice-grid">
           <label className="choice-card">
-            <input name="answeredBy" type="radio" value="caregiver" {...form.check("answeredBy", "caregiver", checkIn?.completedBy !== "recipient")} required />
+            <input name="answeredBy" type="radio" value="caregiver" {...form.check("answeredBy", "caregiver", !initialCheckIn)} required />
             보호자가 확인했어요
           </label>
           <label className="choice-card">
-            <input name="answeredBy" type="radio" value="recipient" {...form.check("answeredBy", "recipient", checkIn?.completedBy === "recipient")} required />
+            <input name="answeredBy" type="radio" value="recipient" {...form.check("answeredBy", "recipient", initialCheckIn?.completedBy === "recipient")} required />
             어르신이 직접 답했어요
           </label>
         </div>
@@ -123,7 +145,7 @@ export function CheckInForm({
         <div className="choice-grid">
           {symptoms.map((symptom) => (
             <label className="choice-card" key={symptom}>
-              <input name="symptoms" type="checkbox" value={symptom} {...form.check("symptoms", symptom, checkIn?.symptoms.includes(symptom) ?? false)} />
+              <input name="symptoms" type="checkbox" value={symptom} {...form.check("symptoms", symptom, initialCheckIn?.symptoms.includes(symptom) ?? false)} />
               {symptom}
             </label>
           ))}
@@ -135,7 +157,7 @@ export function CheckInForm({
       <div className="form-grid form-grid--check-in-details">
         <div className="field">
           <label htmlFor="severity">불편한 정도</label>
-          <select id="severity" name="severity" {...form.field("severity", String(checkIn?.severity || 3))}>
+          <select id="severity" name="severity" {...form.field("severity", String(initialCheckIn?.severity || 3))}>
             <option value="1">1 — 아주 조금</option>
             <option value="3">3 — 조금 불편함</option>
             <option value="5">5 — 일상에 영향이 있음</option>
@@ -148,7 +170,7 @@ export function CheckInForm({
           <textarea
             id="note"
             name="note"
-            {...form.field("note", checkIn?.note ?? "")}
+            {...form.field("note", initialCheckIn?.note ?? "")}
             maxLength={500}
             placeholder="예: 걸을 때 잠시 벽을 짚었고, 10분 정도 쉬었어요."
           />
@@ -160,7 +182,9 @@ export function CheckInForm({
         <Link className="button button--quiet" href="/today">
           나중에 하기
         </Link>
-        <SubmitButton disabled={form.pending} pendingText="기록하는 중…">오늘의 답변 저장</SubmitButton>
+        <SubmitButton disabled={form.pending} pendingText="기록하는 중…">
+          {initialCheckIn ? "오늘의 답변 수정" : "오늘의 답변 저장"}
+        </SubmitButton>
       </div>
     </form>
   );

@@ -6,6 +6,7 @@ export function buildPatientQuestionResponse(input: {
   questionSet: PatientQuestionSet;
   answeredBy: "caregiver" | "recipient";
   answers: Record<string, string | number | string[] | null | undefined>;
+  responseId?: string;
 }): PatientQuestionResponse {
   const responses = input.questionSet.questions.map((question) => {
     const answer = input.answers[question.question_id] ?? null;
@@ -42,7 +43,7 @@ export function buildPatientQuestionResponse(input: {
   });
   return {
     schema_version: "patient-question-response.v1",
-    response_id: `question-response-${input.questionSet.target_date}-${randomUUID()}`,
+    response_id: input.responseId ?? `question-response-${input.questionSet.target_date}-${randomUUID()}`,
     question_set_id: input.questionSet.question_set_id,
     subject_ref: input.questionSet.subject_ref,
     answered_by: input.answeredBy,

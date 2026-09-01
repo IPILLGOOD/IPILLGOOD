@@ -3,6 +3,7 @@ import { SignJWT, decodeJwt } from "jose";
 import { randomUUID } from "node:crypto";
 import { emulatorFixture } from "../../backend/test-support/emulator";
 import { seedCareAccount } from "../../backend/test-support/care-fixtures";
+import { checkChoice, dismissInstallPromptWhenShown } from "../test-support/browser-controls";
 
 const browserEvents = new WeakMap<object, string[]>();
 
@@ -31,6 +32,7 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 
 test("demo: check-in, document create/delete, reload, dashboard/report and logout cleanup", async ({ page, context }) => {
+  await dismissInstallPromptWhenShown(page);
   const fixture = emulatorFixture("admin");
   let recipientId: string | undefined;
   try {
@@ -42,18 +44,23 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     await page.getByRole("link", { name: /확인 시작/ }).click();
     await expect(page).toHaveURL(/\/check-in$/);
     const form = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
-    await form.getByLabel("어지러움", { exact: true }).check();
+    await checkChoice(form.getByLabel("어지러움", { exact: true }));
     await form.getByLabel("보호자 메모").fill("격리된 자동 검증 기록");
     const doseResponses = form.locator('input[name^="dose_"][value="completed"]');
+    expect(await doseResponses.count()).toBeGreaterThan(0);
     for (let index = 0; index < await doseResponses.count(); index++) {
-      await doseResponses.nth(index).check();
+      await checkChoice(doseResponses.nth(index));
     }
     const questions = form.locator(".dynamic-question");
+    expect(await questions.count()).toBeGreaterThan(0);
     for (let index = 0; index < await questions.count(); index++) {
-      await questions.nth(index).locator('input[type="radio"]').first().check();
+      await checkChoice(questions.nth(index).getByRole("radio").first());
     }
     await form.getByRole("button", { name: "오늘의 답변 저장" }).click();
     await expect(page.getByText("오늘의 복약과 몸 상태를 기록했어요.")).toBeVisible();
+    await expect(form).toHaveCount(0);
+    await page.getByRole("link", { name: "오늘 화면으로 돌아가기", exact: true }).click();
+    await expect(page).toHaveURL(/\/today$/);
     await page.goto("/documents");
     const before = await page.locator(".document-item").count();
     const recipient = fixture.admin.collection("careRecipients").doc(recipientId!);
@@ -95,6 +102,17 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       const response = await page.goto(path);
       expect(response?.status()).toBe(200);
       await expect(page.locator("main")).toBeVisible();
+    }
+    const medicationTabs = page.getByRole("tablist", { name: "복용약 선택" }).getByRole("tab");
+    expect(await medicationTabs.count()).toBe(baselineMedicationCount);
+    for (let index = 0; index < await medicationTabs.count(); index++) {
+      const tab = medicationTabs.nth(index);
+      await tab.click();
+      await expect(tab).toHaveAttribute("aria-selected", "true");
+      const panel = page.getByRole("tabpanel");
+      await expect(panel).toHaveAttribute("aria-labelledby", (await tab.getAttribute("id"))!);
+      await expect(panel.getByRole("heading", { level: 3 })).toHaveText(await tab.locator("strong").innerText());
+      await expect(panel.getByRole("link", { name: /상세 정보 보기/ })).toBeVisible();
     }
     const subscriptions = await fixture.admin.collection("pushSubscriptions").where("recipientId", "==", recipientId).get();
     const schedules = await fixture.admin.collection("medicationReminderSchedules").where("recipientId", "==", recipientId).get();

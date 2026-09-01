@@ -11,6 +11,7 @@ import "@/styles/globals.css";
 import "@/styles/components.css";
 import "@/styles/pages.css";
 import "@/styles/landing.css";
+import "@/styles/design-refresh.css";
 
 const notoSans = Noto_Sans_KR({
   variable: "--font-noto-sans",
@@ -33,6 +34,7 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };

@@ -53,14 +53,24 @@ Node 24, Java 21, npm이 필요하다. 운영 `.env*`·`.dev.vars`가 없는 새
 ```sh
 npm ci
 npx playwright install --with-deps chromium
-npm run verify
+npm run verify -- --account-full-cycle
 ```
 
-마지막 명령은 unit → typecheck → lint → production build → Firestore/Auth emulator → Admin/REST 계약 → production standalone 서버 → Playwright 순으로 실행하고 프로세스를 정리한다. 자동 생성한 demo 프로젝트, 임의 포트·세션 비밀값과 합성 데이터만 사용한다. 기존 로그인·클라우드 비밀값을 전달하지 않는다. 빌드 시 Google Fonts 다운로드는 허용하며, 실행 중인 앱과 테스트의 외부 fetch/TCP 연결은 preload로 차단한다. 실제 Google 로그인·유료 OpenAI·실제 Push 공급자 접수는 이 검증에 포함하지 않는다.
+마지막 명령은 PR·main 푸시 CI와 동일하다. unit → typecheck → lint → production build → Firestore/Auth emulator → Admin/REST 계약 → production standalone 서버 → 브라우저·API → 계정 풀사이클 순으로 실행하고 프로세스를 정리한다. 자동 생성한 demo 프로젝트, 임의 포트·세션 비밀값과 합성 데이터만 사용한다. 기존 로그인·클라우드 비밀값을 전달하지 않는다. 빌드 시 Google Fonts 다운로드는 허용하며, 실행 중인 앱과 테스트의 외부 fetch/TCP 연결은 preload로 차단한다. 실제 Google 로그인·유료 OpenAI·실제 Push 공급자 접수는 이 검증에 포함하지 않는다. `npm run verify`만 실행하면 계정 풀사이클은 제외된다.
 
 테스트 전용 로그인 API나 운영 인증 우회 플래그를 추가하지 않았다. 일반 계정 테스트는 실행기만 아는 임의 키로 정상 세션 포맷을 발급하고, production Google 인증 API가 Auth emulator의 unsigned 토큰을 거부하는지 검사한다.
 
-실패 자료: `test-results/`의 screenshot·trace, `playwright-report/`, `verification-artifacts/run.log` 및 `verification.json`. CI는 이를 7일 보관한다. 실제 환자 데이터로 실행하지 않는다.
+실패 자료: `test-results/`의 screenshot·trace, `playwright-report/`, `verification-artifacts/run.log`, `verification.json`, `verification.md`. 계정 검증 자료는 `verification-artifacts/full-cycle-report/`, `full-cycle-results/`, `account-deletion/`에 남는다. CI는 이를 7일 보관하고 Actions 실행 요약에 단계별 결과를 표시한다. 실제 환자 데이터로 실행하지 않는다.
+
+브라우저·API 검증이 실패해도 별도 서버·계정을 쓰는 계정 풀사이클은 계속 실행한다. 어느 하나라도 실패하면 전체 명령은 실패로 끝난다. 빌드나 emulator 준비 실패처럼 뒤 단계의 실행 조건이 충족되지 않은 경우에는 중단하며, 요약에는 실제 실행한 단계만 기록한다.
+
+### 현재 화면 흐름과 검증 유지
+
+- 오늘 화면에서는 `/check-in`으로 이동해 기록한다. 선택 카드는 숨긴 input을 강제로 누르지 않고 표시된 label을 클릭한 뒤 checked 상태를 확인한다. 저장 완료 화면과 오늘 화면 복귀, 재진입 후 기록 보존을 검사한다.
+- 복약 목록은 약 선택 탭을 바꿔 선택 상태·상세 패널·상세 링크가 일치하는지 검사한다.
+- 연결 코드는 8칸 입력 UI에서 실제 키 입력과 자동 포커스 이동을 거쳐 제출한다. 계정 풀사이클은 연결된 계정의 접근, 탈퇴 시 연결 해제, 복구·영구 삭제·재가입까지 검사한다.
+- 320px·200% 글자 크기 검증은 경로별 단계와 문서·요소의 scrollWidth를 기록한다. 요소 테두리 안에 있는 텍스트나 장식이 넘쳐도 원인을 찾을 수 있도록 한다.
+- 화면을 바꾼 PR에서는 해당 E2E도 함께 갱신하고 위 명령을 실행한다. 선택자 변경으로 인한 실패를 `force`, 테스트 생략, 접근성 기준 완화로 숨기지 않는다.
 
 테스트용 Firebase CLI에 한정하여 취약 전이 의존성을 `@opentelemetry/core@2.10.0`, `uuid@11.1.1`, `re2@1.26.1`로 고정했다. PubSub가 사용하는 W3CTraceContextPropagator 경로의 인스턴스 생성과 emulator 실행을 검증했다. 이 override는 제품 런타임 의존성을 바꾸지 않으며 CLI 업그레이드 시 다시 확인해야 한다.
 
