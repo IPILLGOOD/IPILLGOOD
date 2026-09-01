@@ -3,7 +3,7 @@ import test from "node:test";
 import { changeDraft, questionRecoveryDraft } from "../src/lib/check-in-recovery.ts";
 
 test("recovering identical questions preserves every entered value", () => {
-  const draft = { answeredBy: ["recipient"], symptoms: ["두통", "어지러움"], severity: ["7"], note: ["작성한 메모"], dose_abc: ["partial"], question_abc: ["unknown"] };
+  const draft = { reportSource: ["recipient_self_reported"], symptoms: ["두통", "어지러움"], severity: ["7"], note: ["작성한 메모"], correctionReason: ["다시 확인함"], dose_abc: ["partial"], question_abc: ["unknown"] };
   assert.deepEqual(questionRecoveryDraft(draft, true), draft);
   const { question_abc, ...unchanged } = draft;
   assert.deepEqual(questionRecoveryDraft(draft, false), unchanged);
