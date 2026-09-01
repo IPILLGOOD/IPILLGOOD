@@ -40,15 +40,15 @@ test("issued sessions: sign in → connect care → withdraw → cancel recovery
   }
   const recipient = (uid: string) => f.admin.collection("careRecipients").doc(`google-${uid}`);
   const job = async (uid: string) => (await f.admin.collection("accountDeletions").doc(`google-${uid}`).get()).data() as AccountDeletion | undefined;
-  async function browserRequest(path: string, data?: unknown) {
+  async function browserRequest(path: string, data?: unknown, requestHeaders: Record<string, string> = {}) {
     // Playwright's API client does not send Secure cookies over loopback HTTP. Chromium does,
     // so exercise the actual browser fetch path without weakening server cookie security.
-    const result = await page.evaluate(async ({ path, data }) => {
-      const response = await fetch(path, data === undefined ? { cache: "no-store" } : {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    const result = await page.evaluate(async ({ path, data, requestHeaders }) => {
+      const response = await fetch(path, data === undefined ? { cache: "no-store", headers: requestHeaders } : {
+        method: "POST", headers: { "Content-Type": "application/json", ...requestHeaders }, body: JSON.stringify(data),
       });
       return { status: response.status, body: await response.text() };
-    }, { path, data });
+    }, { path, data, requestHeaders });
     return { status: () => result.status, text: async () => result.body, json: async () => JSON.parse(result.body) };
   }
   async function identity(sub = googleSub, identityEmail = email) {
@@ -232,7 +232,10 @@ test("issued sessions: sign in → connect care → withdraw → cancel recovery
     expect((await protectedStatus(oldCookie)).status()).toBe(401);
     expect((await connectedContext.request.get("/api/push/subscriptions?deviceId=test-device-000001")).status()).toBe(401);
     expect((await f.admin.collection("careConnections").doc(rid).get()).data()).toMatchObject({ status: "revoked", revokeReason: "account_deletion" });
-    const restoredStatus = await browserRequest("/api/push/subscriptions?deviceId=test-device-000001");
+    const restoredConfiguration = await browserRequest("/api/push/config");
+    expect(restoredConfiguration.status()).toBe(200);
+    const { sessionKey } = await restoredConfiguration.json() as { sessionKey: string };
+    const restoredStatus = await browserRequest("/api/push/subscriptions?deviceId=test-device-000001", undefined, { "x-push-session": sessionKey });
     expect(restoredStatus.status()).toBe(200);
     expect((await restoredStatus.json()).subscribed).toBe(false);
     evidence.push({ step: "explicit-recovery", cancelledLoginDidNotExtendDeadline: true, healthRestored: true, oldSessionsStillRejected: true, oldSharedCareNotRestored: true, pushStillRemoved: true });
