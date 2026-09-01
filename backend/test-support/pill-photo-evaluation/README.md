@@ -29,6 +29,35 @@
 - 개인정보가 없는 공개 사진만 포함한다. 사용자 사진·API 키·로그·가공 중간 산출물은 포함하지 않는다.
 - 흐림, 어두움, 여러 알약, 실제 파손, 복잡한 배경은 이 자료에 없다. 해당 안전 평가를 이 세트의 성능으로 대신하지 않는다.
 
-현재 단계에서는 평가 자료와 경계만 고정한다. 실제 API 호출 없이 실행되는 평가 지표와 회귀 명령은 다음 작업에서 이 자료 위에 추가한다.
+## 저장된 특징 결과 채점
+
+특징 추출 실행은 아래 필드를 가진 JSON을 저장한다. 각 사례에는 최종 `pillPhotoFeaturesSchema` 특징 또는 제한된 실패 사유만 들어가며 정답 품목코드는 넣지 않는다.
+
+- 고정된 평가·스키마 버전과 `validation` 또는 `holdout` 분할
+- 전처리·Vision·OCR·결합 규칙 버전과 모델명
+- 정확히 네 개의 불투명 사례 ID와 추출 결과
+
+검증 분할은 다음처럼 오프라인으로 채점한다.
+
+```sh
+npm run pill:score --workspace @care-atlas/backend -- --input <saved-features.json> --split validation
+```
+
+구현과 통과 기준을 고정한 후 보류 평가를 실행할 때만 명시적으로 확인한다.
+
+```sh
+npm run pill:score --workspace @care-atlas/backend -- --input <saved-features.json> --split holdout --confirm-holdout-final
+```
+
+채점은 외부 요청을 하지 않는다. 식약처 고정 카탈로그로 후보를 다시 계산하고 `recall@1·5·20`, 강한 오답, 재촬영 결과의 후보 노출을 기록한다. 현재 작은 후보 제시형 파일럿의 통과 기준은 다음과 같다.
+
+- 네 사례 모두 평가됨
+- `recall@5` 4/4
+- `strong` 등급의 오답 후보 0개
+- 재촬영 대상에서 후보·보류 후보 노출 0건
+
+전체 `strong` 후보 수와 해당 사례 수도 함께 기록한다. 현재 네 품목은 식약처 분할선 정보가 `unknown`이어서 정확한 특징을 넣어도 `strong` 등급이 생성되지 않을 수 있다. 따라서 strong 오답 0개를 단독으로 안전성 증거로 해석하지 않는다.
+
+이 기준은 전처리·OCR 변경의 회귀를 찾기 위한 **캡처 수준 기준**이다. 통과해도 운영 정확도나 새로운 품목·사용자 사진에 대한 일반화를 주장하지 않는다. 결과는 `verification-artifacts/pill-photo-score/` 아래에 저장되며 Git에는 포함하지 않는다.
 
 출처와 접수번호-품목기준코드 대응 근거는 기존 [공유 자료 출처 문서](../pill-photo-fixtures/SOURCES.md)에 기록돼 있다.
