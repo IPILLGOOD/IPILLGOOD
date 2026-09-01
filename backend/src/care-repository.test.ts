@@ -17,6 +17,7 @@ import {
   MedicationDuplicateResolutionRequiredError,
   medicationPlansFromPrescription,
   getCareSnapshot,
+  projectClinicianQuestions,
   registerDocument,
   saveDocumentImportReview,
   updateRecipientProfile,
@@ -46,6 +47,72 @@ test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복�
   assert.deepEqual(first.symptomEvents, []);
   assert.deepEqual(first.documents, []);
   assert.notEqual(first.recipient.id, second.recipient.id);
+});
+
+test("실제 계정의 최신 질문 세트와 답변을 상담 질문 읽기 모델로 투영한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-question-read-model", firestore };
+  await consentedSnapshot(scope);
+  const questionSet = {
+    schema_version: "patient-question-set.v1" as const,
+    question_set_id: "question-set-google-question-read-model-20260831",
+    generated_at: "2026-08-31T00:00:00.000Z",
+    timezone: "Asia/Seoul" as const,
+    target_date: "2026-08-31",
+    subject_ref: scope.recipientId,
+    answerer: "caregiver" as const,
+    status: "ready" as const,
+    maximum_display_count: 3 as const,
+    questions: [{
+      question_id: "q-dizziness",
+      template_id: "recent-symptom-follow-up.v1",
+      category: "symptom_follow_up",
+      priority: "high" as const,
+      source_agents: ["care" as const],
+      trigger_refs: ["symptom-1"],
+      display: {
+        badge: "최근 기록",
+        caregiver_text: "오늘도 어지러움이 있었나요?",
+        recipient_text: "오늘 어지러웠나요?",
+        helper_text: "자가보고 기록을 확인하는 질문이에요.",
+      },
+      answer_type: "single_choice" as const,
+      options: [{ value: "present", label: "오늘도 있었어요" }],
+      options_source: null,
+      required: true,
+      allow_unknown: true,
+      follow_up_rules: [],
+      safety: { validation_status: "pass" as const, urgent_answer_values: [] },
+    }],
+    source_analysis_refs: ["analysis-1"],
+    safety_validation_ref: "patient-question-safety.v1",
+    input_revision: "revision-1",
+    prompt_version: "test",
+    generation_source: "safe_fallback" as const,
+    response_status: "answered" as const,
+    answered_at: "2026-08-31T01:00:00.000Z",
+  };
+  const response = {
+    schema_version: "patient-question-response.v1" as const,
+    response_id: "response-1",
+    question_set_id: questionSet.question_set_id,
+    subject_ref: scope.recipientId,
+    answered_by: "caregiver" as const,
+    answered_at: "2026-08-31T01:00:00.000Z",
+    timezone: "Asia/Seoul" as const,
+    responses: [{ question_id: "q-dizziness", answer: "present", skipped: false }],
+    triggered_by_response: [],
+    source_refs: [{ source_type: "patient_question_set" as const, source_id: questionSet.question_set_id }],
+  };
+  await firestore.collection(`careRecipients/${scope.recipientId}/questionSets`).doc(questionSet.question_set_id).set(questionSet);
+  await firestore.collection(`careRecipients/${scope.recipientId}/questionResponses`).doc(response.response_id).set(response);
+
+  const projected = projectClinicianQuestions(questionSet, response);
+  assert.equal(projected[0]?.status, "answered");
+  assert.equal(projected[0]?.answer, "오늘도 있었어요");
+  assert.equal(projected[0]?.evidenceLevel, "caregiver_reported");
+  assert.deepEqual(projected[0]?.triggerRefs, ["symptom-1"]);
+  assert.deepEqual((await getCareSnapshot(scope)).clinicianQuestions, projected);
 });
 
 test("오래된 revision으로 프로필을 저장하면 최신 변경을 덮어쓰지 않는다", async () => {
