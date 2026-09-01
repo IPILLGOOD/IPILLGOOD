@@ -51,12 +51,14 @@ test("profile: three-month policy, responsive dialog, keyboard cancellation, dem
     expect((await request.post("/api/account/deletion/cleanup")).status()).toBe(401);
     expect((await f.admin.collection("accountDeletions").doc(f.scope.recipientId).get()).exists).toBe(false);
     await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
     await page.goto("/login");
     await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
     await page.goto("/profile");
     await expect(page.getByRole("button", { name: "회원 탈퇴", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
   } finally { await f.cleanup(); }
 });
 

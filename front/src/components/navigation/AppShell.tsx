@@ -74,9 +74,11 @@ function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
 export function AppShell({
   children,
   user,
+  pushSessionKey,
 }: {
   children: React.ReactNode;
   user: SessionUser | null;
+  pushSessionKey: string;
 }) {
   const pathname = usePathname();
   const isPublicPage = pathname === "/" || pathname === "/login" || pathname === "/account/recovery" || pathname === "/404";
@@ -85,7 +87,7 @@ export function AppShell({
 
   return (
     <CareSyncProvider enabled={Boolean(user && user.provider !== "demo")} connected={user?.provider === "connected"}>
-    <PushStatusProvider key={`${user?.provider}:${user?.id}`} enabled={Boolean(user)}>
+    <PushStatusProvider key={`${user?.provider}:${user?.id}:${pushSessionKey}`} enabled={Boolean(user)} sessionKey={pushSessionKey}>
       <a className="skip-link" href="#main-content">
         본문으로 바로가기
       </a>

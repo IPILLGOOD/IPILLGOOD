@@ -62,6 +62,8 @@ export {
   type MedicationScheduleTask,
 } from "./medication-schedule";
 export {
+  activatePushSubscription,
+  authorizePushDisplay,
   deactivatePushSubscription,
   deactivatePushSubscriptionsForUser,
   dispatchDueMedicationReminders,

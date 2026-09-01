@@ -55,7 +55,7 @@ class MemoryQuery implements QueryLike {
     const prefix = `${this.path}/`;
     let entries = [...store.entries()].filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"));
     entries = entries.filter(([, value]) => this.filters.every(([field, op, expected]) => {
-      const actual = (value as Row)[field];
+      const actual = field.split(".").reduce<unknown>((current, key) => (current as Row | undefined)?.[key], value);
       if (actual === undefined) return false;
       if (op === "==") return actual === expected;
       const comparison = typeof actual === "number" && typeof expected === "number" ? actual - expected : String(actual).localeCompare(String(expected));

@@ -25,6 +25,8 @@ export interface WebPushNotificationPayload {
     url: string;
     type: "medication-reminder" | "test";
     deliveryId?: string;
+    subscriptionId?: string;
+    bindingId?: string;
   };
 }
 

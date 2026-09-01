@@ -1,4 +1,5 @@
 import { getVapidConfiguration } from "@care-atlas/backend";
+import { getPushSessionKey } from "@/lib/push/server-binding";
 import { getSession } from "@/lib/auth/session";
 
 export async function GET() {
@@ -11,6 +12,7 @@ export async function GET() {
       {
         configured: Boolean(vapid),
         publicKey: vapid?.publicKey ?? null,
+        sessionKey: await getPushSessionKey(),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
