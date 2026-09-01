@@ -152,7 +152,7 @@ care-atlas/
 
 ## 빠른 실행
 
-Node.js 22 LTS 또는 24 이상을 권장합니다.
+CI와 로컬 검증이 같은 Node API를 사용하도록 Node.js 24를 사용합니다. 저장소의 `.nvmrc`를 지원하는 버전 관리자에서는 `nvm use`로 맞출 수 있으며, 다른 Node 버전에서는 `npm ci`가 중단됩니다.
 
 ```bash
 npm install
