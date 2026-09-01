@@ -58,6 +58,77 @@ type StoredCareReadModel = Omit<CareSnapshot, "dataSource" | "revision"> & {
 
 const seed = demoSeed as DemoSeed;
 
+function patientAnswerLabel(
+  question: PatientQuestionSet["questions"][number],
+  answer: PatientQuestionResponse["responses"][number]["answer"],
+) {
+  if (answer === null) return undefined;
+  const values = Array.isArray(answer) ? answer : [answer];
+  return values.map((value) => {
+    const text = String(value);
+    return question.options.find((option) => option.value === text)?.label ?? text;
+  }).join(", ");
+}
+
+export function projectClinicianQuestions(
+  questionSet: PatientQuestionSet,
+  response?: PatientQuestionResponse,
+): ClinicianQuestion[] {
+  const answers = new Map(
+    (response?.responses ?? []).map((item) => [item.question_id, item]),
+  );
+  return questionSet.questions.map((question) => {
+    const responseItem = answers.get(question.question_id);
+    const answer = responseItem && !responseItem.skipped
+      ? patientAnswerLabel(question, responseItem.answer)
+      : undefined;
+    const answered = answer !== undefined;
+    return {
+      id: `${questionSet.question_set_id}:${question.question_id}`,
+      priority: ["urgent", "blocking", "high"].includes(question.priority)
+        ? "today"
+        : "next_visit",
+      question: questionSet.answerer === "recipient"
+        ? question.display.recipient_text
+        : question.display.caregiver_text,
+      reason: question.display.helper_text,
+      status: answered ? "answered" : "open",
+      ...(answer ? { answer } : {}),
+      ...(answered && response ? { answeredAt: response.answered_at } : {}),
+      sourceQuestionSetId: questionSet.question_set_id,
+      sourceQuestionId: question.question_id,
+      triggerRefs: [...question.trigger_refs],
+      evidenceLevel: answered
+        ? response?.answered_by === "recipient"
+          ? "recipient_reported"
+          : "caregiver_reported"
+        : "unconfirmed",
+    } satisfies ClinicianQuestion;
+  });
+}
+
+async function clinicianQuestionsFromActualAccount(
+  firestore: FirestoreLike,
+  scope: CareDataScope,
+  fallback: ClinicianQuestion[],
+) {
+  const recipient = firestore.collection("careRecipients").doc(scope.recipientId);
+  const questionSets = await recipient.collection("questionSets")
+    .orderBy("generated_at", "desc")
+    .limit(1)
+    .get();
+  const questionSet = questionSets.docs[0]?.data() as PatientQuestionSet | undefined;
+  if (!questionSet || questionSet.subject_ref !== scope.recipientId) return fallback;
+  const responses = await recipient.collection("questionResponses")
+    .where("question_set_id", "==", questionSet.question_set_id)
+    .get();
+  const response = responses.docs
+    .map((document) => document.data() as PatientQuestionResponse)
+    .filter((item) => item.subject_ref === scope.recipientId)
+    .sort((left, right) => right.answered_at.localeCompare(left.answered_at))[0];
+  return projectClinicianQuestions(questionSet, response);
+}
+
 async function assertActiveDemoScope(
   scope: CareDataScope,
   firestore: FirestoreLike,
@@ -243,7 +314,15 @@ export async function getCareSnapshot(scope: CareDataScope): Promise<CareSnapsho
   assertValidScope(scope);
   const firestore = scope.firestore ?? await getAdminFirestore();
   // Storage failures are failures, never authoritative empty snapshots.
-  return fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  const snapshot = fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  return {
+    ...snapshot,
+    clinicianQuestions: await clinicianQuestionsFromActualAccount(
+      firestore,
+      scope,
+      snapshot.clinicianQuestions,
+    ),
+  };
 }
 
 export async function getCareRevision(scope: CareDataScope): Promise<number> {

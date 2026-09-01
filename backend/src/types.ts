@@ -474,6 +474,14 @@ export interface ClinicianQuestion {
   priority: "today" | "next_visit";
   question: string;
   reason: string;
+  status?: "open" | "answered" | "resolved";
+  answer?: string;
+  answeredAt?: string;
+  resolvedAt?: string;
+  sourceQuestionSetId?: string;
+  sourceQuestionId?: string;
+  triggerRefs?: string[];
+  evidenceLevel?: "recipient_reported" | "caregiver_reported" | "unconfirmed";
 }
 
 export interface CareSnapshot {
