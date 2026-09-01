@@ -3,3 +3,5 @@
 backend/test-support/pill-photo-fixtures/*.json text eol=lf
 backend/test-support/pill-photo-fixtures/*.gz binary
 backend/test-support/pill-photo-fixtures/images/**/*.png binary
+backend/test-support/pill-photo-evaluation/*.json text eol=lf
+backend/test-support/pill-photo-evaluation/images/*.png binary

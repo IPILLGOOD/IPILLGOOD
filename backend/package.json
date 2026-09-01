@@ -8,10 +8,10 @@
     "./dates": "./src/dates.ts"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test src/*.test.ts test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts",
+    "test": "node --experimental-strip-types --test src/*.test.ts test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts",
     "pill:replay": "node --experimental-strip-types scripts/pill-photo.ts replay",
     "pill:regression": "node --experimental-strip-types scripts/pill-regression.ts",
-    "pill:verify": "node --experimental-strip-types --test test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts",
+    "pill:verify": "node --experimental-strip-types --test test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts",
     "verify:live": "node --experimental-strip-types scripts/verify-live-apis.mjs",
     "seed": "node scripts/seed-firestore.mjs",
     "deploy": "firebase deploy --only firestore:rules,firestore:indexes"

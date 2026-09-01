@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "pill-photo-capture-eval-2026-09-01-v1",
+  "purpose": "feature_extraction_and_candidate_recall_evaluation",
+  "reviewedAt": "2026-09-01",
+  "catalogFixtureVersion": "pill-photo-shared-2026-08-31-v1",
+  "scope": {
+    "productCount": 4,
+    "caseCount": 8,
+    "imageCount": 16,
+    "claim": "capture_level_repeatability_only",
+    "limitations": [
+      "The validation and holdout splits contain different photographs of the same four products used by the development fixture.",
+      "This fixture cannot establish performance on unseen products, user phone photographs, cluttered backgrounds, or damaged pills.",
+      "The holdout split must not be used for prompt, preprocessing, OCR, search-rule, or threshold tuning."
+    ]
+  },
+  "products": [
+    {
+      "receipt": "29002",
+      "expectedItemSeq": "201505259",
+      "expectedObservation": {
+        "form": "capsule",
+        "shape": "타원형",
+        "colors": ["분홍"],
+        "frontImprint": "OPQ",
+        "backImprint": null
+      }
+    },
+    {
+      "receipt": "40792",
+      "expectedItemSeq": "201800300",
+      "expectedObservation": {
+        "form": "capsule",
+        "shape": "장방형",
+        "colors": ["노랑", "주황"],
+        "frontImprint": "CLP DE1",
+        "backImprint": null
+      }
+    },
+    {
+      "receipt": "41107",
+      "expectedItemSeq": "201906970",
+      "expectedObservation": {
+        "form": "capsule",
+        "shape": "장방형",
+        "colors": ["하양"],
+        "frontImprint": "AJU100",
+        "backImprint": null
+      }
+    },
+    {
+      "receipt": "41344",
+      "expectedItemSeq": "200801352",
+      "expectedObservation": {
+        "form": "tablet",
+        "shape": "타원형",
+        "colors": ["노랑"],
+        "frontImprint": "HM",
+        "backImprint": "10"
+      }
+    }
+  ],
+  "images": [
+    {
+      "path": "images/capture-v-01-a.png",
+      "sourcePath": "29002/IMG_20201202_163904.png",
+      "sourceIndex": 6,
+      "officialSide": "front",
+      "sha256": "761c72cc8254b9d34534b256332e3af3c6ae701a8f383afb7c80eb34a9e323fd",
+      "bytes": 579065
+    },
+    {
+      "path": "images/capture-v-01-b.png",
+      "sourcePath": "29002/IMG_20201202_163940.png",
+      "sourceIndex": 26,
+      "officialSide": "back",
+      "sha256": "be7d81e806cf296cb3409cd90739e8efa115729c7aa800ae2238b8837d0bf2fc",
+      "bytes": 524861
+    },
+    {
+      "path": "images/capture-v-02-a.png",
+      "sourcePath": "40792/IMG_20201201_202825.png",
+      "sourceIndex": 8,
+      "officialSide": "front",
+      "sha256": "4587ac2f3f1c486de8e918d6bc25ee95576e8c534ad5500876fb03413c1aee4a",
+      "bytes": 709186
+    },
+    {
+      "path": "images/capture-v-02-b.png",
+      "sourcePath": "40792/IMG_20201201_202859.png",
+      "sourceIndex": 28,
+      "officialSide": "back",
+      "sha256": "4bac150eed7d1cac5b123b137933dc01e79be07ae8251fc93d2400f2a197854b",
+      "bytes": 703723
+    },
+    {
+      "path": "images/capture-v-03-a.png",
+      "sourcePath": "41107/IMG_20201117_204906.png",
+      "sourceIndex": 6,
+      "officialSide": "front",
+      "sha256": "dcfa4010734f40c285049a04739d12caa3d9c4fbcd7fd6e466afbd9750bc8771",
+      "bytes": 524410
+    },
+    {
+      "path": "images/capture-v-03-b.png",
+      "sourcePath": "41107/IMG_20201117_204949.png",
+      "sourceIndex": 28,
+      "officialSide": "back",
+      "sha256": "013c7557d216232dd29d4d1996b0c40c4b57ac97008e935bffc46777d743830f",
+      "bytes": 512373
+    },
+    {
+      "path": "images/capture-v-04-a.png",
+      "sourcePath": "41344/IMG_20201120_002106.png",
+      "sourceIndex": 6,
+      "officialSide": "back",
+      "sha256": "b0a138f3f5c36347e3fc6d3915652edfd880b5796bc96e3bcbdb5a7a4237367c",
+      "bytes": 392165
+    },
+    {
+      "path": "images/capture-v-04-b.png",
+      "sourcePath": "41344/IMG_20201120_002141.png",
+      "sourceIndex": 26,
+      "officialSide": "front",
+      "sha256": "c2f8b2b6f17d41725cbfe869b4fd449d80849b097e3f1d2963a91b2a617a80c4",
+      "bytes": 416884
+    },
+    {
+      "path": "images/capture-h-01-a.png",
+      "sourcePath": "29002/IMG_20201202_163915.png",
+      "sourceIndex": 14,
+      "officialSide": "front",
+      "sha256": "a1ecbd6481a50c9f53a7cf0baa763aad312a67451de093f4bba3554195ae7103",
+      "bytes": 567591
+    },
+    {
+      "path": "images/capture-h-01-b.png",
+      "sourcePath": "29002/IMG_20201202_163950.png",
+      "sourceIndex": 34,
+      "officialSide": "back",
+      "sha256": "4204aa1113a2010d494ae953ddcfcd5128600766c58a314a3a287d7ca4e00939",
+      "bytes": 542289
+    },
+    {
+      "path": "images/capture-h-02-a.png",
+      "sourcePath": "40792/IMG_20201201_202834.png",
+      "sourceIndex": 14,
+      "officialSide": "front",
+      "sha256": "6dd05a9da8481514a7c6638f67581ede573315b8a537ca68b684242504e01b41",
+      "bytes": 736254
+    },
+    {
+      "path": "images/capture-h-02-b.png",
+      "sourcePath": "40792/IMG_20201201_202908.png",
+      "sourceIndex": 34,
+      "officialSide": "back",
+      "sha256": "a0f8fa5c95bd3f8d70277ec0b95b159fcc509d08d8ae084ddb69766f1a599ec7",
+      "bytes": 696739
+    },
+    {
+      "path": "images/capture-h-03-a.png",
+      "sourcePath": "41107/IMG_20201117_204924.png",
+      "sourceIndex": 18,
+      "officialSide": "front",
+      "sha256": "27037d56e23cd713fab652480873a2b2604cc88e9d931a5f9398b1d80d8111df",
+      "bytes": 523743
+    },
+    {
+      "path": "images/capture-h-03-b.png",
+      "sourcePath": "41107/IMG_20201117_205001.png",
+      "sourceIndex": 36,
+      "officialSide": "back",
+      "sha256": "349f699132cb8378739f6e5002a8feda522134d783f1d93ccf85bbcbd487bd57",
+      "bytes": 521689
+    },
+    {
+      "path": "images/capture-h-04-a.png",
+      "sourcePath": "41344/IMG_20201120_002117.png",
+      "sourceIndex": 14,
+      "officialSide": "back",
+      "sha256": "ff712f0da2566c1a29270354eb0f1dfdc7870011883329bc117204a7153bc6ca",
+      "bytes": 411177
+    },
+    {
+      "path": "images/capture-h-04-b.png",
+      "sourcePath": "41344/IMG_20201120_002151.png",
+      "sourceIndex": 34,
+      "officialSide": "front",
+      "sha256": "962b1d6703eaf2e6970aa5105fa97efb09fc1e2412159cb34f62019930dc9910",
+      "bytes": 408273
+    }
+  ],
+  "cases": [
+    {
+      "id": "capture-v-01",
+      "split": "validation",
+      "receipt": "29002",
+      "expectedItemSeq": "201505259",
+      "photos": [
+        "images/capture-v-01-a.png",
+        "images/capture-v-01-b.png"
+      ]
+    },
+    {
+      "id": "capture-v-02",
+      "split": "validation",
+      "receipt": "40792",
+      "expectedItemSeq": "201800300",
+      "photos": [
+        "images/capture-v-02-a.png",
+        "images/capture-v-02-b.png"
+      ]
+    },
+    {
+      "id": "capture-v-03",
+      "split": "validation",
+      "receipt": "41107",
+      "expectedItemSeq": "201906970",
+      "photos": [
+        "images/capture-v-03-a.png",
+        "images/capture-v-03-b.png"
+      ]
+    },
+    {
+      "id": "capture-v-04",
+      "split": "validation",
+      "receipt": "41344",
+      "expectedItemSeq": "200801352",
+      "photos": [
+        "images/capture-v-04-a.png",
+        "images/capture-v-04-b.png"
+      ]
+    },
+    {
+      "id": "capture-h-01",
+      "split": "holdout",
+      "receipt": "29002",
+      "expectedItemSeq": "201505259",
+      "photos": [
+        "images/capture-h-01-a.png",
+        "images/capture-h-01-b.png"
+      ]
+    },
+    {
+      "id": "capture-h-02",
+      "split": "holdout",
+      "receipt": "40792",
+      "expectedItemSeq": "201800300",
+      "photos": [
+        "images/capture-h-02-a.png",
+        "images/capture-h-02-b.png"
+      ]
+    },
+    {
+      "id": "capture-h-03",
+      "split": "holdout",
+      "receipt": "41107",
+      "expectedItemSeq": "201906970",
+      "photos": [
+        "images/capture-h-03-a.png",
+        "images/capture-h-03-b.png"
+      ]
+    },
+    {
+      "id": "capture-h-04",
+      "split": "holdout",
+      "receipt": "41344",
+      "expectedItemSeq": "200801352",
+      "photos": [
+        "images/capture-h-04-a.png",
+        "images/capture-h-04-b.png"
+      ]
+    }
+  ],
+  "rights": {
+    "checkedAt": "2026-08-31",
+    "statedScope": "이용허락범위 제한 없음",
+    "imageMetadataUrl": "https://www.data.go.kr/data/15112582/fileData.do",
+    "imageDownloadNotice": "https://health.kr/notice/notice_view.asp?show_idx=1001",
+    "catalogMetadataUrl": "https://www.data.go.kr/data/15057639/openapi.do"
+  }
+}
