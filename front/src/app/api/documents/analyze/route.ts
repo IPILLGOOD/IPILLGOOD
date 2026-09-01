@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 
 import {
   analyzeMedicationDocument,
+  advanceDocumentAnalysisJob,
+  assertDocumentAnalysisJobActive,
   withCareAccountProcessing,
+  DocumentAnalysisCancelledError,
   isServiceAccountActive,
   DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
@@ -14,7 +17,10 @@ import {
   MedicationDuplicateResolutionRequiredError,
   registerDocument,
   saveDocumentImportReview,
+  startDocumentAnalysisJob,
+  type CareDataScope,
   type ClinicalDocumentType,
+  type DocumentAnalysisJobResult,
   validateClinicalDocumentFile,
 } from "@care-atlas/backend";
 
@@ -25,8 +31,45 @@ import { rateLimitResponse } from "@/lib/rate-limit-core";
 
 const allowedDocumentTypes = new Set<ClinicalDocumentType>(["처방전", "진단서"]);
 const maxFileSize = 5 * 1024 * 1024;
+const overallAnalysisTimeoutMs = 120_000;
+
+class OverallAnalysisTimeoutError extends Error {
+  constructor() {
+    super("DOCUMENT_ANALYSIS_JOB_TIMEOUT");
+    this.name = "OverallAnalysisTimeoutError";
+  }
+}
+
+async function withinOverallBudget<T>(operation: Promise<T>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new OverallAnalysisTimeoutError()), overallAnalysisTimeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function completedJobResponse(
+  scope: CareDataScope,
+  jobId: string,
+  result: DocumentAnalysisJobResult,
+  status = 200,
+) {
+  const job = await advanceDocumentAnalysisJob(scope, jobId, "completed", { result });
+  if (job.state === "cancellation_requested") {
+    await advanceDocumentAnalysisJob(scope, jobId, "cancelled");
+    throw new DocumentAnalysisCancelledError();
+  }
+  return Response.json({ ...result, job }, { status });
+}
 
 export async function POST(request: Request) {
+  let activeJob: { scope: CareDataScope; jobId: string } | undefined;
   const session = await getSession();
   if (!session) {
     return Response.json({ message: "로그인이 필요해요." }, { status: 401 });
@@ -92,11 +135,6 @@ export async function POST(request: Request) {
     const fileBytes =
       file instanceof File ? new Uint8Array(await file.arrayBuffer()) : undefined;
     const claimedContentType = file instanceof File ? file.type : "";
-    const validatedFile = fileBytes
-      ? await validateClinicalDocumentFile(fileBytes, claimedContentType)
-      : undefined;
-    const contentType = validatedFile?.contentType ?? "image/jpeg";
-    const contentBase64 = fileBytes ? Buffer.from(fileBytes).toString("base64") : undefined;
     const contentHash = createHash("sha256")
       .update(typedDocumentType)
       .update("\0")
@@ -105,6 +143,10 @@ export async function POST(request: Request) {
     const requestIdempotencyKey = idempotencyKey || contentHash;
     if (!/^[^/]{1,256}$/.test(requestIdempotencyKey)) {
       return Response.json({ message: "문서 요청 식별자가 올바르지 않아요." }, { status: 400 });
+    }
+    const jobId = String(formData.get("jobId") ?? requestIdempotencyKey).trim();
+    if (!/^[A-Za-z0-9_-]{8,128}$/.test(jobId)) {
+      return Response.json({ message: "분석 작업 식별자가 올바르지 않아요." }, { status: 400 });
     }
 
     if (session.provider === "google" && !await isServiceAccountActive(session.id)) {
@@ -116,6 +158,31 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+    const started = await startDocumentAnalysisJob(scope, {
+      id: jobId,
+      idempotencyKey: requestIdempotencyKey,
+      contentHash,
+      fileName,
+      documentType: typedDocumentType,
+    });
+    activeJob = { scope, jobId };
+    if (!started.shouldProcess) {
+      if (started.job.state === "completed" && started.job.result) {
+        return Response.json({ ...started.job.result, job: started.job });
+      }
+      return Response.json({
+        message: "같은 문서 분석 작업이 이미 진행 중이에요.",
+        job: started.job,
+      }, { status: 202 });
+    }
+    await advanceDocumentAnalysisJob(scope, jobId, "uploading");
+    const validatedFile = fileBytes
+      ? await validateClinicalDocumentFile(fileBytes, claimedContentType)
+      : undefined;
+    const contentType = validatedFile?.contentType ?? "image/jpeg";
+    const contentBase64 = fileBytes ? Buffer.from(fileBytes).toString("base64") : undefined;
+    await advanceDocumentAnalysisJob(scope, jobId, "extracting");
+    await assertDocumentAnalysisJobActive(scope, jobId);
     const existingDocument = (await getCareSnapshot(scope)).documents.find(
       (document) => document.contentHash === contentHash,
     );
@@ -131,7 +198,7 @@ export async function POST(request: Request) {
             (medication) => medication.reviewStatus !== "verified",
           ).length
         : 0;
-      return Response.json({
+      return completedJobResponse(scope, jobId, {
         message: draft
           ? "이미 등록한 같은 문서예요. 기존 복약 초안을 불러왔어요."
           : "이미 등록한 같은 문서예요. 기존 분석 결과를 불러왔어요.",
@@ -148,23 +215,29 @@ export async function POST(request: Request) {
 
     const pendingReview = await getDocumentImportReview(scope, requestIdempotencyKey, contentHash);
     if (pendingReview && !duplicateAction) {
-      return Response.json({
+      return completedJobResponse(scope, jobId, {
         message: "기존 복약과 겹치는 후보가 있어 병합 또는 별도 등록을 선택해주세요.",
         analysis: pendingReview.analysis,
         duplicateResolutionRequired: true,
         duplicateCandidates: pendingReview.duplicateCandidates,
         idempotencyKey: requestIdempotencyKey,
-      }, { status: 409 });
+      }, 409);
     }
 
+    await advanceDocumentAnalysisJob(scope, jobId, "analyzing");
     const result = pendingReview
       ? { status: "complete" as const, message: "저장된 분석 결과를 불러왔어요.", analysis: pendingReview.analysis }
-      : await withCareAccountProcessing(scope.recipientId, () => analyzeMedicationDocument({
-          documentType: typedDocumentType,
-          fileName,
-          contentType,
-          contentBase64,
-        }));
+      : await withinOverallBudget(withCareAccountProcessing(
+          scope.recipientId,
+          () => analyzeMedicationDocument({
+            documentType: typedDocumentType,
+            fileName,
+            contentType,
+            contentBase64,
+          }),
+        ));
+    await assertDocumentAnalysisJobActive(scope, jobId);
+    await advanceDocumentAnalysisJob(scope, jobId, "saving_draft");
     let document;
     try {
       document = await registerDocument(scope, {
@@ -176,6 +249,7 @@ export async function POST(request: Request) {
         analysis: result.analysis,
         requestIdempotencyKey,
         duplicateAction,
+        analysisJobId: jobId,
       });
     } catch (error) {
       if (!(error instanceof MedicationDuplicateResolutionRequiredError)) throw error;
@@ -188,14 +262,15 @@ export async function POST(request: Request) {
         isSample,
         analysis: result.analysis,
         duplicateCandidates: error.candidates,
+        analysisJobId: jobId,
       });
-      return Response.json({
+      return completedJobResponse(scope, jobId, {
         message: error.message,
         analysis: result.analysis,
         duplicateResolutionRequired: true,
         duplicateCandidates: review.duplicateCandidates,
         idempotencyKey: requestIdempotencyKey,
-      }, { status: 409 });
+      }, 409);
     }
 
     const draft = document.medicationDraftId
@@ -208,7 +283,7 @@ export async function POST(request: Request) {
           (medication) => medication.reviewStatus !== "verified",
         ).length
       : 0;
-    return Response.json({
+    return completedJobResponse(scope, jobId, {
       message: document.duplicateResolution === "merge"
         ? `${result.message} 기존 복약 계획과 병합해 중복 일정은 만들지 않았어요.`
         : reviewMedicationCount > 0
@@ -227,6 +302,43 @@ export async function POST(request: Request) {
       duplicateResolution: document.duplicateResolution,
     });
   } catch (error) {
+    if (error instanceof DocumentAnalysisCancelledError) {
+      if (activeJob) await advanceDocumentAnalysisJob(activeJob.scope, activeJob.jobId, "cancelled");
+      return Response.json({ message: error.message, cancelled: true }, { status: 409 });
+    }
+    if (activeJob) {
+      const timeout = error instanceof OverallAnalysisTimeoutError;
+      const failedJob = await advanceDocumentAnalysisJob(activeJob.scope, activeJob.jobId, "failed", {
+        error: {
+          code: timeout ? "OVERALL_TIMEOUT" :
+            error instanceof DocumentUploadValidationError ? "FILE_VALIDATION" :
+              error instanceof DocumentAnalysisNotConfiguredError ? "SERVICE_NOT_CONFIGURED" :
+                error instanceof DocumentAnalysisIncompleteError ? "INCOMPLETE_ANALYSIS" :
+                  "ANALYSIS_FAILED",
+          message: timeout
+            ? "전체 분석 시간이 초과됐어요. 같은 작업을 안전하게 다시 시도할 수 있어요."
+            : error instanceof DocumentUploadValidationError
+              ? error.userMessage
+              : error instanceof DocumentAnalysisIncompleteError
+                ? "문서에서 정보를 충분히 읽지 못했어요. 더 선명한 파일로 다시 시도해주세요."
+                : "문서를 분석하지 못했어요. 잠시 후 다시 시도해주세요.",
+          retryable: !(error instanceof DocumentUploadValidationError),
+        },
+      });
+      if (failedJob.state === "cancellation_requested") {
+        await advanceDocumentAnalysisJob(activeJob.scope, activeJob.jobId, "cancelled");
+        return Response.json(
+          { message: "문서 분석이 취소되었습니다.", cancelled: true },
+          { status: 409 },
+        );
+      }
+    }
+    if (error instanceof OverallAnalysisTimeoutError) {
+      return Response.json(
+        { message: "전체 분석 시간이 초과됐어요. 같은 작업을 안전하게 다시 시도할 수 있어요." },
+        { status: 504 },
+      );
+    }
     if (error instanceof DocumentUploadValidationError) {
       return Response.json({ message: error.userMessage }, { status: 400 });
     }

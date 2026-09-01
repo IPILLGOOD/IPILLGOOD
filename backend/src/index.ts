@@ -29,6 +29,17 @@ export {
   MedicationDuplicateResolutionRequiredError,
 } from "./care-repository";
 export {
+  advanceDocumentAnalysisJob,
+  assertDocumentAnalysisJobActive,
+  getDocumentAnalysisJob,
+  requestDocumentAnalysisJobCancellation,
+  startDocumentAnalysisJob,
+  DocumentAnalysisCancelledError,
+  type DocumentAnalysisJob,
+  type DocumentAnalysisJobResult,
+  type DocumentAnalysisJobState,
+} from "./document-analysis-jobs";
+export {
   DEMO_SESSION_DURATION_SECONDS,
   DEMO_SESSION_CLEANUP_GRACE_SECONDS,
   cleanupExpiredDemoSessions,

@@ -1,13 +1,13 @@
 "use client";
 
-import { FileImage, FlaskConical, GitMerge, Layers3, LoaderCircle, LockKeyhole, TriangleAlert } from "lucide-react";
+import { FileImage, FlaskConical, GitMerge, Layers3, LoaderCircle, LockKeyhole, RotateCcw, Square, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DocumentAnalysisResult } from "@/components/documents/DocumentAnalysisResult";
 import { MedicationDraftReview } from "@/components/documents/MedicationDraftReview";
-import type { ClinicalDocumentType, DocumentAnalysis, MedicationPlanDraft } from "@care-atlas/backend";
+import type { ClinicalDocumentType, DocumentAnalysis, DocumentAnalysisJob, MedicationPlanDraft } from "@care-atlas/backend";
 
 interface AnalysisResponse {
   message?: string;
@@ -24,6 +24,20 @@ interface AnalysisResponse {
     productName: string;
   }>;
   duplicateResolution?: "merge" | "separate";
+  cancelled?: boolean;
+  job?: DocumentAnalysisJob;
+}
+
+const activeJobStorageKey = "ipillgood:document-analysis-job";
+
+function jobStateMessage(job: DocumentAnalysisJob) {
+  if (job.state === "queued") return "분석 작업을 준비하고 있어요.";
+  if (job.state === "uploading") return "문서를 안전하게 전달하고 있어요.";
+  if (job.state === "extracting") return "파일 형식과 문서 내용을 확인하고 있어요.";
+  if (job.state === "analyzing") return "문서 내용을 분석하고 있어요. 정확한 남은 시간은 표시하지 않아요.";
+  if (job.state === "saving_draft") return "분석 결과를 검토용 초안으로 저장하고 있어요.";
+  if (job.state === "cancellation_requested") return "취소 요청을 처리하고 있어요. 결과가 저장되지 않도록 확인 중이에요.";
+  return "문서 분석 상태를 확인하고 있어요.";
 }
 
 function copyFormData(source: FormData) {
@@ -44,7 +58,13 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   const [requiresPeriodReview, setRequiresPeriodReview] = useState(false);
   const [duplicateCandidates, setDuplicateCandidates] = useState<NonNullable<AnalysisResponse["duplicateCandidates"]>>([]);
   const [medicationRegistration, setMedicationRegistration] = useState<"draft" | "pending" | "merged">("draft");
+  const [activeJobId, setActiveJobId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : sessionStorage.getItem(activeJobStorageKey),
+  );
+  const [retryJob, setRetryJob] = useState<Pick<DocumentAnalysisJob, "id" | "idempotencyKey"> | null>(null);
+  const [retryable, setRetryable] = useState(false);
   const retryFormData = useRef<FormData | null>(null);
+  const requestController = useRef<AbortController | null>(null);
   const previewUrl = useMemo(
     () => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : null),
     [file],
@@ -56,15 +76,98 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     };
   }, [previewUrl]);
 
+  const applyCompletedResponse = useCallback((body: AnalysisResponse) => {
+    if (body.duplicateResolutionRequired && body.analysis) {
+      setStatus("success");
+      setMessage(body.message ?? "기존 복약과 겹치는 후보를 확인해주세요.");
+      setAnalysis(body.analysis);
+      setDuplicateCandidates(body.duplicateCandidates ?? []);
+      setMedicationRegistration("pending");
+      setRetryable(false);
+      setRetryJob(null);
+      return;
+    }
+    if (!body.analysis) return;
+    setStatus("success");
+    setMessage(body.message ?? "문서 분석을 마쳤어요.");
+    setAnalysis(body.analysis);
+    setDocumentId(body.document?.id ?? null);
+    setDraft(body.draft ?? null);
+    setRequiresPeriodReview(body.requiresPeriodReview === true);
+    setMedicationRegistration(body.duplicateResolution === "merge" ? "merged" : "draft");
+    setRetryable(false);
+    setRetryJob(null);
+    router.refresh();
+  }, [router]);
+
+  useEffect(() => {
+    if (!activeJobId) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/documents/analyze/jobs/${encodeURIComponent(activeJobId)}`, {
+          cache: "no-store",
+        });
+        if (response.status === 404) {
+          if (!stopped) timer = setTimeout(poll, 600);
+          return;
+        }
+        const body = (await response.json()) as { job?: DocumentAnalysisJob; message?: string };
+        if (!response.ok || !body.job) throw new Error(body.message ?? "분석 상태를 확인하지 못했어요.");
+        const job = body.job;
+        if (["queued", "uploading", "extracting", "analyzing", "saving_draft", "cancellation_requested"].includes(job.state)) {
+          setStatus("pending");
+          setMessage(jobStateMessage(job));
+          if (!stopped) timer = setTimeout(poll, 750);
+          return;
+        }
+        if (job.state === "completed" && job.result) {
+          applyCompletedResponse({ ...job.result, job });
+          return;
+        }
+        if (job.state === "cancelled") {
+          setStatus("error");
+          setMessage("문서 분석을 취소했어요. 결과와 초안은 저장하지 않았어요. 같은 파일을 다시 선택하면 이 작업을 안전하게 재시도해요.");
+          setRetryJob({ id: job.id, idempotencyKey: job.idempotencyKey });
+          setRetryable(retryFormData.current !== null);
+          return;
+        }
+        if (job.state === "failed") {
+          setStatus("error");
+          setMessage(`${job.error?.message ?? "문서 분석에 실패했어요."} 같은 파일을 다시 선택하면 이 작업을 이어서 재시도해요.`);
+          setRetryJob(job.error?.retryable === true
+            ? { id: job.id, idempotencyKey: job.idempotencyKey }
+            : null);
+          setRetryable(job.error?.retryable === true && retryFormData.current !== null);
+        }
+      } catch (error) {
+        if (stopped) return;
+        setStatus("error");
+        setMessage(error instanceof Error ? error.message : "분석 상태를 확인하지 못했어요.");
+        setRetryable(retryFormData.current !== null);
+      }
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeJobId, applyCompletedResponse]);
+
   async function requestAnalysis(formData: FormData) {
-    if (!formData.get("idempotencyKey")) formData.set("idempotencyKey", crypto.randomUUID());
+    if (!formData.get("idempotencyKey")) {
+      formData.set("idempotencyKey", retryJob?.idempotencyKey ?? crypto.randomUUID());
+    }
+    if (!formData.get("jobId")) formData.set("jobId", retryJob?.id ?? crypto.randomUUID());
+    setRetryJob(null);
     retryFormData.current = copyFormData(formData);
+    const jobId = String(formData.get("jobId"));
+    sessionStorage.setItem(activeJobStorageKey, jobId);
+    setActiveJobId(jobId);
+    setRetryable(false);
     setStatus("pending");
-    setMessage(
-      documentType === "진단서"
-        ? "진단명을 확인하고 공식 질병 정보와 신뢰할 수 있는 출처를 조회하고 있어요."
-        : "문서에서 중요한 내용을 찾고 쉬운 말로 정리하고 있어요.",
-    );
+    setMessage("분석 작업을 준비하고 있어요.");
     setAnalysis(null);
     setDocumentId(null);
     setDraft(null);
@@ -73,34 +176,34 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     setMedicationRegistration("draft");
 
     try {
+      requestController.current?.abort();
+      const controller = new AbortController();
+      requestController.current = controller;
       const response = await fetch("/api/documents/analyze", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
       const body = (await response.json()) as AnalysisResponse;
-      if (response.status === 409 && body.duplicateResolutionRequired && body.analysis) {
-        setStatus("success");
-        setMessage(body.message ?? "기존 복약과 겹치는 후보를 확인해주세요.");
-        setAnalysis(body.analysis);
-        setDuplicateCandidates(body.duplicateCandidates ?? []);
-        setMedicationRegistration("pending");
+      if (response.status === 202 && body.job) {
+        setMessage(jobStateMessage(body.job));
+        return;
+      }
+      if (body.cancelled) return;
+      if ((response.ok || response.status === 409) && (body.analysis || body.duplicateResolutionRequired)) {
+        applyCompletedResponse(body);
         return;
       }
       if (!response.ok || !body.analysis) {
         throw new Error(body.message ?? "문서를 분석하지 못했어요.");
       }
-
-      setStatus("success");
-      setMessage(body.message ?? "문서 분석을 마쳤어요.");
-      setAnalysis(body.analysis);
-      setDocumentId(body.document?.id ?? null);
-      setDraft(body.draft ?? null);
-      setRequiresPeriodReview(body.requiresPeriodReview === true);
-      setMedicationRegistration(body.duplicateResolution === "merge" ? "merged" : "draft");
-      router.refresh();
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "문서를 분석하지 못했어요.");
+      setRetryable(retryFormData.current !== null);
+    } finally {
+      requestController.current = null;
     }
   }
 
@@ -120,7 +223,29 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     if (!retryFormData.current) return;
     const formData = copyFormData(retryFormData.current);
     formData.set("duplicateAction", action);
+    formData.set("jobId", crypto.randomUUID());
     await requestAnalysis(formData);
+  }
+
+  async function cancelAnalysis() {
+    if (!activeJobId) return;
+    setMessage("취소 요청을 보내고 있어요.");
+    const response = await fetch(`/api/documents/analyze/jobs/${encodeURIComponent(activeJobId)}`, {
+      method: "DELETE",
+    });
+    const body = (await response.json()) as { message?: string; job?: DocumentAnalysisJob };
+    if (!response.ok) {
+      setStatus("error");
+      setMessage(body.message ?? "취소 요청을 보내지 못했어요.");
+      return;
+    }
+    requestController.current?.abort();
+    setMessage(body.message ?? "취소 요청을 접수했어요.");
+  }
+
+  async function retryAnalysis() {
+    if (!retryFormData.current) return;
+    await requestAnalysis(copyFormData(retryFormData.current));
   }
 
   const pending = status === "pending";
@@ -199,6 +324,16 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
             {pending ? <LoaderCircle className="spin" size={18} aria-hidden="true" /> : null}
             {pending ? "분석하는 중…" : `${documentType} 첨부하고 분석하기`}
           </button>
+          {pending && activeJobId ? (
+            <button className="button button--secondary" type="button" onClick={cancelAnalysis}>
+              <Square size={16} aria-hidden="true" /> 분석 취소
+            </button>
+          ) : null}
+          {status === "error" && retryable ? (
+            <button className="button button--secondary" type="button" onClick={retryAnalysis}>
+              <RotateCcw size={17} aria-hidden="true" /> 같은 작업 다시 시도
+            </button>
+          ) : null}
         </div>
       </form>
 
@@ -223,6 +358,8 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         <p
           className={`analysis-status analysis-status--${status}`}
           role={status === "error" ? "alert" : "status"}
+          aria-live={status === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
         >
           {message}
         </p>

@@ -23,6 +23,7 @@ import { isEphemeralDemoSessionActive } from "./demo-session.ts";
 import type { FirestoreLike, TransactionLike, DocumentReferenceLike } from "./firestore-rest.ts";
 import { stableJson } from "./stable-json.ts";
 import { conditionFromDiagnosis } from "./nutrition.ts";
+import { DocumentAnalysisCancelledError } from "./document-analysis-jobs.ts";
 import { normalizeMedicationRecurrence } from "./medication-schedule.ts";
 import {
   addCalendarDays,
@@ -513,6 +514,7 @@ export interface RegisterDocumentInput {
   analysis: ClinicalDocument["analysis"];
   requestIdempotencyKey?: string;
   duplicateAction?: "merge" | "separate";
+  analysisJobId?: string;
 }
 
 export interface MedicationDuplicateCandidate {
@@ -650,8 +652,19 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
     const documentRef = ref.collection("clinicalDocuments").doc(input.contentHash);
     const requestRef = ref.collection("documentImportRequests").doc(requestIdempotencyKey);
     const reviewRef = ref.collection("documentImportReviews").doc(requestIdempotencyKey);
-    const requestRecord = await tx.get(requestRef);
-    const review = await tx.get(reviewRef);
+    const analysisJobRef = input.analysisJobId
+      ? ref.collection("documentAnalysisJobs").doc(input.analysisJobId)
+      : null;
+    const [requestRecord, review, analysisJob] = await Promise.all([
+      tx.get(requestRef),
+      tx.get(reviewRef),
+      analysisJobRef ? tx.get(analysisJobRef) : null,
+    ]);
+    if (analysisJobRef && (!analysisJob?.exists || ["cancellation_requested", "cancelled"].includes(
+      (analysisJob.data() as { state?: string } | undefined)?.state ?? "",
+    ))) {
+      throw new DocumentAnalysisCancelledError();
+    }
     if (requestRecord.exists) {
       const recorded = requestRecord.data() as { contentHash?: string };
       if (recorded.contentHash !== input.contentHash) {
@@ -747,7 +760,10 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
 
 export async function saveDocumentImportReview(
   scope: CareDataScope,
-  input: Omit<DocumentImportReview, "id" | "status" | "createdAt" | "expiresAt"> & { idempotencyKey: string },
+  input: Omit<DocumentImportReview, "id" | "status" | "createdAt" | "expiresAt"> & {
+    idempotencyKey: string;
+    analysisJobId?: string;
+  },
 ) {
   assertValidScope(scope);
   if (!/^[^/]{1,256}$/.test(input.idempotencyKey)) throw new Error("올바르지 않은 요청 식별자입니다.");
@@ -759,7 +775,19 @@ export async function saveDocumentImportReview(
     await assertTransactionScope(tx, firestore, scope);
     const ref = firestore.collection("careRecipients").doc(scope.recipientId)
       .collection("documentImportReviews").doc(input.idempotencyKey);
-    const existing = await tx.get(ref);
+    const analysisJobRef = input.analysisJobId
+      ? firestore.collection("careRecipients").doc(scope.recipientId)
+        .collection("documentAnalysisJobs").doc(input.analysisJobId)
+      : null;
+    const [existing, analysisJob] = await Promise.all([
+      tx.get(ref),
+      analysisJobRef ? tx.get(analysisJobRef) : null,
+    ]);
+    if (analysisJobRef && (!analysisJob?.exists || ["cancellation_requested", "cancelled"].includes(
+      (analysisJob.data() as { state?: string } | undefined)?.state ?? "",
+    ))) {
+      throw new DocumentAnalysisCancelledError();
+    }
     if (existing.exists) {
       const review = existing.data() as DocumentImportReview;
       if (review.contentHash !== input.contentHash) throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
