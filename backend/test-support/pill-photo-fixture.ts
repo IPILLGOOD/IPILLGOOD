@@ -15,6 +15,15 @@ const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest(
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const file = z.object({ file: z.string(), bytes: z.number().int().positive(), sha256: digest });
 const versions = z.object({ review: z.string(), preprocessing: z.string(), prompt: z.string() });
+const historicalCandidateSchema = z.object({ itemSeq: z.string().regex(/^\d{9}$/) }).passthrough();
+const historicalSearchSchema = z.object({
+  status: z.string(), reason: z.string(),
+  candidates: z.array(historicalCandidateSchema),
+  heldCandidates: z.array(historicalCandidateSchema),
+}).passthrough();
+const historicalComparisonSchema = z.object({
+  status: z.string(), reason: z.string(), search: historicalSearchSchema.nullable(),
+}).passthrough();
 const manifestSchema = z.object({
   schemaVersion: z.literal(1), fixtureVersion: z.literal("pill-photo-shared-2026-08-31-v1"),
   purpose: z.literal("historical_offline_replay_only"), photoReviewVersion: z.literal(PILL_PHOTO_REVIEW_VERSION),
@@ -32,6 +41,7 @@ const baselineSchema = z.object({
   rows: z.array(z.object({ id: z.string(), expectedItemSeq: z.string().regex(/^\d{9}$/).nullable(), photos: z.array(z.string()).length(2),
     extraction: z.object({ ok: z.literal(true), features: pillPhotoFeaturesV1Schema,
       usage: z.object({ inputTokens: z.number().int().nonnegative(), outputTokens: z.number().int().nonnegative() }).nullable() }),
+    comparison: historicalComparisonSchema.nullable(),
     evaluation: z.object({ outcome: z.string(), expectedRank: z.number().int().positive().nullable(), expectedHeld: z.boolean(), expectedGateObserved: z.boolean().nullable() }),
   })).length(6),
 });

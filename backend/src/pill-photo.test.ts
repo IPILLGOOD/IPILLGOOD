@@ -4,8 +4,8 @@ import { observedSide, pillEnvelope, pillObservation, pillRecord } from "../test
 import { PILL_PHOTO_CASES, PILL_PHOTO_FILES } from "../test-support/pill-photo-review.ts";
 import { parseOfficialPillPage } from "./official-pill-catalog.ts";
 import { comparePillPhotoFeatures, migratePillPhotoFeaturesV1, PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, pillPhotoFeaturesV1Schema } from "./pill-photo-features.ts";
-import { extractReviewedPillPhotos, parsePillPhotoResponse, pillPhotoRequest, prepareReviewedPillPhoto, reviewedPhotoIndex } from "./pill-photo-experiment.ts";
-import { parsePillPhotoArgs, renderPillPhotoReport, scorePillPhotoCase, type PillPhotoReport } from "../scripts/pill-photo.ts";
+import { applyReviewedPhotoMaskGate, assessReviewedPhotoMask, extractReviewedPillPhotos, MIN_REVIEWED_PILL_MASK_SOLIDITY, parsePillPhotoResponse, pillPhotoRequest, prepareReviewedPillPhoto, reviewedPhotoIndex } from "./pill-photo-experiment.ts";
+import { parsePillPhotoArgs, readReviewedPhoto, renderPillPhotoReport, scorePillPhotoCase, type PillPhotoReport } from "../scripts/pill-photo.ts";
 
 function features() {
   const { source, ...observation } = pillObservation();
@@ -58,6 +58,19 @@ test("사진 손상·불확실한 쌍·동일 면은 후보 검색 전에 재촬
     assert.equal(result.status, "needs_retake");
     assert.equal(result.search, null);
   }
+});
+
+test("검수 사진의 투명 마스크는 깊은 잘림을 로컬에서 감지하고 모델 판정을 덮어쓰되 입력을 변경하지 않는다", async () => {
+  const assessments = await Promise.all(PILL_PHOTO_FILES.map(async (_, index) => assessReviewedPhotoMask(await readReviewedPhoto(index))));
+  assert.deepEqual(assessments.flatMap((assessment, index) => assessment.status === "suspicious" ? [index] : []), [8]);
+  assert.ok(assessments[8]!.alphaSolidity < MIN_REVIEWED_PILL_MASK_SOLIDITY);
+  assert.equal(assessments.filter((assessment) => assessment.status === "accepted")
+    .every((assessment) => assessment.alphaSolidity >= MIN_REVIEWED_PILL_MASK_SOLIDITY), true);
+  const input = pillPhotoFeaturesSchema.parse(features());
+  const before = JSON.stringify(input);
+  const guarded = applyReviewedPhotoMaskGate(input, [assessments[8]!]);
+  assert.equal(guarded.imageArtifact, "present");
+  assert.equal(JSON.stringify(input), before);
 });
 
 test("외부 출력의 약명·품목코드·임의 색상·source 추가와 누락 필드는 거절한다", () => {
@@ -195,8 +208,8 @@ test("평가는 보류·미실행·단순 무검색 결과를 올바른 약 또�
 });
 
 test("정적 HTML은 모델·제품 텍스트를 이스케이프하고 외부 이미지를 자동 요청하지 않는다", () => {
-  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "public-rgba-alpha-bounds-white-1024-v1", prompt: "pill-photo-observation-v2" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
-    sourceUrl: "javascript:alert(1)", rows: [{ id: "<script>alert(1)</script>", kind: "candidate", expectedItemSeq: "209900001", expectedProduct: "<img src=x onerror=alert(1)>", evidenceUrl: null, photos: ["0", "1"], extraction: null, comparison: null, evaluation: scorePillPhotoCase("209900001", null) }] };
+  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "public-rgba-alpha-bounds-white-1024-v1", prompt: "pill-photo-observation-v2", maskPolicy: "reviewed-alpha-solidity-v1" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
+    sourceUrl: "javascript:alert(1)", rows: [{ id: "<script>alert(1)</script>", kind: "candidate", expectedItemSeq: "209900001", expectedProduct: "<img src=x onerror=alert(1)>", evidenceUrl: null, photos: ["0", "1"], extraction: null, maskAssessments: [], comparison: null, evaluation: scorePillPhotoCase("209900001", null) }] };
   const rendered = renderPillPhotoReport(report);
   assert.ok(!rendered.includes("<script>"));
   assert.ok(!rendered.includes("<img src=x"));

@@ -6,6 +6,8 @@ import { PILL_PHOTO_FILES, PILL_PHOTO_REVIEW_VERSION } from "../test-support/pil
 import { PILL_PHOTO_INSTRUCTIONS, PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, type PillPhotoFeatures } from "./pill-photo-features.ts";
 
 export const PILL_PHOTO_PREPROCESSING_VERSION = "public-rgba-alpha-bounds-white-1024-v1";
+export const PILL_PHOTO_MASK_POLICY_VERSION = "reviewed-alpha-solidity-v1";
+export const MIN_REVIEWED_PILL_MASK_SOLIDITY = 0.92;
 const ENDPOINT = "https://api.openai.com/v1/responses";
 const MAX_INPUT_BYTES = 5 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 256 * 1024;
@@ -21,6 +23,81 @@ export function reviewedPhotoIndex(bytes: Uint8Array): number {
   if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > MAX_INPUT_BYTES) return -1;
   const hash = createHash("sha256").update(bytes).digest("hex");
   return PILL_PHOTO_FILES.findIndex((file) => file.sha256 === hash && file.bytes === bytes.length);
+}
+
+export interface ReviewedPhotoMaskAssessment {
+  status: "accepted" | "suspicious";
+  reason: "low_alpha_solidity" | null;
+  alphaSolidity: number;
+  minimumSolidity: number;
+  policyVersion: string;
+}
+
+function convexHull(points: Array<readonly [number, number]>) {
+  const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (origin: readonly [number, number], a: readonly [number, number], b: readonly [number, number]) =>
+    (a[0] - origin[0]) * (b[1] - origin[1]) - (a[1] - origin[1]) * (b[0] - origin[0]);
+  const half = (input: Array<readonly [number, number]>) => {
+    const result: Array<readonly [number, number]> = [];
+    for (const point of input) {
+      while (result.length >= 2 && cross(result[result.length - 2]!, result[result.length - 1]!, point) <= 0) result.pop();
+      result.push(point);
+    }
+    return result;
+  };
+  return [...half(sorted).slice(0, -1), ...half(sorted.reverse()).slice(0, -1)];
+}
+
+function polygonArea(points: Array<readonly [number, number]>) {
+  let twiceArea = 0;
+  for (let index = 0; index < points.length; index++) {
+    const current = points[index]!;
+    const next = points[(index + 1) % points.length]!;
+    twiceArea += current[0] * next[1] - current[1] * next[0];
+  }
+  return Math.abs(twiceArea) / 2;
+}
+
+/** Reviewed transparent PNGs only: a deep concavity is treated as a possible erased/cut-out region. */
+export async function assessReviewedPhotoMask(bytes: Uint8Array): Promise<ReviewedPhotoMaskAssessment> {
+  if (reviewedPhotoIndex(bytes) < 0) throw new Error("unreviewed_photo");
+  const image = sharp(bytes, { limitInputPixels: 25_000_000, failOn: "warning" });
+  const metadata = await image.metadata();
+  if (metadata.format !== "png" || !metadata.hasAlpha || (metadata.pages ?? 1) !== 1) throw new Error("invalid_photo");
+  const { data, info } = await image.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const edgePoints: Array<readonly [number, number]> = [];
+  let alphaPixels = 0;
+  for (let y = 0; y < info.height; y++) {
+    let first = -1;
+    let last = -1;
+    for (let x = 0; x < info.width; x++) {
+      if (data[(y * info.width + x) * info.channels + 3] === 0) continue;
+      alphaPixels++;
+      if (first < 0) first = x;
+      last = x;
+    }
+    if (first >= 0) {
+      edgePoints.push([first, y]);
+      if (last !== first) edgePoints.push([last, y]);
+    }
+  }
+  const hullArea = edgePoints.length >= 3 ? polygonArea(convexHull(edgePoints)) : 0;
+  if (!alphaPixels || hullArea <= 0) throw new Error("invalid_photo");
+  const alphaSolidity = Math.min(1, Number((alphaPixels / hullArea).toFixed(6)));
+  const suspicious = alphaSolidity < MIN_REVIEWED_PILL_MASK_SOLIDITY;
+  return {
+    status: suspicious ? "suspicious" : "accepted",
+    reason: suspicious ? "low_alpha_solidity" : null,
+    alphaSolidity,
+    minimumSolidity: MIN_REVIEWED_PILL_MASK_SOLIDITY,
+    policyVersion: PILL_PHOTO_MASK_POLICY_VERSION,
+  };
+}
+
+export function applyReviewedPhotoMaskGate(features: PillPhotoFeatures, assessments: ReviewedPhotoMaskAssessment[]): PillPhotoFeatures {
+  return assessments.some((assessment) => assessment.status === "suspicious")
+    ? { ...features, imageArtifact: "present" }
+    : features;
 }
 
 /** Only crops fully transparent outside pixels. No inpainting, recoloring, contrast or rotations. */
@@ -146,5 +223,6 @@ export async function extractReviewedPillPhotos(
 }
 
 export const pillPhotoExperimentVersions = {
-  review: PILL_PHOTO_REVIEW_VERSION, preprocessing: PILL_PHOTO_PREPROCESSING_VERSION, prompt: PILL_PHOTO_PROMPT_VERSION,
+  review: PILL_PHOTO_REVIEW_VERSION, preprocessing: PILL_PHOTO_PREPROCESSING_VERSION,
+  prompt: PILL_PHOTO_PROMPT_VERSION, maskPolicy: PILL_PHOTO_MASK_POLICY_VERSION,
 } as const;

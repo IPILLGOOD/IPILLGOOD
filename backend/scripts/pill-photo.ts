@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, open, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PILL_PHOTO_CASES, PILL_PHOTO_FILES, PILL_PHOTO_SOURCE_URL, PILL_PHOTO_EXPECTED_REJECTIONS } from "../test-support/pill-photo-review.ts";
-import { extractReviewedPillPhotos, pillPhotoExperimentVersions, prepareReviewedPillPhoto, reviewedPhotoIndex, type PhotoExtractionResult } from "../src/pill-photo-experiment.ts";
+import { applyReviewedPhotoMaskGate, assessReviewedPhotoMask, extractReviewedPillPhotos, pillPhotoExperimentVersions, prepareReviewedPillPhoto, reviewedPhotoIndex, type PhotoExtractionResult, type ReviewedPhotoMaskAssessment } from "../src/pill-photo-experiment.ts";
 import { comparePillPhotoFeatures, migratePillPhotoFeaturesV1 } from "../src/pill-photo-features.ts";
 import { MAX_PILL_SNAPSHOT_BYTES, snapshotSearchCatalog, validatePillCatalogSnapshot } from "../src/pill-catalog-snapshot.ts";
 import { readBoundedJson } from "./pill-catalog.ts";
@@ -92,6 +92,7 @@ export function scorePillPhotoCase(expectedItemSeq: string | null, comparison: C
 type Row = {
   id: string; kind: string; expectedItemSeq: string | null; expectedProduct: string | null;
   evidenceUrl: string | null; photos: string[]; extraction: PhotoExtractionResult | null;
+  maskAssessments: ReviewedPhotoMaskAssessment[];
   comparison: Comparison | null; evaluation: ReturnType<typeof scorePillPhotoCase>;
   expectedReference?: Array<{ formName: string | null; shape: string | null; colors: string[]; frontImprint: string | null; backImprint: string | null; imageUrl: string | null }>;
 };
@@ -130,6 +131,7 @@ ${report.rows.map((row) => `<section><h2>${html(row.id)} · ${html(row.evaluatio
 <div class="pair">${row.photos.map((path, index) => `<figure><img src="${html(`photo-${path}.png`)}" alt="검수된 공개 사진 ${index === 0 ? "A" : "B"}"><figcaption>사진 ${index === 0 ? "A" : "B"} · ${html(PILL_PHOTO_FILES[Number(path)]?.path)}</figcaption></figure>`).join("")}</div>
 <p>처리 상태: <strong>${html(row.extraction && !row.extraction.ok ? row.extraction.reason : row.comparison?.search?.status ?? row.comparison?.status ?? "not_run")}</strong> · ${html(row.comparison?.search?.reason ?? row.comparison?.reason ?? "미실행")}</p>
 <details open><summary>${report.replay ? "과거에 저장된 사진 특징 (이번에 새로 추출하지 않음)" : "사진에서 추출한 특징"}</summary><pre>${html(JSON.stringify(row.extraction?.ok ? row.extraction.features : null, null, 2))}</pre></details>
+<details><summary>로컬 투명 마스크 품질 점검</summary><pre>${html(JSON.stringify(row.maskAssessments, null, 2))}</pre></details>
 <details><summary>평가용 정답 제품의 공식 특징 (AI 입력 아님)</summary><pre>${html(JSON.stringify(row.expectedReference ?? [], null, 2))}</pre>${(row.expectedReference ?? []).map((item) => safeLink(item.imageUrl, "평가용 공식 이미지 열기")).join(" ")}</details>
 ${row.comparison?.search ? `<p>${html(row.comparison.search.message)} 비교 후보 ${row.comparison.search.metrics.candidateCount}개 / 보류 ${row.comparison.search.metrics.heldCandidateCount}개. 기대 품목 표시 순서: ${html(row.evaluation.expectedRank)} (식별 확률이 아님)</p><table><tr><th>비교 후보</th><th>품목코드</th><th>비교 형태</th><th>공식 이미지</th></tr>${row.comparison.search.candidates.map((candidate) => `<tr><td>${html(candidate.variants[0]?.item.productName)}</td><td>${html(candidate.itemSeq)}</td><td>${html(candidate.matchType)}</td><td>${safeLink(candidate.variants[0]?.item.imageUrl ?? null, "공식 이미지 열기")}</td></tr>`).join("")}</table><details><summary>단계별 후보 수·일치/누락 근거·별도 보류 항목</summary><pre>${html(JSON.stringify(row.comparison.search, null, 2))}</pre></details>` : ""}
 </section>`).join("\n")}<p class="muted">AI가 각인·색상을 잘못 읽으면 후보가 누락되거나 잘못 남을 수 있습니다. 약 봉투·처방전·약사 확인을 대체하지 않습니다.</p></main></html>`;
@@ -149,10 +151,12 @@ export async function runPillPhotoExperiment(args: string[]) {
   if (options.command === "evaluate" && !process.env.OPENAI_API_KEY?.trim()) throw new Error("not_configured");
   const originals = new Map<number, Buffer>();
   const previews = new Map<number, Buffer>();
+  const maskAssessments = new Map<number, ReviewedPhotoMaskAssessment>();
   // Preflight ALL selected files before the first external request.
   for (const index of new Set(options.cases.flatMap((item) => [...item.photos]))) {
     const bytes = await readReviewedPhoto(index);
     originals.set(index, bytes);
+    maskAssessments.set(index, await assessReviewedPhotoMask(bytes));
     previews.set(index, await prepareReviewedPillPhoto(bytes));
   }
   await mkdir(OUTPUT, { recursive: true });
@@ -168,14 +172,15 @@ export async function runPillPhotoExperiment(args: string[]) {
     rows: options.cases.map((item) => ({ id: item.id, kind: item.kind, expectedItemSeq: item.expectedItemSeq,
       expectedProduct: snapshot.items.find((record) => record.itemSeq === item.expectedItemSeq)?.productName ?? null,
       expectedReference: snapshot.items.filter((record) => record.itemSeq === item.expectedItemSeq).map((record) => ({ formName: record.formName, shape: record.shape, colors: record.colors, frontImprint: record.front.imprint, backImprint: record.back.imprint, imageUrl: record.imageUrl })),
-      evidenceUrl: item.evidenceUrl, photos: item.photos.map(String), extraction: null, comparison: null,
+      evidenceUrl: item.evidenceUrl, photos: item.photos.map(String), extraction: null,
+      maskAssessments: item.photos.map((photo) => maskAssessments.get(photo)!), comparison: null,
       evaluation: scorePillPhotoCase(item.expectedItemSeq, null, PILL_PHOTO_EXPECTED_REJECTIONS[item.id]) })),
   };
   if (frozen) {
     for (const row of report.rows) {
       const saved = frozen.baseline.rows.find((item) => item.id === row.id)!;
       row.extraction = { ...saved.extraction, features: migratePillPhotoFeaturesV1(saved.extraction.features) };
-      row.comparison = comparePillPhotoFeatures(row.extraction.features, searchable.catalog);
+      row.comparison = comparePillPhotoFeatures(applyReviewedPhotoMaskGate(row.extraction.features, row.maskAssessments), searchable.catalog);
       row.evaluation = scorePillPhotoCase(row.expectedItemSeq, row.comparison, PILL_PHOTO_EXPECTED_REJECTIONS[row.id]);
     }
   }
@@ -185,7 +190,7 @@ export async function runPillPhotoExperiment(args: string[]) {
       const row = report.rows[index]!;
       report.requests++;
       row.extraction = await extractReviewedPillPhotos([originals.get(item.photos[0])!, originals.get(item.photos[1])!], { allowExternalTransfer: true });
-      if (row.extraction.ok) row.comparison = comparePillPhotoFeatures(row.extraction.features, searchable.catalog);
+      if (row.extraction.ok) row.comparison = comparePillPhotoFeatures(applyReviewedPhotoMaskGate(row.extraction.features, row.maskAssessments), searchable.catalog);
       row.evaluation = scorePillPhotoCase(item.expectedItemSeq, row.comparison, PILL_PHOTO_EXPECTED_REJECTIONS[item.id]);
       await writeFile(join(directory, `case-${item.id}.json`), serializePillProfile(row), { flag: "wx", mode: 0o600 });
       console.error(serializePillProfile({ case: item.id, status: row.extraction.ok ? row.comparison?.search?.status ?? row.comparison?.status : row.extraction.reason, evaluation: row.evaluation }));

@@ -6,6 +6,7 @@ import { decodeFrozenPillCatalog, loadFrozenPillPhotoFixture, PILL_PHOTO_FIXTURE
 import { parsePillPhotoArgs, runPillPhotoExperiment, scorePillPhotoCase } from "../scripts/pill-photo.ts";
 import { snapshotSearchCatalog } from "../src/pill-catalog-snapshot.ts";
 import { comparePillPhotoFeatures, migratePillPhotoFeaturesV1 } from "../src/pill-photo-features.ts";
+import { applyReviewedPhotoMaskGate } from "../src/pill-photo-experiment.ts";
 import { PILL_PHOTO_EXPECTED_REJECTIONS } from "./pill-photo-review.ts";
 
 test("공유 데이터는 전체 25387행과 기록된 6건을 해시·버전으로 검증한다", async () => {
@@ -16,6 +17,8 @@ test("공유 데이터는 전체 25387행과 기록된 6건을 해시·버전으
   assert.equal(data.manifest.purpose, "historical_offline_replay_only");
   assert.equal(data.baseline.rows.length, 6);
   assert.equal(data.baseline.rows.filter((row) => row.expectedItemSeq !== null).length, 4);
+  assert.equal(data.baseline.rows.every((row) => row.comparison !== null), true);
+  assert.deepEqual(data.baseline.rows.find((row) => row.id === "image-cutout")?.comparison?.search?.candidates, []);
 });
 
 test("압축 데이터 손상·압축 해제 해시 불일치·행 수 불일치는 정상 카탈로그가 되지 않는다", async () => {
@@ -63,7 +66,9 @@ test("저장된 특징 재생은 네트워크 없이 현재 검색기로 비교�
     // Keep the historical AI observations fixed, but allow genuine search improvements.
     // Replaying must recompute current results, not copy the baseline's old search/evaluation.
     for (const [index, saved] of baseline.rows.entries()) {
-      const currentComparison = comparePillPhotoFeatures(migratePillPhotoFeaturesV1(saved.extraction.features), catalog);
+      const currentComparison = comparePillPhotoFeatures(applyReviewedPhotoMaskGate(
+        migratePillPhotoFeaturesV1(saved.extraction.features), report.rows[index]!.maskAssessments,
+      ), catalog);
       assert.deepEqual(report.rows[index]!.comparison, currentComparison);
       assert.deepEqual(report.rows[index]!.evaluation,
         scorePillPhotoCase(saved.expectedItemSeq, currentComparison, PILL_PHOTO_EXPECTED_REJECTIONS[saved.id]));
