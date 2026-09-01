@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import { PILL_PHOTO_FILES, PILL_PHOTO_REVIEW_VERSION } from "../test-support/pill-photo-review.ts";
 import { PILL_PHOTO_INSTRUCTIONS, PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, type PillPhotoFeatures } from "./pill-photo-features.ts";
+import { prepareValidatedPillPhotoVariants } from "./pill-photo-preprocessing.ts";
 
 export const PILL_PHOTO_PREPROCESSING_VERSION = "public-rgba-alpha-bounds-white-1024-v1";
 export const PILL_PHOTO_MASK_POLICY_VERSION = "reviewed-alpha-solidity-v1";
@@ -120,6 +121,13 @@ export async function prepareReviewedPillPhoto(bytes: Uint8Array): Promise<Buffe
   return sharp(data, { raw: info }).extract({ left, top, width: right - left + 1, height: bottom - top + 1 })
     .flatten({ background: "#ffffff" }).resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
     .png().toBuffer();
+}
+
+/** Fixed public development allowlist wrapper. The current model request still uses the historical single view. */
+export async function prepareReviewedPillPhotoVariants(bytes: Uint8Array) {
+  const index = reviewedPhotoIndex(bytes);
+  if (index < 0) throw new Error("unreviewed_photo");
+  return prepareValidatedPillPhotoVariants(bytes, PILL_PHOTO_FILES[index]!);
 }
 
 export function pillPhotoRequest(first: Buffer, second: Buffer, model: string) {
