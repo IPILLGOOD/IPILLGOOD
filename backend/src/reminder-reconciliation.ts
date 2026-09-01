@@ -20,6 +20,13 @@ function comparable(schedule: MedicationReminderSchedule) {
   return stableJson(fields);
 }
 
+function sameRecurrence(left: MedicationReminderSchedule, right: MedicationReminderSchedule) {
+  if (left.recurrence && right.recurrence) {
+    return stableJson(left.recurrence) === stableJson(right.recurrence);
+  }
+  return left.intervalDays !== undefined && left.intervalDays === right.intervalDays;
+}
+
 export async function syncMedicationReminderSchedules(input: {
   recipientId: string;
   /** Compatibility only. Canonical medicationPlans are always the source of truth. */
@@ -59,7 +66,7 @@ export async function syncMedicationReminderSchedulesInTransaction(input: {
       const plan = medications.find((item) => item.id === current.medicationPlanId);
       if (!plan || current.status !== "active" || Date.parse(current.nextDueAt) + 30 * 60_000 < now.getTime()) continue;
       const canonical = buildMedicationReminderSchedules(input.recipientId, [plan], new Date(Date.parse(current.nextDueAt) - 1)).find((item) => item.id === current.id);
-      const matching = canonical && canonical.nextDueAt === current.nextDueAt && canonical.timeLabel === current.timeLabel && canonical.intervalDays === current.intervalDays && canonical.startDate === current.startDate && canonical.endDate === current.endDate;
+      const matching = canonical && canonical.nextDueAt === current.nextDueAt && canonical.timeLabel === current.timeLabel && sameRecurrence(canonical, current) && canonical.startDate === current.startDate && canonical.endDate === current.endDate;
       if (!matching || (current.planRevisionId && current.planRevisionId !== versions.get(plan.id))) continue;
       const index = desired.findIndex((item) => item.id === current.id);
       if (index < 0) desired.push(canonical);

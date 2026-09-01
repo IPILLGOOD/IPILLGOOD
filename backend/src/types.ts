@@ -39,6 +39,27 @@ export interface SupplementIntake {
   lastConfirmedAt: string;
 }
 
+export type MedicationWeekday =
+  | "mon"
+  | "tue"
+  | "wed"
+  | "thu"
+  | "fri"
+  | "sat"
+  | "sun";
+
+export type MedicationRecurrence =
+  | { kind: "daily"; count: number; source: string }
+  | { kind: "interval_days"; intervalDays: number; count: 1; source: string }
+  | { kind: "weekly"; intervalWeeks: number; count: 1; source: string }
+  | { kind: "weekdays"; weekdays: MedicationWeekday[]; count: 1; source: string }
+  | { kind: "as_needed"; source: string }
+  | {
+      kind: "unknown";
+      reason: "empty" | "unsupported" | "weekday_confirmation_required";
+      source: string;
+    };
+
 export type NutritionInsightStatus =
   | "consider"
   | "caution"
@@ -106,6 +127,7 @@ export interface MedicationPlan {
   descriptionPlain: string;
   doseAmount: string;
   frequency: string;
+  recurrence?: MedicationRecurrence;
   timing: string;
   startDate: string;
   endDate?: string;
