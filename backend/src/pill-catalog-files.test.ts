@@ -8,7 +8,7 @@ import test from "node:test";
 import { officialFeatureExamples, pillSearchMarkdown, pillSnapshotSummary, readBoundedJson, savePillSnapshot } from "../scripts/pill-catalog.ts";
 import { collectPillCatalogSnapshot, snapshotSearchCatalog, validatePillCatalogSnapshot } from "./pill-catalog-snapshot.ts";
 import { parseOfficialPillPage } from "./official-pill-catalog.ts";
-import { pillObservationSchema, searchPillCandidates } from "./pill-identification.ts";
+import { PILL_SEARCH_RULES_VERSION, pillObservationSchema, searchPillCandidates } from "./pill-identification.ts";
 import { pillEnvelope, pillObservation, pillRecord } from "../test-support/pill-fixtures.ts";
 
 const cli = fileURLToPath(new URL("../scripts/pill-catalog.ts", import.meta.url));
@@ -154,6 +154,9 @@ test("결과 문서는 공식 이미지 링크·근거·한계를 보여주고 �
   assert.match(report, /공식 이미지 열기/);
   assert.match(report, /https:\/\/nedrug.mfds.go.kr/);
   assert.match(report, /사진 인식·복용 가능 판정이 아니며/);
+  assert.match(report, /각인 혼동 확장 규칙: pill-imprint-confusion-v1/);
+  assert.match(report, /규칙 등급: strong/);
+  assert.match(report, /관찰 후보/);
   assert.equal(report.includes("[링크](javascript:bad)"), false);
   assert.equal(report.includes("<script>"), false);
 });
@@ -226,6 +229,6 @@ test("오프라인 CLI는 각인 부족·제형 미상 보류를 정상 결과�
   assert.deepEqual(payload.candidates, []);
   assert.equal(payload.heldCandidates.length, 1);
   assert.equal(payload.formPolicyVersion, "pill-form-policy-v1");
-  assert.equal(payload.searchRulesVersion, "pill-structured-v3-evidence-gate");
+  assert.equal(payload.searchRulesVersion, PILL_SEARCH_RULES_VERSION);
   assert.match(await readFile(output.reportPath, "utf8"), /보류 이유/);
 });

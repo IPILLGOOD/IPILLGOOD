@@ -130,6 +130,10 @@ export {
   type OfficialPillPageResult,
 } from "./official-pill-catalog";
 export {
+  MAX_IMPRINT_CANDIDATES_PER_SIDE,
+  MAX_IMPRINT_EXPANSIONS_PER_CANDIDATE,
+  MAX_IMPRINT_READINGS_PER_SIDE,
+  PILL_IMPRINT_CONFUSION_RULES_VERSION,
   PILL_OBSERVATION_SCHEMA_VERSION,
   observedPillSideSchema,
   pillObservationSchema,
@@ -138,6 +142,16 @@ export {
   type PillCatalog,
   type PillObservation,
   type PillCandidate,
+  type PillCandidateGrade,
+  type PillCandidateVariant,
+  type PillFeatureMatch,
+  type PillImprintExpansionSideSummary,
+  type PillImprintExpansionSummary,
+  type PillImprintReadingEvidence,
+  type PillImprintReadingOrigin,
+  type PillImprintSubstitution,
+  type PillReviewReason,
+  type PillSearchMetrics,
   type PillSearchResult,
 } from "./pill-identification";
 export {

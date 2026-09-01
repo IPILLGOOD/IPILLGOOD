@@ -119,12 +119,17 @@ export async function savePillSnapshot(snapshot: PillCatalogSnapshot, parent: st
 const md = (value: string | null) => (value ?? "미상").replace(/[\\`*_{}\[\]()#+.!|<>]/g, "\\$&").replace(/[\r\n]/g, " ");
 export function pillSearchMarkdown(result: PillSearchResult, snapshot: PillCatalogSnapshot): string {
   const lines = ["# 로컬 알약 후보 검색 결과", "", result.notice, "", `상태: **${result.status}** — ${result.message}`,
-    `카탈로그: ${snapshot.version}`, `검색 규칙: ${result.searchRulesVersion}`, `제형 정책: ${result.formPolicyVersion}`,
+    `카탈로그: ${snapshot.version}`, `검색 규칙: ${result.searchRulesVersion}`,
+    `각인 혼동 확장 규칙: ${result.imprintExpansionRulesVersion}`, `제형 정책: ${result.formPolicyVersion}`,
     `전체 수집 검증 시각: ${snapshot.verifiedAt}`, "",
     `비교 후보 ${result.metrics.candidateCount}개 중 ${result.metrics.returnedCount}개 표시${result.truncated ? " (나머지 후보 있음)" : ""}.`,
     `보류 항목 ${result.metrics.heldCandidateCount}개 중 ${result.metrics.heldReturnedCount}개 표시${result.heldTruncated ? " (나머지 보류 항목 있음)" : ""}.`,
     `두 영역의 고유 품목 합집합 ${result.metrics.matchedItemCount}개. 동일 품목의 다른 외형이 각각 포함될 수 있어 두 건수를 단순 합산하지 않습니다.`,
     `카탈로그에서 비지원 제형으로 제외한 레코드 ${result.metrics.unsupportedCatalogRecords}개.`, "",
+    ...(result.imprintExpansion ? [
+      `앞면 각인: 관찰 후보 ${result.imprintExpansion.front.observedCandidateCount}개, 서버 확장 ${result.imprintExpansion.front.serverExpansionCount}개, 전체 비교값 ${result.imprintExpansion.front.totalReadingCount}개${result.imprintExpansion.front.truncated ? " (상한에서 중단)" : ""}.`,
+      `뒷면 각인: 관찰 후보 ${result.imprintExpansion.back.observedCandidateCount}개, 서버 확장 ${result.imprintExpansion.back.serverExpansionCount}개, 전체 비교값 ${result.imprintExpansion.back.totalReadingCount}개${result.imprintExpansion.back.truncated ? " (상한에서 중단)" : ""}.`, "",
+    ] : []),
     "이 결과는 특징 입력 기반입니다. 사진 인식·복용 가능 판정이 아니며, 제공된 example 파일은 공식 필드로 만든 자기 일관성 점검용 입력입니다.", "",
     "| 검색 단계 | 잔여 레코드 |", "| --- | ---: |", ...result.metrics.stages.map((stage) => `| ${stage.stage} | ${stage.remaining} |`), ""];
   for (const [heading, candidates] of [
@@ -134,7 +139,7 @@ export function pillSearchMarkdown(result: PillSearchResult, snapshot: PillCatal
     lines.push(`## ${heading}`, "");
     if (!candidates.length) lines.push("해당 항목 없음.", "");
     for (const candidate of candidates) {
-      lines.push(`### ${md(candidate.variants[0]!.item.productName)} · ${candidate.itemSeq}`, "", `특징 비교: ${candidate.matchType} · 비교 레코드 ${candidate.variants.length}개`, "");
+      lines.push(`### ${md(candidate.variants[0]!.item.productName)} · ${candidate.itemSeq}`, "", `규칙 등급: ${candidate.grade} · 특징 비교: ${candidate.matchType} · 비교 레코드 ${candidate.variants.length}개`, "");
       for (const variant of candidate.variants) {
         const item = variant.item;
         lines.push(`제조사: ${md(item.manufacturer)} / 제형: ${md(item.formName)} / 모양: ${md(item.shape)} / 색상: ${md(item.colors.join("·"))}`, "",
@@ -144,9 +149,15 @@ export function pillSearchMarkdown(result: PillSearchResult, snapshot: PillCatal
         for (const reason of variant.reviewReasons) {
           lines.push(`보류 이유: ${reason === "no_imprint_evidence" ? "일치한 문자 각인 근거가 없음" : "공식 제형의 지원 여부를 확인하지 못함"} (${reason})`, "");
         }
+        if (variant.conflicts.length) lines.push(`보조 특징 충돌: ${variant.conflicts.map((entry) => md(entry.field)).join(", ")}`, "");
         if (item.imageUrl) lines.push(`[공식 이미지 열기](<${new URL(item.imageUrl).href.replace(/[<>]/g, (char) => encodeURIComponent(char))}>)`, "");
-        lines.push("| 특징 | 입력 | 공식 정보 | 비교 |", "| --- | --- | --- | --- |",
-          ...variant.evidence.map((entry) => `| ${md(entry.field)} | ${md(entry.observed)} | ${md(entry.official)} | ${entry.match} |`), "");
+        lines.push("| 특징 | 입력 | 공식 정보 | 비교 | 각인 입력 출처 |", "| --- | --- | --- | --- | --- |",
+          ...variant.evidence.map((entry) => {
+            const reading = entry.imprintReading;
+            const source = !reading ? "-" : reading.origin === "observed_candidate" ? "관찰 후보"
+              : `서버 혼동 확장 (${reading.substitutions.map((change) => `${change.from}→${change.to}@${change.index + 1}`).join(", ")})`;
+            return `| ${md(entry.field)} | ${md(entry.observed)} | ${md(entry.official)} | ${entry.match} | ${md(source)} |`;
+          }), "");
       }
     }
   }
