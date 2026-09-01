@@ -98,4 +98,8 @@ npm run pill:score --workspace @care-atlas/backend -- --input <saved-features.js
 
 2026-09-02 validation 4쌍을 Luna Vision + Sol OCR, 총 12요청·재시도 0회로 측정했다. `recall@1·5·20` 4/4, 강한 오답 0건, 재촬영 대상 후보 노출 0건으로 통과했으며 네 결과는 모두 `needs_review`였다. 이는 캡처 수준 반복 재현 결과이고 운영 정확도나 자동 확정을 의미하지 않는다. 동결 전 요약은 `validation-result-2026-09-02.json`에 고정했다.
 
+같은 규칙을 커밋 `4e798ae`로 동결한 뒤 holdout 4쌍을 최종 1회 평가했다. 총 12요청·재시도 0회였고 `recall@1` 2/4, `recall@5·20` 3/4로 필수 `recall@5` 4/4 게이트를 통과하지 못했다. 강한 오답과 재촬영 대상 후보 노출은 모두 0건이었다. `capture-h-04`에서 공식 `HM / 10` 중 `10`은 읽었지만 다른 면을 `I-M / IM / 1-M`로 판독해 정답이 상위 20개에 포함되지 않았다. 결과 확인 후 추출·검색 규칙은 변경하지 않았으며 요약은 `holdout-result-2026-09-02.json`에 보존한다.
+
+이 holdout은 이미 열렸으므로 이후 개선의 최종 평가 자료로 재사용하지 않는다. 다음 개선은 별도 validation 자료에서 수행하고, 새로운 미사용 holdout 버전을 준비해 평가해야 한다.
+
 출처와 접수번호-품목기준코드 대응 근거는 기존 [공유 자료 출처 문서](../pill-photo-fixtures/SOURCES.md)에 기록돼 있다.
