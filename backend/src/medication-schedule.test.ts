@@ -6,6 +6,7 @@ import {
   buildMedicationReminderSchedules,
   createMedicationSchedule,
   medicationFrequencyRule,
+  normalizeMedicationRecurrence,
 } from "./medication-schedule.ts";
 import type { MedicationPlan } from "./types.ts";
 
@@ -118,13 +119,62 @@ test("명시적 아직 복용 전 응답과 시스템 기본 상태를 구분한
   assert.equal(recorded[0]?.hasRecordedResponse, true);
 });
 
-test("필요시·주간·알 수 없는 주기를 매일 일정으로 추정하지 않는다", () => {
-  for (const frequency of ["필요시", "하루 1회 필요시", "통증이 있을 때", "주 1회", "매주 월요일", "격주", "복용 횟수 확인 필요"]) {
+test("필요시·알 수 없는 주기를 정기 일정으로 만들지 않는다", () => {
+  for (const frequency of ["필요시", "하루 1회 필요시", "통증이 있을 때", "복용 횟수 확인 필요", "복용 요일 확인 필요", "주 2회"]) {
     const medication = { ...medications[0]!, id: `unsupported-${frequency}`, frequency };
     assert.equal(medicationFrequencyRule(frequency), null);
     assert.deepEqual(createMedicationSchedule([medication], [], new Date("2026-08-24T00:00:00Z")), []);
     assert.deepEqual(buildMedicationReminderSchedules("recipient-1", [medication], new Date("2026-08-24T00:00:00Z")), []);
   }
+  assert.equal(normalizeMedicationRecurrence("필요시").kind, "as_needed");
+  assert.deepEqual(normalizeMedicationRecurrence("주 2회"), {
+    kind: "unknown",
+    reason: "weekday_confirmation_required",
+    source: "주 2회",
+  });
+});
+
+test("주 1회와 격주는 시작일을 기준으로 실제 주기에만 일정과 알림을 만든다", () => {
+  const weekly = { ...medications[0]!, id: "weekly", frequency: "주 1회", timing: "08:00" };
+  const biweekly = { ...weekly, id: "biweekly", frequency: "격주" };
+
+  assert.equal(createMedicationSchedule([weekly], [], new Date("2026-08-20T00:00:00Z")).length, 1);
+  assert.deepEqual(createMedicationSchedule([weekly, biweekly], [], new Date("2026-08-24T00:00:00Z")), []);
+  assert.equal(
+    buildMedicationReminderSchedules("recipient-1", [weekly], new Date("2026-08-20T00:01:00Z"))[0]?.nextDueAt,
+    "2026-08-26T23:00:00.000Z",
+  );
+  assert.equal(
+    buildMedicationReminderSchedules("recipient-1", [biweekly], new Date("2026-08-20T00:01:00Z"))[0]?.nextDueAt,
+    "2026-09-02T23:00:00.000Z",
+  );
+});
+
+test("지정 요일은 같은 구조화 규칙으로 오늘 일정과 다음 Push를 계산한다", () => {
+  const medication = {
+    ...medications[0]!,
+    id: "weekdays",
+    frequency: "매주 월·수·금요일",
+    timing: "08:00",
+  };
+  const recurrence = normalizeMedicationRecurrence(medication.frequency);
+  assert.deepEqual(recurrence, {
+    kind: "weekdays",
+    weekdays: ["mon", "wed", "fri"],
+    count: 1,
+    source: "매주 월·수·금요일",
+  });
+  assert.equal(createMedicationSchedule([medication], [], new Date("2026-08-24T00:00:00Z")).length, 1);
+  assert.deepEqual(createMedicationSchedule([medication], [], new Date("2026-08-25T00:00:00Z")), []);
+
+  const [reminder] = buildMedicationReminderSchedules(
+    "recipient-1",
+    [medication],
+    new Date("2026-08-24T00:01:00Z"),
+  );
+  assert.equal(reminder?.nextDueAt, "2026-08-25T23:00:00.000Z");
+  assert.deepEqual(reminder?.recurrence, recurrence);
+  assert.equal(reminder?.intervalDays, undefined);
 });
 
 test("인식할 수 없는 복용 시각을 09시로 만들지 않는다", () => {

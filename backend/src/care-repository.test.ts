@@ -259,6 +259,11 @@ test("처방일과 총 투약일수로 종료일을 계산해 경계 날짜에�
   assert.equal(medications[0]?.startDate, "2026-08-16");
   assert.equal(medications[0]?.endDate, "2026-08-20");
   assert.equal(medications[0]?.frequency, "하루 2회");
+  assert.deepEqual(medications[0]?.recurrence, {
+    kind: "daily",
+    count: 2,
+    source: "하루 2회",
+  });
   assert.equal(medications[0]?.sourceDocumentId, "doc-rx-1");
   assert.equal(medications[0]?.status, "active");
   assert.equal(createMedicationSchedule(medications, [], new Date("2026-08-15T23:00:00Z")).length, 2);

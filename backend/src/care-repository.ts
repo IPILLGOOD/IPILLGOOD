@@ -23,6 +23,7 @@ import { isEphemeralDemoSessionActive } from "./demo-session.ts";
 import type { FirestoreLike, TransactionLike, DocumentReferenceLike } from "./firestore-rest.ts";
 import { stableJson } from "./stable-json.ts";
 import { conditionFromDiagnosis } from "./nutrition.ts";
+import { normalizeMedicationRecurrence } from "./medication-schedule.ts";
 import {
   addCalendarDays,
   dateKeyInSeoul,
@@ -798,6 +799,7 @@ function confirmedMedicationPlan(
     descriptionPlain: "처방전 분석 초안을 보호자가 검토하고 확정한 복용약이에요.",
     doseAmount: input.doseAmount.trim(),
     frequency: input.frequency.trim(),
+    recurrence: normalizeMedicationRecurrence(input.frequency),
     timing: input.timing.trim(),
     startDate,
     endDate,
@@ -1009,6 +1011,7 @@ export function medicationPlansFromPrescription(
         descriptionPlain: "처방전에서 확인한 복용약이에요. 약 봉투와 원본 처방전을 함께 확인해주세요.",
         doseAmount: medication.doseAmount.trim() || "1회 복용량 확인 필요",
         frequency: medication.frequency.trim(),
+        recurrence: normalizeMedicationRecurrence(medication.frequency),
         timing: medication.timing.trim() || "복용 시간 확인 필요",
         startDate,
         endDate,
