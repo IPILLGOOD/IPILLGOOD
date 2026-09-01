@@ -223,3 +223,12 @@ export {
   isServiceHealthDataConsentConfirmed,
 } from "./health-data-consent";
 export { deleteRecipientHealthData, verifyRecipientHealthDataDeleted } from "./health-data-deletion";
+export {
+  getHealthDataReset,
+  processHealthDataReset,
+  publicHealthDataReset,
+  requestHealthDataReset,
+  type HealthDataReset,
+  type HealthDataResetStage,
+  type HealthDataResetStatus,
+} from "./health-data-reset";

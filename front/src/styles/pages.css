@@ -2976,6 +2976,21 @@
 .account-deletion-entry {
   color: var(--color-danger);
 }
+.health-data-reset-card {
+  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
+}
+.health-data-reset-entry {
+  color: var(--color-danger);
+}
+.health-data-reset-account-option span {
+  display: grid;
+  gap: var(--space-1);
+}
+.health-data-reset-account-option small {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  line-height: 1.6;
+}
 .account-deletion-button {
   background: var(--color-danger);
   color: var(--color-surface);
