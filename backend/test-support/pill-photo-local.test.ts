@@ -1,12 +1,14 @@
 // Explicit shared-fixture verification: all required public samples are in Git. NEVER calls an external API.
 // node --experimental-strip-types --test backend/test-support/pill-photo-local.test.ts
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import sharp from "sharp";
 import { readReviewedPhoto } from "../scripts/pill-photo.ts";
 import { extractReviewedPillPhotos, prepareReviewedPillPhoto, reviewedPhotoIndex } from "../src/pill-photo-experiment.ts";
-import { PILL_PHOTO_OCR_SCHEMA_VERSION } from "../src/pill-photo-ocr.ts";
+import { PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION } from "../src/pill-photo-ocr.ts";
 import { PILL_PHOTO_FILES } from "./pill-photo-review.ts";
+import { loadPillPhotoEvaluationFixture } from "./pill-photo-evaluation.ts";
 
 const providerResponse = (value: unknown, inputTokens: number, outputTokens: number) => new Response(JSON.stringify({
   status: "completed",
@@ -24,10 +26,13 @@ const visionFeatures = {
   pairConsistency: "consistent", bothSidesVisible: true, imageArtifact: "none",
 } as const;
 
-const ocrFeatures = {
-  schemaVersion: PILL_PHOTO_OCR_SCHEMA_VERSION,
-  front: { imprintCandidates: ["OPQ"], noImprintObserved: false, imprintVisibility: "clear" },
-  back: { imprintCandidates: ["HS8"], noImprintObserved: false, imprintVisibility: "clear" },
+const ocrFront = {
+  schemaVersion: PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION,
+  side: { imprintCandidates: ["OPQ"], noImprintObserved: false, imprintVisibility: "clear" },
+} as const;
+const ocrBack = {
+  schemaVersion: PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION,
+  side: { imprintCandidates: ["HS8"], noImprintObserved: false, imprintVisibility: "clear" },
 } as const;
 
 test("로컬 공개 원본 9개의 해시·디코딩과 전처리 크기·메타데이터 제거를 확인한다", async () => {
@@ -59,7 +64,7 @@ test("원본 복제·한 바이트 변경·전송 미승인은 실제 공개 파
 
 test("공식 엔드포인트 고정·리다이렉트 금지·HTTP 실패 구분·재시도 없음을 모의 전송으로 확인한다", async () => {
   const pair = [await readReviewedPhoto(0), await readReviewedPhoto(1)] as const;
-  for (const [status, expected] of [[401, "access_denied"], [403, "access_denied"], [429, "rate_limited"], [500, "provider_unavailable"]] as const) {
+  for (const [status, expected] of [[400, "invalid_request"], [401, "access_denied"], [403, "access_denied"], [429, "rate_limited"], [500, "provider_unavailable"]] as const) {
     let calls = 0;
     const result = await extractReviewedPillPhotos(pair, { allowExternalTransfer: true, apiKey: "test-only-not-a-real-key", model: "test-model", fetchImpl: async (url, init) => {
       calls++;
@@ -80,39 +85,69 @@ test("공식 엔드포인트 고정·리다이렉트 금지·HTTP 실패 구분�
   }
 });
 
-test("범용 Vision과 네 방향 OCR을 두 요청으로 분리하고 출처를 보존해 결합한다", async () => {
+test("범용 Vision과 면별 색상·대비 OCR을 세 요청으로 분리하고 출처를 보존해 결합한다", async () => {
   const pair = [await readReviewedPhoto(0), await readReviewedPhoto(1)] as const;
   let calls = 0;
   const result = await extractReviewedPillPhotos(pair, {
     allowExternalTransfer: true,
     apiKey: "test-only-not-a-real-key",
     model: "test-model",
+    ocrModel: "test-ocr-model",
     fetchImpl: async (url, init) => {
       calls++;
       assert.equal(url, "https://api.openai.com/v1/responses");
       const body = JSON.parse(String(init?.body));
       assert.equal(body.store, false);
+      assert.equal(body.model, calls === 1 ? "test-model" : "test-ocr-model");
       assert.ok(!String(init?.body).includes("201505259"));
       if (calls === 1) {
         assert.equal(body.text.format.name, "pill_visible_features");
         assert.equal(body.input[0].content.filter((part: { type: string }) => part.type === "input_image").length, 4);
         return providerResponse(visionFeatures, 100, 20);
       }
-      assert.equal(calls, 2);
-      assert.equal(body.text.format.name, "pill_imprint_ocr");
+      assert.ok(calls === 2 || calls === 3);
+      assert.equal(body.text.format.name, "pill_imprint_ocr_side");
       assert.equal(body.input[0].content.filter((part: { type: string }) => part.type === "input_image").length, 8);
-      return providerResponse(ocrFeatures, 60, 10);
+      return providerResponse(calls === 2 ? ocrFront : ocrBack, 60, 10);
     },
   });
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.deepEqual(result.usage, { inputTokens: 160, outputTokens: 30 });
+  assert.deepEqual(result.usage, { inputTokens: 220, outputTokens: 40 });
   assert.deepEqual(result.features.observation.front?.imprintCandidates, ["OPC", "OPQ"]);
   assert.equal(result.features.observation.front?.imprintVisibility, "partial");
   assert.equal(result.signals?.fusion.front.disagreement, true);
   assert.deepEqual(result.signals?.fusion.front.outputCandidates.map((candidate) => candidate.signals[0]?.source), ["vision", "ocr"]);
   assert.equal(result.signals?.fusion.back.consensusCandidateCount, 1);
+});
+
+test("새 평가 사진도 고정 매니페스트 해시만 허용하고 같은 세 요청 경로를 사용한다", async () => {
+  const { inferenceInputs } = await loadPillPhotoEvaluationFixture();
+  const input = inferenceInputs.find((entry) => entry.id === "capture-v-01")!;
+  const pair = await Promise.all(input.photos.map((path) => readFile(path))) as [Buffer, Buffer];
+  let calls = 0;
+  const result = await extractReviewedPillPhotos(pair, {
+    allowExternalTransfer: true,
+    photoSet: "evaluation",
+    apiKey: "test-only-not-a-real-key",
+    model: "test-model",
+    fetchImpl: async () => {
+      calls++;
+      if (calls === 1) return providerResponse(visionFeatures, 100, 20);
+      return providerResponse(calls === 2 ? ocrFront : ocrBack, 60, 10);
+    },
+  });
+  assert.equal(calls, 3);
+  assert.equal(result.ok, true);
+  const changed = Buffer.from(pair[1]);
+  changed[100] = changed[100]! ^ 1;
+  assert.deepEqual(await extractReviewedPillPhotos([pair[0], changed], {
+    allowExternalTransfer: true,
+    photoSet: "evaluation",
+    apiKey: "test-only-not-a-real-key",
+    fetchImpl: async () => { throw new Error("must_not_call"); },
+  }), { ok: false, reason: "unreviewed_photo" });
 });
 
 test("Vision만 성공하거나 OCR 계약이 깨지면 부분 결과를 검색 특징으로 반환하지 않는다", async () => {
@@ -126,7 +161,7 @@ test("Vision만 성공하거나 OCR 계약이 깨지면 부분 결과를 검색 
       calls++;
       return calls === 1
         ? providerResponse(visionFeatures, 100, 20)
-        : providerResponse({ ...ocrFeatures, itemSeq: "200801352" }, 60, 10);
+        : providerResponse({ ...ocrFront, itemSeq: "200801352" }, 60, 10);
     },
   });
   assert.equal(calls, 2);

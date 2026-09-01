@@ -196,14 +196,16 @@ export async function prepareValidatedPillPhotoVariants(
 }
 
 /** OCR must not assume that the pill axis is the text axis or that the principal-axis direction is upright. */
-export async function preparePillPhotoOcrRotationViews(alignedContrast: Uint8Array): Promise<PillPhotoOcrRotationViews> {
-  const metadata = await sharp(alignedContrast, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" }).metadata();
-  if (metadata.format !== "png" || metadata.hasAlpha || metadata.channels !== 1 || !metadata.width || !metadata.height) {
+export async function preparePillPhotoOcrRotationViews(alignedView: Uint8Array): Promise<PillPhotoOcrRotationViews> {
+  const metadata = await sharp(alignedView, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" }).metadata();
+  if (metadata.format !== "png" || metadata.hasAlpha || ![1, 3].includes(metadata.channels ?? 0) || !metadata.width || !metadata.height) {
     throw new Error("invalid_preprocessed_photo");
   }
-  const rotations = await Promise.all([0, 90, 180, 270].map((degrees) => degrees === 0
-    ? Buffer.from(alignedContrast)
-    : sharp(alignedContrast, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" })
-      .rotate(degrees).toColourspace("b-w").png({ compressionLevel: 9 }).toBuffer()));
+  const rotations = await Promise.all([0, 90, 180, 270].map((degrees) => {
+    if (degrees === 0) return Buffer.from(alignedView);
+    const rotated = sharp(alignedView, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" }).rotate(degrees);
+    return (metadata.channels === 1 ? rotated.toColourspace("b-w") : rotated)
+      .png({ compressionLevel: 9 }).toBuffer();
+  }));
   return [rotations[0]!, rotations[1]!, rotations[2]!, rotations[3]!];
 }

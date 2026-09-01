@@ -53,6 +53,12 @@ npm run pill:labels:live --workspace @care-atlas/backend
 npm run pill:score --workspace @care-atlas/backend -- --input <saved-features.json> --split validation
 ```
 
+특징 파일을 새로 만들 때는 검수 공개사진만 외부로 전송하는 아래 명령을 명시적으로 실행한다. Vision은 `OPENAI_MODEL`, OCR은 `OPENAI_OCR_MODEL`을 읽으며 OCR 모델 미설정 시 `gpt-5.6-sol`을 사용한다.
+
+```sh
+npm run pill:evaluate --workspace @care-atlas/backend -- validation --live --confirm-public-transfer
+```
+
 구현과 통과 기준을 고정한 후 보류 평가를 실행할 때만 명시적으로 확인한다.
 
 ```sh
@@ -82,12 +88,14 @@ npm run pill:score --workspace @care-atlas/backend -- --input <saved-features.js
 
 주축 보정은 알약의 긴 축만 수평으로 만들 뿐 글자의 올바른 위·아래 방향은 결정하지 못한다. 실제 자료에는 장축과 직각으로 인쇄된 각인도 있다. 따라서 메타데이터에 OCR이 검사해야 할 `0°·90°·180°·270°` 네 방향을 고정하며, 다음 OCR 단계는 어느 한 방향만 정답으로 가정해서는 안 된다.
 
-색상 판단에는 `context` 또는 `alignedColor`만 사용하며, `alignedContrast`는 각인 판독 보조 신호다. 현재 공개사진 실험 경로는 한 사례를 두 개의 독립 요청으로 처리한다.
+색상 판단에는 `context` 또는 `alignedColor`만 사용하며, `alignedContrast`는 각인 판독 보조 신호다. 현재 공개사진 실험 경로는 한 사례를 세 개의 독립 요청으로 처리한다.
 
 1. 범용 Vision은 각 면의 `context`와 `alignedColor`를 보고 외형·품질·복수 각인 후보를 관찰한다.
-2. 각인 전용 OCR은 `alignedContrast`의 `0°·90°·180°·270°` 네 방향만 보고 각 면의 문자 후보를 반환한다.
+2. 각인 전용 OCR은 첫 면과 둘째 면을 별도 요청으로 처리한다. 각 요청은 `alignedColor`와 `alignedContrast`의 `0°·90°·180°·270°`를 함께 보고 해당 한 면의 문자 후보만 반환한다.
 3. 서버 결합기는 동일 판독을 먼저 배치하고 Vision/OCR 단독 판독을 교차 배치해 면당 최대 5개를 유지한다. 두 신호의 후보 집합이 다르면 `partial`로 제한하며, 문자 혼동 확장은 이 단계에서 하지 않고 기존 검색기의 버전 고정 규칙에 맡긴다.
 
-두 요청 모두 약명·성분·품목기준코드·정답 특징·카탈로그 예시를 받지 않는다. 결합 결과에는 각 후보의 Vision/OCR 출처, 원문, 순서, 불일치와 절단 여부가 남는다. 이 파이프라인은 코드·모의 응답 검증을 완료했지만 아직 validation 사진으로 실제 외부 호출·성능 채점을 수행하지 않았으므로, 기존 0/4를 개선했다고 주장하지 않는다.
+세 요청 모두 약명·성분·품목기준코드·정답 특징·카탈로그 예시를 받지 않는다. 결합 결과에는 각 후보의 Vision/OCR 출처, 원문, 순서, 불일치와 절단 여부가 남는다.
+
+2026-09-02 validation 4쌍을 Luna Vision + Sol OCR, 총 12요청·재시도 0회로 측정했다. `recall@1·5·20` 4/4, 강한 오답 0건, 재촬영 대상 후보 노출 0건으로 통과했으며 네 결과는 모두 `needs_review`였다. 이는 캡처 수준 반복 재현 결과이고 운영 정확도나 자동 확정을 의미하지 않는다. 동결 전 요약은 `validation-result-2026-09-02.json`에 고정했다.
 
 출처와 접수번호-품목기준코드 대응 근거는 기존 [공유 자료 출처 문서](../pill-photo-fixtures/SOURCES.md)에 기록돼 있다.

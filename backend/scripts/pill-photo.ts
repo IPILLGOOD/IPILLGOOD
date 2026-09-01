@@ -19,7 +19,7 @@ const HELP = `Reviewed public pill photo experiment (NOT a user-upload service):
 
 replay is offline: Git fixtures + SAVED AI features + current search, with no API key or freshness claim.
 review is offline: verifies hashes, decodes images, and creates a local HTML review sheet (fresh catalog required).
-evaluate sends at most six reviewed public photo pairs through two independent OpenAI requests per pair, sequentially, without retries.
+evaluate sends at most six reviewed public photo pairs through one Vision and two surface-specific OCR requests per pair, sequentially, without retries.
 Only the compiled allowlist is accepted. No arbitrary photo paths, URLs or manifests.
 Expected product codes/filenames never enter AI requests. The FULL catalog is searched.
 Outputs are ignored under verification-artifacts/pill-photo/. Existing runs are not overwritten.

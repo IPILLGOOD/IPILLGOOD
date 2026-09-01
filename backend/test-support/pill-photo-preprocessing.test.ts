@@ -64,25 +64,26 @@ test("같은 원본과 버전은 바이트·회전 근거까지 결정적으로 
   assert.deepEqual(first.alignedContrast, second.alignedContrast);
 });
 
-test("OCR 보조 화면은 0·90·180·270도 네 방향을 원본 변경 없이 만든다", async () => {
+test("OCR 색상·대비 보조 화면은 0·90·180·270도 네 방향을 원본 변경 없이 만든다", async () => {
   const { manifest, inferenceInputs } = await loadPillPhotoEvaluationFixture();
   const original = await readFile(inferenceInputs[0]!.photos[0]!);
   const expected = manifest.images.find((image) => image.path === manifest.cases[0]!.photos[0])!;
   const variants = await prepareValidatedPillPhotoVariants(original, expected);
-  const before = Buffer.from(variants.alignedContrast);
-  const rotations = await preparePillPhotoOcrRotationViews(variants.alignedContrast);
-  assert.equal(rotations.length, 4);
-  assert.deepEqual(rotations[0], before);
-  assert.deepEqual(variants.alignedContrast, before);
-  const metadata = await Promise.all(rotations.map((bytes) => sharp(bytes).metadata()));
-  assert.deepEqual(metadata.map((item) => [item.width, item.height]), [
-    [variants.metadata.variants.alignedContrast.width, variants.metadata.variants.alignedContrast.height],
-    [variants.metadata.variants.alignedContrast.height, variants.metadata.variants.alignedContrast.width],
-    [variants.metadata.variants.alignedContrast.width, variants.metadata.variants.alignedContrast.height],
-    [variants.metadata.variants.alignedContrast.height, variants.metadata.variants.alignedContrast.width],
-  ]);
-  assert.equal(metadata.every((item) => item.format === "png" && !item.hasAlpha && item.channels === 1), true);
-  await assert.rejects(preparePillPhotoOcrRotationViews(variants.alignedColor), /invalid_preprocessed_photo/);
+  for (const [source, expectedChannels] of [[variants.alignedColor, 3], [variants.alignedContrast, 1]] as const) {
+    const before = Buffer.from(source);
+    const rotations = await preparePillPhotoOcrRotationViews(source);
+    assert.equal(rotations.length, 4);
+    assert.deepEqual(rotations[0], before);
+    assert.deepEqual(source, before);
+    const metadata = await Promise.all(rotations.map((bytes) => sharp(bytes).metadata()));
+    assert.deepEqual(metadata.map((item) => [item.width, item.height]), [
+      [variants.metadata.variants.alignedContrast.width, variants.metadata.variants.alignedContrast.height],
+      [variants.metadata.variants.alignedContrast.height, variants.metadata.variants.alignedContrast.width],
+      [variants.metadata.variants.alignedContrast.width, variants.metadata.variants.alignedContrast.height],
+      [variants.metadata.variants.alignedContrast.height, variants.metadata.variants.alignedContrast.width],
+    ]);
+    assert.equal(metadata.every((item) => item.format === "png" && !item.hasAlpha && item.channels === expectedChannels), true);
+  }
 });
 
 test("원형 마스크는 불안정한 주축으로 억지 회전하지 않는다", async () => {

@@ -243,6 +243,29 @@ test("사진 상태 메타데이터에 따라 미지원·재확인 상태를 반
   assert.equal(searchPillCandidates(pillObservation({ count: 0 }), undefined).status, "unidentified");
 });
 
+test("사진의 한쪽 정확 각인은 흐림·반대 면 판독 불가에도 possible 후보로 보존하되 양쪽 미판독은 차단한다", () => {
+  const partial = pillObservation({
+    source: "image_features",
+    quality: "blurred",
+    back: observedSide(null, "unknown"),
+  });
+  const result = searchPillCandidates(partial, catalog());
+  assert.equal(result.status, "needs_review");
+  assert.equal(result.reason, "partial_observation");
+  assert.equal(result.candidates[0]?.itemSeq, "209900001");
+  assert.equal(result.candidates[0]?.grade, "possible");
+  assert.equal(result.candidates[0]?.variants[0]?.evidence.find((entry) => entry.field === "back.imprint")?.match, "unknown");
+  assert.equal(result.candidates.some((candidate) => candidate.grade === "strong"), false);
+
+  const unreadableBoth = pillObservation({
+    source: "image_features",
+    quality: "blurred",
+    front: observedSide(null, "unknown"),
+    back: observedSide(null, "unknown"),
+  });
+  assert.equal(searchPillCandidates(unreadableBoth, catalog()).status, "needs_retake");
+});
+
 test("잘못된 입력·미설정·불완전 카탈로그와 정상 무결과를 구분한다", () => {
   assert.equal(searchPillCandidates({}, catalog()).status, "invalid_input");
   assert.equal(searchPillCandidates({ ...pillObservation(), image: "sensitive" }, catalog()).status, "invalid_input");
@@ -366,6 +389,26 @@ test("등급을 유지하면서 일치한 면 수·각인 완전 일치 근거 �
   assert.deepEqual(result.candidates.map((candidate) => candidate.matchType), ["exact", "incomplete", "partial", "incomplete", "incomplete"]);
   assert.deepEqual(result.heldCandidates.map((candidate) => candidate.itemSeq), ["209900001"]);
   assert.deepEqual(result.metrics.stages.map((entry) => entry.remaining), [6, 6, 6, 6, 6]);
+});
+
+test("긴 정확 각인은 짧은 부분 판독과 시각 특징 일치보다 먼저 정렬한다", () => {
+  const input = pillObservation({
+    source: "image_features",
+    quality: "blurred",
+    form: "tablet",
+    colors: ["하양", "파랑"],
+    front: { ...observedSide("AJU100", "none"), imprintCandidates: ["AJU100", "AJU", "100"], imprintVisibility: "partial" },
+    back: observedSide("", "unknown"),
+  });
+  const records = [
+    pillRecord({ ITEM_SEQ: "209900003", PRINT_FRONT: "AJU", PRINT_BACK: "", FORM_CODE_NAME: "필름코팅정", COLOR_CLASS1: "하양", COLOR_CLASS2: "파랑" }),
+    pillRecord({ ITEM_SEQ: "209900002", PRINT_FRONT: "100", PRINT_BACK: "", FORM_CODE_NAME: "필름코팅정", COLOR_CLASS1: "하양", COLOR_CLASS2: "파랑" }),
+    pillRecord({ ITEM_SEQ: "209900001", PRINT_FRONT: "AJU100", PRINT_BACK: "", FORM_CODE_NAME: "경질캡슐제", COLOR_CLASS1: "하양" }),
+  ];
+  const result = searchPillCandidates(input, catalog(records));
+  assert.equal(result.status, "needs_review");
+  assert.deepEqual(result.candidates.map((candidate) => candidate.itemSeq), ["209900001", "209900002", "209900003"]);
+  assert.equal(result.candidates.every((candidate) => candidate.grade === "possible"), true);
 });
 
 test("알 수 없는 시험 각인에 공식 각인 누락 항목만 남으면 찾았다고 하지 않고 보류한다", () => {

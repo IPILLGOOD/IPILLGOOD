@@ -54,6 +54,8 @@ verification-artifacts/        Git 제외 유지
 
 따라서 여전히 기능 완성이 아니라 성능 개선을 시작할 기준선이다. `pill:verify`나 `pill:regression` 통과는 무결성·안전·결정형 검색 계약을 검증한 것이지 약을 정확히 식별했다는 의미가 아니다. 검색 코드를 개선하면 새 재생 결과는 바뀔 수 있으며, 테스트는 과거 0/4를 강제하지 않고 저장 특징과 현재 검색기의 연결을 검증한다. [실험 기록](pill-photo-experiment.md)에 개별 실패 원인과 변경 전후 비교가 있다. 고정 사진에만 맞춰 수정한 뒤 그 수치를 독립 평가 정확도로 보고하지 않는다.
 
+별도로 고정한 validation 4쌍은 2026-09-02에 Luna Vision + Sol OCR로 실제 재측정해 `recall@1·5·20` 4/4, 강한 오답 0건, 재촬영 대상 후보 노출 0건을 통과했다. 네 건 모두 후보 1위였지만 `needs_review`였으며 자동 확정 결과는 아니다. 이 수치는 캡처 수준 반복 재현 결과이고 최초 개발 세트 0/4를 덮어쓰거나 운영 정확도를 주장하지 않는다.
+
 현재 필수 회귀 게이트는 다음 여섯 가지다.
 
 1. 서로 다른 약의 앞·뒷면 조합은 후보 없이 재촬영 처리한다.
@@ -82,11 +84,11 @@ verification-artifacts/        Git 제외 유지
 node --env-file=front/.env.local --experimental-strip-types backend/scripts/pill-photo.ts evaluate --catalog <실제-catalog.json-경로> --max-age-hours 24 --live --confirm-public-transfer --case oval-tablet
 ```
 
-- 이 분석에 필요한 키는 **`OPENAI_API_KEY`**다. 전체 사례를 실행하려면 `--case`를 생략한다. 사례당 범용 Vision 1회와 각인 OCR 1회를 순차 실행하므로 최대 12요청이며 재시도는 없다.
+- 이 분석에 필요한 키는 **`OPENAI_API_KEY`**다. 기본 모델은 범용 Vision `OPENAI_MODEL=gpt-5.6-luna`, 각인 OCR `OPENAI_OCR_MODEL=gpt-5.6-sol`이며 환경 변수로 명시할 수 있다. 전체 6건은 사례당 Vision 1회와 면별 OCR 2회를 순차 실행하므로 최대 18요청이며 재시도는 없다.
 - 새 카탈로그를 수집할 때는 별도로 **식약처 낱알 API 키**가 필요하다. [카탈로그 수집 안내](pill-catalog-local.md)를 따른다.
 - Git의 `.gz` 고정 카탈로그는 오프라인 과거 비교용이다. `evaluate`에서 자동으로 이를 읽거나 만료 검사를 생략하는 fallback은 없다. 고정 자료의 시간/해시를 고쳐 현재 데이터처럼 사용하지 않는다.
 - 이미 승인·수집한 최신 카탈로그가 있다면 공유된 9장과 자신의 AI 키로 실행할 수 있다. 새 카탈로그 버전을 썼다면 과거 기준선과 데이터 조건도 달라졌다는 점을 기록한다.
-- 프롬프트·전처리 버전, 모델 설정, 데이터 버전, 호출 수, 정상/예외 결과를 실험 기록에 함께 남긴다. 이번 공유 자료 정리에서는 실제 외부 AI를 재호출하지 않았다.
+- 프롬프트·전처리 버전, Vision/OCR 모델 설정, 데이터 버전, 호출 수, 정상/예외 결과를 실험 기록에 함께 남긴다. 고정 validation은 `npm run pill:evaluate --workspace @care-atlas/backend -- validation --live --confirm-public-transfer`로 12요청을 사용하며, holdout은 규칙 동결 후 `--confirm-holdout-final`까지 명시할 때만 실행한다.
 
 ## 6. 자료를 추가하거나 갱신할 때
 

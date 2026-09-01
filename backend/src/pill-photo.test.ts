@@ -4,7 +4,7 @@ import { observedSide, pillEnvelope, pillObservation, pillRecord } from "../test
 import { PILL_PHOTO_CASES, PILL_PHOTO_FILES } from "../test-support/pill-photo-review.ts";
 import { parseOfficialPillPage } from "./official-pill-catalog.ts";
 import { comparePillPhotoFeatures, migratePillPhotoFeaturesV1, PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, pillPhotoFeaturesV1Schema } from "./pill-photo-features.ts";
-import { PILL_PHOTO_OCR_PROMPT_VERSION, PILL_PHOTO_OCR_SCHEMA_VERSION, pillPhotoOcrFeaturesSchema } from "./pill-photo-ocr.ts";
+import { PILL_PHOTO_OCR_PROMPT_VERSION, PILL_PHOTO_OCR_SCHEMA_VERSION, PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION, pillPhotoOcrFeaturesSchema, pillPhotoOcrSideResponseSchema } from "./pill-photo-ocr.ts";
 import { applyReviewedPhotoMaskGate, assessReviewedPhotoMask, extractReviewedPillPhotos, MIN_REVIEWED_PILL_MASK_SOLIDITY, parsePillPhotoOcrResponse, parsePillPhotoResponse, pillPhotoOcrRequest, pillPhotoRequest, prepareReviewedPillPhoto, reviewedPhotoIndex } from "./pill-photo-experiment.ts";
 import { parsePillPhotoArgs, readReviewedPhoto, renderPillPhotoReport, scorePillPhotoCase, type PillPhotoReport } from "../scripts/pill-photo.ts";
 
@@ -84,8 +84,17 @@ test("외부 출력의 약명·품목코드·임의 색상·source 추가와 누
 });
 
 test("사진 각인 미상·흐림·복수 약·지원하지 않는 제형은 기존 안전 상태를 유지한다", () => {
-  for (const patch of [{ quality: "blurred" }, { count: 2 }, { overlapping: true }, { back: null }, { front: observedSide(null, "unknown") }]) {
+  for (const patch of [{ count: 2 }, { overlapping: true }, { back: null }]) {
     assert.equal(comparePillPhotoFeatures({ ...features(), observation: { ...features().observation, ...patch } }, catalog()).search?.status, "needs_retake");
+  }
+  for (const patch of [{ quality: "blurred" }, { front: observedSide(null, "unknown") }]) {
+    const result = comparePillPhotoFeatures({ ...features(), observation: { ...features().observation, ...patch } }, catalog()).search;
+    assert.equal(result?.status, "needs_review");
+    assert.equal(result?.reason, "partial_observation");
+    assert.equal(result?.candidates[0]?.grade, "possible");
+  }
+  for (const quality of ["dark", "too_small", "unknown"]) {
+    assert.equal(comparePillPhotoFeatures({ ...features(), observation: { ...features().observation, quality } }, catalog()).search?.status, "needs_retake");
   }
   for (const form of ["powder", "granule", "liquid", "other"]) {
     assert.equal(comparePillPhotoFeatures({ ...features(), observation: { ...features().observation, form } }, catalog()).search?.status, "unsupported_form");
@@ -150,7 +159,7 @@ test("외부 요청에는 사진·추출 계약만 있고 정답 코드·약명�
   for (const forbidden of ["drugName", "ingredientName", "itemSeq", "productName"]) assert.ok(!serialized.includes(`"${forbidden}"`));
   assert.equal(request.text.format.schema.additionalProperties, false);
   assert.equal(ocrRequest.text.format.schema.additionalProperties, false);
-  assert.equal(PILL_PHOTO_OCR_PROMPT_VERSION, "pill-photo-imprint-ocr-cardinal-v1");
+  assert.equal(PILL_PHOTO_OCR_PROMPT_VERSION, "pill-photo-imprint-ocr-per-side-dual-view-v2");
 });
 
 test("미동의·미검수·잘못된 입력은 디코더나 네트워크 호출 없이 거절한다", async () => {
@@ -176,13 +185,18 @@ test("구조화 출력은 completed 메시지와 안전한 토큰 수만 읽고 
   const badUsage = parsePillPhotoResponse({ ...response(), usage: { input_tokens: -1, output_tokens: "x" } });
   assert.equal(badUsage.ok && badUsage.usage, null);
 
+  const ocrSide = {
+    schemaVersion: PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION,
+    side: { imprintCandidates: ["T0"], noImprintObserved: false, imprintVisibility: "clear" },
+  };
   const ocr = {
     schemaVersion: PILL_PHOTO_OCR_SCHEMA_VERSION,
     front: { imprintCandidates: ["T0"], noImprintObserved: false, imprintVisibility: "clear" },
     back: { imprintCandidates: ["10"], noImprintObserved: false, imprintVisibility: "clear" },
   };
-  const parsedOcr = parsePillPhotoOcrResponse(response(JSON.stringify(ocr)));
+  const parsedOcr = parsePillPhotoOcrResponse(response(JSON.stringify(ocrSide)));
   assert.equal(parsedOcr.ok, true);
+  assert.equal(pillPhotoOcrSideResponseSchema.safeParse(ocrSide).success, true);
   assert.equal(pillPhotoOcrFeaturesSchema.safeParse(ocr).success, true);
 });
 
@@ -229,7 +243,7 @@ test("평가는 보류·미실행·단순 무검색 결과를 올바른 약 또�
 });
 
 test("정적 HTML은 모델·제품 텍스트를 이스케이프하고 외부 이미지를 자동 요청하지 않는다", () => {
-  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "pill-photo-alpha-pca-detail-contrast-v1", prompt: "pill-photo-observation-v3-multiview", ocrPrompt: "pill-photo-imprint-ocr-cardinal-v1", fusion: "pill-photo-vision-ocr-consensus-v1", maskPolicy: "reviewed-alpha-solidity-v1" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
+  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "pill-photo-alpha-pca-detail-contrast-v1", prompt: "pill-photo-observation-v3-multiview", ocrPrompt: "pill-photo-imprint-ocr-per-side-dual-view-v2", fusion: "pill-photo-vision-ocr-consensus-v1", maskPolicy: "reviewed-alpha-solidity-v1" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
     sourceUrl: "javascript:alert(1)", rows: [{ id: "<script>alert(1)</script>", kind: "candidate", expectedItemSeq: "209900001", expectedProduct: "<img src=x onerror=alert(1)>", evidenceUrl: null, photos: ["0", "1"], extraction: null, maskAssessments: [], comparison: null, evaluation: scorePillPhotoCase("209900001", null) }] };
   const rendered = renderPillPhotoReport(report);
   assert.ok(!rendered.includes("<script>"));

@@ -8,15 +8,19 @@ import {
   PILL_PHOTO_FUSION_VERSION,
   PILL_PHOTO_OCR_INSTRUCTIONS,
   PILL_PHOTO_OCR_PROMPT_VERSION,
+  PILL_PHOTO_OCR_SCHEMA_VERSION,
   fusePillPhotoSignals,
   pillPhotoOcrFeaturesSchema,
+  pillPhotoOcrSideResponseSchema,
   type PillPhotoFusionEvidence,
   type PillPhotoOcrFeatures,
+  type PillPhotoOcrSideResponse,
 } from "./pill-photo-ocr.ts";
 import {
   PILL_PHOTO_VARIANT_PREPROCESSING_VERSION,
   preparePillPhotoOcrRotationViews,
   prepareValidatedPillPhotoVariants,
+  type ValidatedPillPhotoExpectation,
   type PillPhotoOcrRotationViews,
   type PillPhotoPreprocessingVariants,
 } from "./pill-photo-preprocessing.ts";
@@ -30,9 +34,19 @@ const MAX_INPUT_BYTES = 5 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_OUTPUT_TEXT = 16 * 1024;
 const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
-export const PILL_PHOTO_TIMEOUT_MS = 45_000;
-type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error" | "ocr_failed" | "fusion_failed";
+export const PILL_PHOTO_TIMEOUT_MS = 90_000;
+type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "invalid_request" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error" | "ocr_failed" | "fusion_failed";
 type Usage = { inputTokens: number; outputTokens: number };
+export type ReviewedPillPhotoSet = "development" | "evaluation";
+type ReviewedPillPhotoExpectation = ValidatedPillPhotoExpectation & { path: string };
+let evaluationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
+
+function evaluationPhotoAllowlist() {
+  evaluationPhotoAllowlistPromise ??= import("../test-support/pill-photo-evaluation.ts")
+    .then(({ loadPillPhotoEvaluationFixture }) => loadPillPhotoEvaluationFixture())
+    .then(({ manifest }) => manifest.images);
+  return evaluationPhotoAllowlistPromise;
+}
 export interface PhotoExtractionSignals {
   vision: { features: PillPhotoFeatures; usage: Usage | null };
   ocr: { features: PillPhotoOcrFeatures; usage: Usage | null };
@@ -177,22 +191,22 @@ export function pillPhotoRequest(
   };
 }
 
-/** Imprint-only request. Every group is one surface repeated at 0/90/180/270 degrees. */
+/** Imprint-only request for one surface, with color and contrast views at four cardinal rotations. */
 export function pillPhotoOcrRequest(
-  first: PillPhotoOcrRotationViews,
-  second: PillPhotoOcrRotationViews,
+  color: PillPhotoOcrRotationViews,
+  contrast: PillPhotoOcrRotationViews,
   model: string,
 ) {
   return {
-    model, store: false, max_output_tokens: 1000, reasoning: { effort: "low" },
+    model, store: false, max_output_tokens: 1400, reasoning: { effort: "low" },
     instructions: PILL_PHOTO_OCR_INSTRUCTIONS,
     input: [{ role: "user", content: [
-      { type: "input_text", text: "Image A OCR rotations in this exact order: 0, 90, 180, 270 degrees." },
-      ...first.map(inputImage),
-      { type: "input_text", text: "Image B OCR rotations in this exact order: 0, 90, 180, 270 degrees." },
-      ...second.map(inputImage),
+      { type: "input_text", text: "Color rotations of one surface in this exact order: 0, 90, 180, 270 degrees." },
+      ...color.map(inputImage),
+      { type: "input_text", text: "Contrast-enhanced rotations of that same surface in this exact order: 0, 90, 180, 270 degrees." },
+      ...contrast.map(inputImage),
     ] }],
-    text: { format: { type: "json_schema", name: "pill_imprint_ocr", strict: true, schema: z.toJSONSchema(pillPhotoOcrFeaturesSchema) } },
+    text: { format: { type: "json_schema", name: "pill_imprint_ocr_side", strict: true, schema: z.toJSONSchema(pillPhotoOcrSideResponseSchema) } },
   };
 }
 
@@ -234,12 +248,12 @@ export function parsePillPhotoResponse(value: unknown): PhotoExtractionResult {
 }
 
 export function parsePillPhotoOcrResponse(value: unknown):
-  | { ok: true; features: PillPhotoOcrFeatures; usage: Usage | null }
+  | { ok: true; features: PillPhotoOcrSideResponse; usage: Usage | null }
   | { ok: false; reason: "refused" | "incomplete_response" | "ocr_failed" } {
   const output = parseProviderText(value);
   if (!output.ok) return { ok: false, reason: output.reason === "invalid_response" ? "ocr_failed" : output.reason };
   try {
-    const parsed = pillPhotoOcrFeaturesSchema.safeParse(JSON.parse(output.text));
+    const parsed = pillPhotoOcrSideResponseSchema.safeParse(JSON.parse(output.text));
     return parsed.success
       ? { ok: true, features: parsed.data, usage: output.usage }
       : { ok: false, reason: "ocr_failed" };
@@ -285,7 +299,7 @@ async function requestPillPhotoProvider(
     });
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
-      return { ok: false, reason: response.status === 401 || response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "provider_unavailable" };
+      return { ok: false, reason: response.status === 400 || response.status === 422 ? "invalid_request" : response.status === 401 || response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "provider_unavailable" };
     }
     if (response.redirected || response.url && response.url !== ENDPOINT) {
       await response.body?.cancel().catch(() => undefined);
@@ -306,21 +320,52 @@ function totalUsage(first: Usage | null, second: Usage | null): Usage | null {
 /** All current network paths enforce the compiled public-image hash allowlist and explicit opt-in. */
 export async function extractReviewedPillPhotos(
   photos: readonly [Uint8Array, Uint8Array],
-  options: { allowExternalTransfer?: boolean; apiKey?: string; model?: string; fetchImpl?: typeof fetch } = {},
+  options: { allowExternalTransfer?: boolean; apiKey?: string; model?: string; ocrModel?: string; fetchImpl?: typeof fetch; photoSet?: ReviewedPillPhotoSet } = {},
 ): Promise<PhotoExtractionResult> {
   if (options.allowExternalTransfer !== true) return { ok: false, reason: "transfer_not_confirmed" };
-  if (!Array.isArray(photos) || photos.length !== 2 || photos.some((bytes) => reviewedPhotoIndex(bytes) < 0)) return { ok: false, reason: "unreviewed_photo" };
-  if (reviewedPhotoIndex(photos[0]) === reviewedPhotoIndex(photos[1])) return { ok: false, reason: "duplicate_photo" };
+  if (!Array.isArray(photos) || photos.length !== 2) return { ok: false, reason: "unreviewed_photo" };
+  const photoSet = options.photoSet ?? "development";
+  let expectations: readonly [ReviewedPillPhotoExpectation, ReviewedPillPhotoExpectation];
+  if (photoSet === "development") {
+    const indexes = [reviewedPhotoIndex(photos[0]), reviewedPhotoIndex(photos[1])] as const;
+    if (indexes.some((index) => index < 0)) return { ok: false, reason: "unreviewed_photo" };
+    if (indexes[0] === indexes[1]) return { ok: false, reason: "duplicate_photo" };
+    expectations = [PILL_PHOTO_FILES[indexes[0]]!, PILL_PHOTO_FILES[indexes[1]]!];
+  } else if (photoSet === "evaluation") {
+    try {
+      const allowlist = await evaluationPhotoAllowlist();
+      const entries = photos.map((bytes) => {
+        const digest = createHash("sha256").update(bytes).digest("hex");
+        return allowlist.find((image) => image.bytes === bytes.length && image.sha256 === digest);
+      });
+      if (!entries[0] || !entries[1]) return { ok: false, reason: "unreviewed_photo" };
+      if (entries[0].path === entries[1].path) return { ok: false, reason: "duplicate_photo" };
+      expectations = [entries[0], entries[1]];
+    } catch { return { ok: false, reason: "unreviewed_photo" }; }
+  } else return { ok: false, reason: "unreviewed_photo" };
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
   const model = options.model ?? process.env.OPENAI_MODEL ?? "gpt-5.6-luna";
-  if (!apiKey?.trim() || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(model)) return { ok: false, reason: "not_configured" };
+  const ocrModel = options.ocrModel ?? process.env.OPENAI_OCR_MODEL ?? "gpt-5.6-sol";
+  if (!apiKey?.trim() || ![model, ocrModel].every((value) => /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(value))) return { ok: false, reason: "not_configured" };
   let prepared: [PillPhotoPreprocessingVariants, PillPhotoPreprocessingVariants];
-  let ocrViews: [PillPhotoOcrRotationViews, PillPhotoOcrRotationViews];
+  let ocrViews: [
+    { color: PillPhotoOcrRotationViews; contrast: PillPhotoOcrRotationViews },
+    { color: PillPhotoOcrRotationViews; contrast: PillPhotoOcrRotationViews },
+  ];
   try {
-    prepared = [await prepareReviewedPillPhotoVariants(photos[0]), await prepareReviewedPillPhotoVariants(photos[1])];
+    prepared = [
+      await prepareValidatedPillPhotoVariants(photos[0], expectations[0]),
+      await prepareValidatedPillPhotoVariants(photos[1], expectations[1]),
+    ];
     ocrViews = [
-      await preparePillPhotoOcrRotationViews(prepared[0].alignedContrast),
-      await preparePillPhotoOcrRotationViews(prepared[1].alignedContrast),
+      {
+        color: await preparePillPhotoOcrRotationViews(prepared[0].alignedColor),
+        contrast: await preparePillPhotoOcrRotationViews(prepared[0].alignedContrast),
+      },
+      {
+        color: await preparePillPhotoOcrRotationViews(prepared[1].alignedColor),
+        contrast: await preparePillPhotoOcrRotationViews(prepared[1].alignedContrast),
+      },
     ];
   }
   catch { return { ok: false, reason: "invalid_photo" }; }
@@ -329,19 +374,29 @@ export async function extractReviewedPillPhotos(
   if (!visionResponse.ok) return visionResponse;
   const vision = parsePillPhotoResponse(visionResponse.value);
   if (!vision.ok) return vision;
-  const ocrResponse = await requestPillPhotoProvider(pillPhotoOcrRequest(ocrViews[0], ocrViews[1], model), apiKey, fetchImpl);
-  if (!ocrResponse.ok) return ocrResponse;
-  const ocr = parsePillPhotoOcrResponse(ocrResponse.value);
-  if (!ocr.ok) return ocr;
+  const firstOcrResponse = await requestPillPhotoProvider(pillPhotoOcrRequest(ocrViews[0].color, ocrViews[0].contrast, ocrModel), apiKey, fetchImpl);
+  if (!firstOcrResponse.ok) return firstOcrResponse;
+  const firstOcr = parsePillPhotoOcrResponse(firstOcrResponse.value);
+  if (!firstOcr.ok) return firstOcr;
+  const secondOcrResponse = await requestPillPhotoProvider(pillPhotoOcrRequest(ocrViews[1].color, ocrViews[1].contrast, ocrModel), apiKey, fetchImpl);
+  if (!secondOcrResponse.ok) return secondOcrResponse;
+  const secondOcr = parsePillPhotoOcrResponse(secondOcrResponse.value);
+  if (!secondOcr.ok) return secondOcr;
   try {
-    const fused = fusePillPhotoSignals(vision.features, ocr.features);
+    const ocrFeatures = pillPhotoOcrFeaturesSchema.parse({
+      schemaVersion: PILL_PHOTO_OCR_SCHEMA_VERSION,
+      front: firstOcr.features.side,
+      back: secondOcr.features.side,
+    });
+    const ocrUsage = totalUsage(firstOcr.usage, secondOcr.usage);
+    const fused = fusePillPhotoSignals(vision.features, ocrFeatures);
     return {
       ok: true,
       features: fused.features,
-      usage: totalUsage(vision.usage, ocr.usage),
+      usage: totalUsage(vision.usage, ocrUsage),
       signals: {
         vision: { features: vision.features, usage: vision.usage },
-        ocr: { features: ocr.features, usage: ocr.usage },
+        ocr: { features: ocrFeatures, usage: ocrUsage },
         fusion: fused.evidence,
       },
     };

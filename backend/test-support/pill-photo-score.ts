@@ -40,6 +40,7 @@ const scoreInputSchema = z.object({
     preprocessingVersion: safeVersionSchema,
     visionVersion: safeVersionSchema,
     model: safeVersionSchema.nullable(),
+    ocrModel: safeVersionSchema.nullable().optional(),
     ocrVersion: safeVersionSchema.nullable(),
     fusionVersion: safeVersionSchema.nullable(),
   }).strict(),
