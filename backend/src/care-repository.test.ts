@@ -265,6 +265,63 @@ test("기존 문서 삭제와 새 문서 등록의 동시 요청에서 새 데�
   assert.deepEqual((await getCareSnapshot(scope)).documents.map((item) => item.id), ["new"]);
 });
 
+test("문서 삭제는 연결된 질문·분석·Agent 흔적을 원자적으로 정리하고 체크인 사실만 보존한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-document-cascade", firestore };
+  await consentedSnapshot(scope);
+  await registerDocument(scope, upload("cascade"));
+  const recipient = `careRecipients/${scope.recipientId}`;
+  const rows: Array<[string, string, Record<string, unknown>]> = [
+    ["questionSets", "question-delete", { sourceDocumentIds: ["cascade"] }],
+    ["questionSets", "question-keep", { sourceDocumentIds: ["other"] }],
+    ["questionResponses", "response-delete", { question_set_id: "question-delete", answer: "민감 응답" }],
+    ["careAnalyses", "analysis-delete", { sourceDocumentIds: ["cascade"], summary: "민감 분석" }],
+    ["agentRuns", "run-delete", { sourceDocumentIds: ["cascade"], outputRef: "analysis-delete" }],
+    ["questionGenerations", "generation-delete", { sourceDocumentIds: ["cascade"] }],
+    ["questionGenerationAttempts", "attempt-delete", { generationId: "generation-delete" }],
+    ["documentAnalysisJobs", "job-delete", { contentHash: "cascade", fileName: "민감한-처방전.pdf" }],
+    ["documentImportRequests", "request-delete", { contentHash: "cascade", documentId: "cascade" }],
+    ["documentImportReviews", "review-delete", { contentHash: "cascade", analysis: { summary: "민감" } }],
+    ["medicationPlanDrafts", "draft-delete", { documentId: "cascade" }],
+    ["medicationDraftConfirmations", "confirmation-delete", { draftId: "draft-delete" }],
+    ["clinicianQuestions", "clinician-delete", { sourceQuestionSetId: "question-delete" }],
+    ["dailyCheckIns", "2026-08-31", {
+      id: "2026-08-31",
+      completedAt: "2026-08-31T01:00:00.000Z",
+      completedBy: "recipient",
+      medicationResponses: [],
+      symptoms: ["어지러움"],
+      note: "사실 기록",
+      questionSetId: "question-delete",
+      questionResponseId: "response-delete",
+    }],
+  ];
+  for (const [collection, id, value] of rows) {
+    await firestore.collection(`${recipient}/${collection}`).doc(id).set(value);
+  }
+  const before = await getCareSnapshot(scope);
+
+  firestore.failCommits = 1;
+  await assert.rejects(deleteDocument(scope, "cascade", before), /INJECTED_COMMIT_FAILURE/);
+  assert.equal(firestore.store.has(`${recipient}/clinicalDocuments/cascade`), true);
+  assert.equal(firestore.store.has(`${recipient}/questionSets/question-delete`), true);
+
+  await deleteDocument(scope, "cascade", before);
+  for (const [collection, id] of rows.filter(([collection, id]) =>
+    !(collection === "questionSets" && id === "question-keep") && collection !== "dailyCheckIns")) {
+    assert.equal(firestore.store.has(`${recipient}/${collection}/${id}`), false, `${collection}/${id}`);
+  }
+  assert.equal(firestore.store.has(`${recipient}/questionSets/question-keep`), true);
+  const retainedCheckIn = firestore.store.get(`${recipient}/dailyCheckIns/2026-08-31`) as Record<string, unknown>;
+  assert.deepEqual(retainedCheckIn.symptoms, ["어지러움"]);
+  assert.equal("questionSetId" in retainedCheckIn, false);
+  assert.equal("questionResponseId" in retainedCheckIn, false);
+  const receipt = firestore.store.get(`${recipient}/documentDeletionReceipts/cascade`) as Record<string, unknown>;
+  assert.equal(receipt.status, "completed");
+  assert.equal(JSON.stringify(receipt).includes("민감"), false);
+  assert.deepEqual((await getCareSnapshot(scope)).documents, []);
+});
+
 test("복약 확정과 알림 복구 작업은 같은 commit에 저장되고 실패 시 둘 다 남지 않는다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-outbox", firestore };
