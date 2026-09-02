@@ -4,7 +4,12 @@ import { currentGoogleAuthMode, loadFirebaseAuth } from "./google-auth-browser";
 import { withGoogleAuthTimeout } from "./google-auth-flow";
 
 const MARKER = "account_reauth";
-export const hasAccountReauthentication = () => new URLSearchParams(window.location.search).get(MARKER) === "1";
+export type AccountReauthenticationPurpose = "account_deletion" | "health_data_reset";
+
+export const hasAccountReauthentication = (purpose: AccountReauthenticationPurpose = "account_deletion") => {
+  const value = new URLSearchParams(window.location.search).get(MARKER);
+  return purpose === "account_deletion" ? value === "1" || value === purpose : value === purpose;
+};
 export function clearAccountReauthentication() {
   const url = new URL(window.location.href);
   url.searchParams.delete(MARKER);
@@ -17,7 +22,11 @@ async function verifiedToken(user: User | null, expectedUserId: string) {
   return user.getIdToken(true);
 }
 
-export async function startAccountReauthentication(expectedUserId: string, email?: string) {
+export async function startAccountReauthentication(
+  expectedUserId: string,
+  email?: string,
+  purpose: AccountReauthenticationPurpose = "account_deletion",
+) {
   const mode = currentGoogleAuthMode();
   const { auth, authModule } = await loadFirebaseAuth(mode);
   await auth.authStateReady();
@@ -26,7 +35,7 @@ export async function startAccountReauthentication(expectedUserId: string, email
   await authModule.setPersistence(auth, mode === "redirect" ? authModule.browserSessionPersistence : authModule.inMemoryPersistence);
   if (mode === "redirect") {
     const url = new URL(window.location.href);
-    url.searchParams.set(MARKER, "1");
+    url.searchParams.set(MARKER, purpose);
     window.history.replaceState(window.history.state, "", url);
     try {
       if (auth.currentUser?.uid === expectedUserId) await authModule.reauthenticateWithRedirect(auth.currentUser, provider);
@@ -45,7 +54,13 @@ export async function startAccountReauthentication(expectedUserId: string, email
   } finally { await authModule.signOut(auth); }
 }
 
-export async function finishAccountReauthentication(expectedUserId: string) {
+export async function finishAccountReauthentication(
+  expectedUserId: string,
+  purpose: AccountReauthenticationPurpose = "account_deletion",
+) {
+  if (!hasAccountReauthentication(purpose)) {
+    throw Object.assign(new Error("Missing reauthentication purpose"), { code: "auth/redirect-result-missing" });
+  }
   const { auth, authModule } = await loadFirebaseAuth("redirect");
   try {
     const result = await withGoogleAuthTimeout(authModule.getRedirectResult(auth), 30_000, "auth/redirect-timeout");

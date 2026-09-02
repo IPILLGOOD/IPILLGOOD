@@ -13,6 +13,43 @@ test.beforeEach(async ({ context }) => {
   await context.route("**/*", (route) => ["127.0.0.1", "localhost"].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort());
 });
 
+test("health reset: explicit scope, accessible confirmation and strict API boundary", async ({ page, context, request }) => {
+  const f = emulatorFixture("admin");
+  const uid = f.namespace;
+  try {
+    await context.addCookies([{ name: "care_atlas_session", value: await session(uid), url: process.env.IPILLGOOD_TEST_BASE_URL!, httpOnly: true, sameSite: "Lax" }]);
+    await page.goto("/profile");
+    const trigger = page.getByRole("button", { name: "건강정보 삭제", exact: true });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "건강정보 삭제 전 확인해주세요" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/문서·분석 결과, 복약·증상·안부 기록/)).toBeVisible();
+    await expect(dialog.getByText(/서버에서 남은 건강정보가 없는지 다시 확인/)).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Google로 본인 확인" })).toBeEnabled();
+    await page.evaluate(axe.source);
+    const violations = await page.evaluate(async () => (await (window as unknown as { axe: typeof axe }).axe.run(document, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
+    })).violations);
+    expect(violations.map((item) => item.id)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    const headers = { origin: process.env.IPILLGOOD_TEST_BASE_URL! };
+    const body = {
+      action: "start",
+      idToken: "invalid".repeat(30),
+      confirmation: "건강정보 삭제",
+      deleteFirebaseAccount: false,
+    };
+    expect((await request.post("/api/account/health-data-reset", { headers, data: body })).status()).toBe(401);
+    expect((await context.request.post("/api/account/health-data-reset", { headers: { origin: "https://untrusted.invalid" }, data: body })).status()).toBe(403);
+    expect((await context.request.post("/api/account/health-data-reset", { headers, data: { ...body, confirmation: "삭제" } })).status()).toBe(400);
+    expect((await context.request.post("/api/account/health-data-reset", { headers, data: { ...body, userId: "other" } })).status()).toBe(400);
+    expect((await f.admin.collection("healthDataResets").doc(f.scope.recipientId).get()).exists).toBe(false);
+  } finally { await f.cleanup(); }
+});
+
 test("profile: three-month policy, responsive dialog, keyboard cancellation, demo and API authorization", async ({ page, context, request }, info) => {
   const f = emulatorFixture("admin");
   const uid = f.namespace;

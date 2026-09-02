@@ -4,10 +4,19 @@ import { History, ShieldCheck } from "lucide-react";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { AccountDeletionCard } from "@/components/profile/AccountDeletionCard";
 import { AccountDeletionProgress } from "@/components/profile/AccountDeletionProgress";
+import { HealthDataResetCard } from "@/components/profile/HealthDataResetCard";
+import { HealthDataResetProgress } from "@/components/profile/HealthDataResetProgress";
 import { CareConnectionCard } from "@/components/profile/CareConnectionCard";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareConnection, getCareSnapshot, getAccountDeletionPolicy, publicAccountDeletion } from "@care-atlas/backend";
+import {
+  getCareConnection,
+  getCareSnapshot,
+  getAccountDeletionPolicy,
+  getHealthDataReset,
+  publicAccountDeletion,
+  publicHealthDataReset,
+} from "@care-atlas/backend";
 import { careScopeFor } from "@/lib/auth/care-scope";
 import { getSession } from "@/lib/auth/session";
 import { getAccountDeletionReceipt } from "@/lib/auth/account-deletion-receipt";
@@ -15,16 +24,22 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ account_reauth?: string; restored?: string; onboarding?: string }> }) {
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ account_reauth?: string; health_data_reset?: string; restored?: string; onboarding?: string }> }) {
   const deletion = await getAccountDeletionReceipt();
   if (deletion) return <><PageHeader eyebrow="계정 관리" title="회원 탈퇴 처리 상태" description="탈퇴 후 3개월 안에 같은 Google 계정으로 로그인하면 복구할 수 있어요." /><Card><AccountDeletionProgress initial={publicAccountDeletion(deletion)} /></Card></>;
   const user = await getSession();
   if (!user) redirect("/login");
+  const reset = user.provider === "google" ? await getHealthDataReset(user.id) : null;
+  if (reset && reset.status !== "completed") return <>
+    <PageHeader eyebrow="계정 관리" title="건강정보 삭제 처리 상태" description="중단된 단계가 있으면 남은 작업부터 안전하게 다시 처리해요." />
+    <Card><HealthDataResetProgress initial={publicHealthDataReset(reset)} /></Card>
+  </>;
   const scope = careScopeFor(user);
   const snapshot = await getCareSnapshot(scope);
   const connection = user.provider === "google" ? await getCareConnection(user.id, { ownerDisplayName: user.name }) : null;
   const params = await searchParams;
-  const reauthenticating = params.account_reauth === "1";
+  const accountDeletionReauth = params.account_reauth === "1" || params.account_reauth === "account_deletion";
+  const healthDataResetReauth = params.account_reauth === "health_data_reset";
   return (
     <>
       <PageHeader
@@ -38,6 +53,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
         </p>
       ) : null}
       {params.restored === "1" && <p className="account-deletion-notice" role="status">계정과 돌봄 기록이 복구됐어요. 복약 알림은 이 기기에서 다시 설정해주세요.</p>}
+      {params.health_data_reset === "1" && <p className="account-deletion-notice" role="status">건강정보를 모두 삭제했어요. 같은 Google 계정으로 빈 돌봄 공간을 다시 설정할 수 있어요.</p>}
       <div className="profile-layout">
         <Card>
           <ProfileForm recipient={snapshot.recipient} revision={snapshot.revision} onboarding={params.onboarding === "1"} />
@@ -60,7 +76,8 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
         </aside>
       </div>
       {user.provider === "google" ? <CareConnectionCard connection={connection} /> : null}
-      {user.provider !== "connected" ? <AccountDeletionCard userId={user.id} email={user.email} demo={user.provider === "demo"} policy={getAccountDeletionPolicy()} reauthenticating={reauthenticating} /> : null}
+      {user.provider === "google" ? <HealthDataResetCard userId={user.id} email={user.email} reauthenticating={healthDataResetReauth} /> : null}
+      {user.provider !== "connected" ? <AccountDeletionCard userId={user.id} email={user.email} demo={user.provider === "demo"} policy={getAccountDeletionPolicy()} reauthenticating={accountDeletionReauth} /> : null}
     </>
   );
 }
