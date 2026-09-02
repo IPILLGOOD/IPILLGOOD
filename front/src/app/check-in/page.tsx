@@ -9,6 +9,7 @@ import {
 } from "@care-atlas/backend";
 import { createMedicationSchedule } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
+import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ export default async function CheckInPage() {
             initialCheckIn={snapshot.todayCheckIn ?? null}
             initialQuestionResponse={savedQuestionResponse}
             revision={snapshot.revision}
+            observationIdempotencyKey={randomUUID()}
           />
         </Card>
       </div>

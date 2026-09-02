@@ -48,6 +48,24 @@ test("/check-in: missing stored question preserves inputs and recovers without r
     const saved = await recipient.collection("dailyCheckIns").get();
     expect(saved.size).toBe(1);
     expect(saved.docs[0].data()).toMatchObject({ note: "새로고침 없이 보존할 메모", severity: 7, completedBy: "recipient", symptoms: ["두통"] });
+    expect((await recipient.collection("doseEvents").get()).size).toBe(0);
+    expect((await recipient.collection("symptomEvents").get()).size).toBe(0);
+    expect((await recipient.collection("doseObservations").get()).size).toBe(1);
+    expect((await recipient.collection("symptomObservations").get()).size).toBe(1);
+
+    await page.goto("/check-in");
+    const correctionForm = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
+    await checkChoice(correctionForm.getByLabel("보호자가 전달받아 확인했어요", { exact: true }));
+    await checkChoice(correctionForm.locator(".dose-question").getByLabel("일부만 먹었어요", { exact: true }));
+    await correctionForm.getByLabel("기존 기록을 수정하는 이유").fill("어르신과 통화해 복용량을 다시 확인했어요.");
+    await correctionForm.getByRole("button", { name: "오늘의 답변 수정" }).click();
+    await expect(page.getByText("오늘의 복약과 몸 상태를 기록했어요.")).toBeVisible();
+    const doseHistory = (await recipient.collection("doseObservations").get()).docs.map((document) => document.data());
+    const symptomHistory = (await recipient.collection("symptomObservations").get()).docs.map((document) => document.data());
+    expect(doseHistory).toHaveLength(2);
+    expect(symptomHistory).toHaveLength(2);
+    expect(doseHistory.some((item) => item.supersedesObservationId && item.correctionReason === "어르신과 통화해 복용량을 다시 확인했어요.")).toBe(true);
+    expect(symptomHistory.some((item) => item.evidenceLevel === "relayed_confirmation" && item.supersedesObservationId)).toBe(true);
 
     // A live generation lease with no published set renders only recovery, never a usable form.
     await page.goto("/check-in");

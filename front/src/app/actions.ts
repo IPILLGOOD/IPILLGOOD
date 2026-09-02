@@ -17,6 +17,7 @@ import {
   getQuestionSetAvailability,
   isServiceCareProfileComplete,
   saveDailyCheckIn,
+  saveWellbeingCheckIn,
   updateRecipientProfile,
   type ActionState,
   type QuestionSetAvailability,
@@ -216,10 +217,14 @@ export async function saveCheckInAction(
   try {
     const guard = await demoWriteGuard();
     if (guard) return guard;
-    const answeredBy = formData.get("answeredBy");
-    if (answeredBy !== "caregiver" && answeredBy !== "recipient") {
-      return { status: "error", message: "누가 답했는지 선택해주세요." };
-    }
+    const reportSource = String(formData.get("reportSource") ?? "");
+    const source = {
+      recipient_self_reported: { actorRole: "recipient" as const, evidenceLevel: "self_reported" as const },
+      caregiver_observed: { actorRole: "caregiver" as const, evidenceLevel: "caregiver_observed" as const },
+      caregiver_relayed: { actorRole: "caregiver" as const, evidenceLevel: "relayed_confirmation" as const },
+      unconfirmed: { actorRole: "caregiver" as const, evidenceLevel: "unconfirmed" as const },
+    }[reportSource];
+    if (!source) return { status: "error", message: "누가 어떻게 확인했는지 선택해주세요." };
 
     const session = await getSession();
     if (!session) return { status: "error", message: "로그인 정보가 만료되었어요." };
@@ -238,23 +243,45 @@ export async function saveCheckInAction(
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
       return { status: "error", conflict: true, message: "최신 기록을 다시 불러와주세요." };
     }
-    const schedule = new Map(
-      createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [
-        task.id,
-        task,
-      ]),
-    );
-
-    const { responses, missingTaskIds } = collectCompleteDoseResponses(formData, schedule);
-    if (missingTaskIds.length > 0) {
-      return { status: "error", message: "각 복용 일정의 복용 여부를 모두 확인해주세요." };
-    }
+    const checkInScope = formData.get("checkInScope") === "wellbeing" ? "wellbeing" : "full";
+    const schedule = new Map(createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [task.id, task]));
+    const { responses, missingTaskIds } = checkInScope === "full"
+      ? collectCompleteDoseResponses(formData, schedule)
+      : { responses: [], missingTaskIds: [] };
+    if (missingTaskIds.length > 0) return { status: "error", message: "각 복용 일정의 복용 여부를 모두 확인해주세요." };
 
     const symptoms = formData
       .getAll("symptoms")
       .filter((value): value is string => typeof value === "string");
     const severity = Number(formData.get("severity") ?? 0);
     const note = String(formData.get("note") ?? "").trim();
+    if (symptoms.length > 0 && (!Number.isFinite(severity) || severity < 1 || severity > 10)) {
+      return { status: "error", message: "불편한 정도를 1에서 10 사이로 선택해주세요." };
+    }
+    const correctionReason = String(formData.get("correctionReason") ?? "").trim();
+    if (correctionReason.length > 300) return { status: "error", message: "수정 사유는 300자 이내로 입력해주세요." };
+    const idempotencyKey = String(formData.get("observationIdempotencyKey") ?? "").trim();
+    if (!/^[^/]{8,256}$/.test(idempotencyKey)) return { status: "error", message: "기록 화면을 새로 불러온 뒤 다시 저장해주세요." };
+    const observationInput = {
+      symptoms: [...new Set(symptoms)].slice(0, 20),
+      severity: symptoms.length > 0 ? Math.min(Math.max(severity, 1), 10) : 0,
+      note,
+      actorId: `${session.provider}:${session.id}`,
+      actorRole: source.actorRole,
+      evidenceLevel: source.evidenceLevel,
+      idempotencyKey,
+      ...(correctionReason ? { correctionReason } : {}),
+    };
+
+    if (checkInScope === "wellbeing") {
+      await saveWellbeingCheckIn(scope, observationInput, snapshot, expectedRevision);
+      revalidatePath("/today");
+      revalidatePath("/dashboard");
+      revalidatePath("/check-in");
+      revalidatePath("/report");
+      return { status: "success", message: "오늘의 몸 상태를 기록했어요." };
+    }
+
     const questionSetId = String(formData.get("questionSetId") ?? "").trim();
     if (!/^question-set-[a-zA-Z0-9-]{10,100}$/.test(questionSetId)) {
       return { status: "error", message: "오늘의 맞춤 질문을 다시 불러와주세요." };
@@ -270,7 +297,7 @@ export async function saveCheckInAction(
     }
     const questionResponse = buildPatientQuestionResponse({
       questionSet,
-      answeredBy,
+      answeredBy: source.actorRole,
       responseId:
         snapshot.todayCheckIn?.questionSetId === questionSetId
           ? snapshot.todayCheckIn.questionResponseId
@@ -286,10 +313,9 @@ export async function saveCheckInAction(
       scope,
       {
         doseResponses: responses,
-        symptoms,
-        severity: symptoms.length > 0 ? Math.min(Math.max(severity, 1), 10) : 0,
-        note,
-        answeredBy,
+        ...observationInput,
+        scope: "full",
+        inputSource: "daily_check_in",
         questionResponse,
       },
       snapshot,
@@ -301,10 +327,7 @@ export async function saveCheckInAction(
     revalidatePath("/report");
     return {
       status: "success",
-      message:
-        formData.get("checkInScope") === "wellbeing"
-          ? "오늘의 몸 상태를 기록했어요."
-          : "오늘의 복약과 몸 상태를 기록했어요.",
+      message: "오늘의 복약과 몸 상태를 기록했어요.",
     };
   } catch (error) {
     if (error instanceof CareConflictError) {

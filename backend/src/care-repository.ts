@@ -9,6 +9,7 @@ import type {
   ClinicianQuestion,
   DailyCheckIn,
   DoseEvent,
+  DoseObservation,
   DocumentAnalysis,
   MedicationPlan,
   MedicationPlanCandidate,
@@ -16,6 +17,7 @@ import type {
   PatientQuestionResponse,
   PatientQuestionSet,
   SymptomEvent,
+  SymptomObservation,
 } from "./types.ts";
 
 import { getAdminFirestore } from "./firebase-admin.ts";
@@ -25,6 +27,7 @@ import { stableJson } from "./stable-json.ts";
 import { conditionFromDiagnosis } from "./nutrition.ts";
 import { DocumentAnalysisCancelledError } from "./document-analysis-jobs.ts";
 import { normalizeMedicationRecurrence } from "./medication-schedule.ts";
+import { projectDoseObservations, projectSymptomObservations } from "./observations.ts";
 import {
   addCalendarDays,
   dateKeyInSeoul,
@@ -272,18 +275,20 @@ async function canonicalReadModel(
   scope: CareDataScope,
 ): Promise<StoredCareReadModel> {
   const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
-  const [recipient, medications, doses, symptoms, documents, questions, checkIn] = await Promise.all([
+  const [recipient, medications, doses, symptoms, doseObservations, symptomObservations, documents, questions, checkIn] = await Promise.all([
     tx.get(recipientRef),
     tx.get(recipientRef.collection("medicationPlans")),
     tx.get(recipientRef.collection("doseEvents")),
     tx.get(recipientRef.collection("symptomEvents")),
+    tx.get(recipientRef.collection("doseObservations")),
+    tx.get(recipientRef.collection("symptomObservations")),
     tx.get(recipientRef.collection("clinicalDocuments")),
     tx.get(recipientRef.collection("clinicianQuestions")),
     tx.get(recipientRef.collection("dailyCheckIns").doc(dateKeyInSeoul(new Date()))),
   ]);
   if (!recipient.exists) {
     // Never replace an orphaned account with an apparently empty account.
-    if ([medications, doses, symptoms, documents, questions].some((rows) => rows.docs.length)) {
+    if ([medications, doses, symptoms, doseObservations, symptomObservations, documents, questions].some((rows) => rows.docs.length)) {
       throw new Error("돌봄 데이터 원본 복구가 필요합니다.");
     }
     if (scope.useDemoData) throw new Error("데모 세션 데이터가 만료되었습니다.");
@@ -292,8 +297,14 @@ async function canonicalReadModel(
   return toStoredReadModel({
     recipient: recipient.data() as CareRecipient,
     medications: medications.docs.map((doc) => doc.data() as MedicationPlan),
-    doseEvents: doses.docs.map((doc) => doc.data() as DoseEvent),
-    symptomEvents: symptoms.docs.map((doc) => doc.data() as SymptomEvent),
+    doseEvents: projectDoseObservations(
+      doseObservations.docs.map((doc) => doc.data() as DoseObservation),
+      doses.docs.map((doc) => doc.data() as DoseEvent),
+    ),
+    symptomEvents: projectSymptomObservations(
+      symptomObservations.docs.map((doc) => doc.data() as SymptomObservation),
+      symptoms.docs.map((doc) => doc.data() as SymptomEvent),
+    ),
     documents: documents.docs.map((doc) => doc.data() as ClinicalDocument),
     clinicianQuestions: questions.docs.map((doc) => doc.data() as ClinicianQuestion),
     todayCheckIn: checkIn.exists ? checkIn.data() as DailyCheckIn : null,
@@ -525,15 +536,70 @@ export async function saveDailyCheckIn(
     const question = await tx.get(questionRef);
     if (!question.exists) throw new Error("질문을 다시 불러온 후 저장해 주세요.");
     const update = applyDailyCheckInToSnapshot(snapshot, input);
-    for (const event of update.doseEvents) tx.set(ref.collection("doseEvents").doc(event.id), event);
-    for (const event of update.replacedSymptomEvents) tx.delete(ref.collection("symptomEvents").doc(event.id));
-    for (const event of update.symptomEvents) tx.set(ref.collection("symptomEvents").doc(event.id), event);
+    await persistObservations(tx, ref, update.doseObservations, update.symptomObservations);
     const checkIn: DailyCheckIn = { ...update.checkIn, questionSetId: input.questionResponse.question_set_id, questionResponseId: input.questionResponse.response_id };
     tx.set(ref.collection("dailyCheckIns").doc(checkIn.id), checkIn);
     tx.set(ref.collection("questionResponses").doc(input.questionResponse.response_id), input.questionResponse);
     tx.set(questionRef, { response_status: "answered", answered_at: input.questionResponse.answered_at }, { merge: true });
     return { snapshot: { ...update.nextSnapshot, todayCheckIn: checkIn }, result: undefined };
   }, { requiresConsent: true, expectedRevision });
+}
+
+export async function saveWellbeingCheckIn(
+  scope: CareDataScope,
+  input: Omit<DailyCheckInInput, "doseResponses" | "scope" | "inputSource">,
+  currentSnapshot?: CareSnapshot,
+  expectedRevision?: number,
+) {
+  await mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
+    const update = applyDailyCheckInToSnapshot(snapshot, {
+      ...input,
+      doseResponses: [],
+      scope: "wellbeing",
+      inputSource: "quick_wellbeing",
+    });
+    await persistObservations(tx, ref, update.doseObservations, update.symptomObservations);
+    tx.set(ref.collection("dailyCheckIns").doc(update.checkIn.id), update.checkIn);
+    return { snapshot: update.nextSnapshot, result: undefined };
+  }, { requiresConsent: true, expectedRevision });
+}
+
+async function persistObservations(
+  tx: TransactionLike,
+  recipientRef: DocumentReferenceLike,
+  doses: DoseObservation[],
+  symptoms: SymptomObservation[],
+) {
+  const rows = [
+    ...doses.map((observation) => ({ collection: "doseObservations", observation })),
+    ...symptoms.map((observation) => ({ collection: "symptomObservations", observation })),
+  ];
+  const writes: typeof rows = [];
+  for (const row of rows) {
+    const document = await tx.get(recipientRef.collection(row.collection).doc(row.observation.id));
+    if (!document.exists) writes.push(row);
+    else if (stableJson(document.data()) !== stableJson(row.observation)) {
+      throw new Error("OBSERVATION_IDEMPOTENCY_CONFLICT");
+    }
+  }
+  for (const row of writes) tx.create(recipientRef.collection(row.collection).doc(row.observation.id), row.observation);
+}
+
+export async function getObservationHistory(scope: CareDataScope) {
+  assertValidScope(scope);
+  const firestore = scope.firestore ?? await getAdminFirestore();
+  await assertActiveDemoScope(scope, firestore);
+  const ref = firestore.collection("careRecipients").doc(scope.recipientId);
+  const [doses, symptoms] = await Promise.all([
+    ref.collection("doseObservations").get(),
+    ref.collection("symptomObservations").get(),
+  ]);
+  const byRecordedAt = <T extends { id: string; recordedAt: string }>(left: T, right: T) =>
+    right.recordedAt.localeCompare(left.recordedAt) || right.id.localeCompare(left.id);
+  return {
+    doseObservations: doses.docs.map((document) => document.data() as DoseObservation).sort(byRecordedAt),
+    symptomObservations: symptoms.docs.map((document) => document.data() as SymptomObservation).sort(byRecordedAt),
+  };
 }
 
 export interface RegisterDocumentInput {

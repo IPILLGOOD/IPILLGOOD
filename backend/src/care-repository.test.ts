@@ -192,7 +192,7 @@ test("부분 commit 실패는 문서와 read model을 모두 보존하며 canoni
   assert.equal((await getCareSnapshot(scope)).documents[0]?.id, "kept");
 });
 
-test("당일 체크인은 read model에서 같은 날짜 기록을 교체하고 과거 기록을 보존한다", () => {
+test("당일 증상 정정은 기존 관찰을 삭제하지 않고 정정 연결과 과거 기록을 보존한다", () => {
   const update = applyDailyCheckInToSnapshot(
     snapshot,
     {
@@ -206,13 +206,21 @@ test("당일 체크인은 read model에서 같은 날짜 기록을 교체하고 
       symptoms: ["두통"],
       severity: 3,
       note: "오후에는 괜찮아졌어요.",
-      answeredBy: "caregiver",
+      actorId: "google:caregiver-1",
+      actorRole: "caregiver",
+      evidenceLevel: "caregiver_observed",
+      inputSource: "daily_check_in",
+      idempotencyKey: "checkin-20260816-first",
+      correctionReason: "어르신에게 다시 확인함",
+      scope: "full",
     },
     new Date("2026-08-16T06:30:00.000Z"),
   );
 
   assert.equal(update.checkIn.id, "2026-08-16");
-  assert.deepEqual(update.replacedSymptomEvents.map((event) => event.id), ["symptom-0816"]);
+  assert.deepEqual(update.replacedSymptomEvents, []);
+  assert.equal(update.symptomObservations.some((event) => event.inputSource === "legacy_import"), true);
+  assert.equal(update.symptomObservations.some((event) => event.status === "retracted" && event.supersedesObservationId), true);
   assert.equal(update.nextSnapshot.symptomEvents.some((event) => event.id === "symptom-0816"), false);
   assert.equal(update.nextSnapshot.symptomEvents.some((event) => event.id === "symptom-0815"), true);
   assert.equal(update.nextSnapshot.symptomEvents[0]?.symptomType, "두통");
@@ -231,7 +239,12 @@ test("같은 복약 체크인을 다시 저장해도 read model에 중복 이벤
     symptoms: [],
     severity: 0,
     note: "",
-    answeredBy: "recipient" as const,
+    actorId: "google:recipient-1",
+    actorRole: "recipient" as const,
+    evidenceLevel: "self_reported" as const,
+    inputSource: "daily_check_in" as const,
+    idempotencyKey: "checkin-20260816-retry",
+    scope: "full" as const,
   };
   const now = new Date("2026-08-16T07:00:00.000Z");
   const first = applyDailyCheckInToSnapshot(snapshot, input, now);
