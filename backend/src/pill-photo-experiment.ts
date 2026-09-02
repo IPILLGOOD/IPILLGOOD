@@ -1,4 +1,4 @@
-// Node-only, reviewed PUBLIC fixtures only. Do not expose this experiment as a user-upload API (#61/#88).
+// Node-only, fixed and reviewed evaluation fixtures only. Do not expose this experiment as a user-upload API (#61/#88).
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { z } from "zod";
@@ -18,7 +18,9 @@ import {
 } from "./pill-photo-ocr.ts";
 import {
   PILL_PHOTO_VARIANT_PREPROCESSING_VERSION,
+  PILL_PHONE_PHOTO_PREPROCESSING_VERSION,
   preparePillPhotoOcrRotationViews,
+  prepareValidatedPhonePillPhotoVariants,
   prepareValidatedPillPhotoVariants,
   type ValidatedPillPhotoExpectation,
   type PillPhotoOcrRotationViews,
@@ -37,10 +39,11 @@ const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 export const PILL_PHOTO_TIMEOUT_MS = 90_000;
 type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "invalid_request" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error" | "ocr_failed" | "fusion_failed";
 type Usage = { inputTokens: number; outputTokens: number };
-export type ReviewedPillPhotoSet = "development" | "evaluation" | "unseen_evaluation";
+export type ReviewedPillPhotoSet = "development" | "evaluation" | "unseen_evaluation" | "phone_validation";
 type ReviewedPillPhotoExpectation = ValidatedPillPhotoExpectation & { path: string };
 let evaluationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
 let unseenEvaluationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
+let phoneValidationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
 
 function evaluationPhotoAllowlist() {
   evaluationPhotoAllowlistPromise ??= import("../test-support/pill-photo-evaluation.ts")
@@ -54,6 +57,13 @@ function unseenEvaluationPhotoAllowlist() {
     .then(({ loadPillPhotoUnseenEvaluationFixture }) => loadPillPhotoUnseenEvaluationFixture())
     .then(({ manifest }) => manifest.images);
   return unseenEvaluationPhotoAllowlistPromise;
+}
+
+function phoneValidationPhotoAllowlist() {
+  phoneValidationPhotoAllowlistPromise ??= import("../test-support/pill-photo-phone-validation.ts")
+    .then(({ loadPillPhotoPhoneValidationFixture }) => loadPillPhotoPhoneValidationFixture())
+    .then(({ manifest }) => manifest.images);
+  return phoneValidationPhotoAllowlistPromise;
 }
 export interface PhotoExtractionSignals {
   vision: { features: PillPhotoFeatures; usage: Usage | null };
@@ -325,7 +335,7 @@ function totalUsage(first: Usage | null, second: Usage | null): Usage | null {
     : null;
 }
 
-/** All current network paths enforce the compiled public-image hash allowlist and explicit opt-in. */
+/** Every network path enforces a fixed reviewed-manifest hash allowlist and explicit opt-in. */
 export async function extractReviewedPillPhotos(
   photos: readonly [Uint8Array, Uint8Array],
   options: { allowExternalTransfer?: boolean; apiKey?: string; model?: string; ocrModel?: string; fetchImpl?: typeof fetch; photoSet?: ReviewedPillPhotoSet } = {},
@@ -339,11 +349,11 @@ export async function extractReviewedPillPhotos(
     if (indexes.some((index) => index < 0)) return { ok: false, reason: "unreviewed_photo" };
     if (indexes[0] === indexes[1]) return { ok: false, reason: "duplicate_photo" };
     expectations = [PILL_PHOTO_FILES[indexes[0]]!, PILL_PHOTO_FILES[indexes[1]]!];
-  } else if (photoSet === "evaluation" || photoSet === "unseen_evaluation") {
+  } else if (photoSet === "evaluation" || photoSet === "unseen_evaluation" || photoSet === "phone_validation") {
     try {
-      const allowlist = photoSet === "unseen_evaluation"
-        ? await unseenEvaluationPhotoAllowlist()
-        : await evaluationPhotoAllowlist();
+      const allowlist = photoSet === "unseen_evaluation" ? await unseenEvaluationPhotoAllowlist()
+        : photoSet === "phone_validation" ? await phoneValidationPhotoAllowlist()
+          : await evaluationPhotoAllowlist();
       const entries = photos.map((bytes) => {
         const digest = createHash("sha256").update(bytes).digest("hex");
         return allowlist.find((image) => image.bytes === bytes.length && image.sha256 === digest);
@@ -357,16 +367,19 @@ export async function extractReviewedPillPhotos(
   const model = options.model ?? process.env.OPENAI_MODEL ?? "gpt-5.6-luna";
   const ocrModel = options.ocrModel ?? process.env.OPENAI_OCR_MODEL ?? "gpt-5.6-sol";
   if (!apiKey?.trim() || ![model, ocrModel].every((value) => /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(value))) return { ok: false, reason: "not_configured" };
-  let prepared: [PillPhotoPreprocessingVariants, PillPhotoPreprocessingVariants];
+  let prepared: [
+    Pick<PillPhotoPreprocessingVariants, "context" | "alignedColor" | "alignedContrast">,
+    Pick<PillPhotoPreprocessingVariants, "context" | "alignedColor" | "alignedContrast">,
+  ];
   let ocrViews: [
     { color: PillPhotoOcrRotationViews; contrast: PillPhotoOcrRotationViews },
     { color: PillPhotoOcrRotationViews; contrast: PillPhotoOcrRotationViews },
   ];
   try {
-    prepared = [
-      await prepareValidatedPillPhotoVariants(photos[0], expectations[0]),
-      await prepareValidatedPillPhotoVariants(photos[1], expectations[1]),
-    ];
+    const prepare = photoSet === "phone_validation"
+      ? prepareValidatedPhonePillPhotoVariants
+      : prepareValidatedPillPhotoVariants;
+    prepared = [await prepare(photos[0], expectations[0]), await prepare(photos[1], expectations[1])];
     ocrViews = [
       {
         color: await preparePillPhotoOcrRotationViews(prepared[0].alignedColor),
@@ -415,6 +428,7 @@ export async function extractReviewedPillPhotos(
 
 export const pillPhotoExperimentVersions = {
   review: PILL_PHOTO_REVIEW_VERSION, preprocessing: PILL_PHOTO_PREPROCESSING_VERSION,
+  phonePreprocessing: PILL_PHONE_PHOTO_PREPROCESSING_VERSION,
   prompt: PILL_PHOTO_PROMPT_VERSION, ocrPrompt: PILL_PHOTO_OCR_PROMPT_VERSION,
   fusion: PILL_PHOTO_FUSION_VERSION, maskPolicy: PILL_PHOTO_MASK_POLICY_VERSION,
 } as const;

@@ -9,8 +9,12 @@ import {
   PILL_PHOTO_CONTEXT_MAX_EDGE,
   PILL_PHOTO_DETAIL_EDGE,
   PILL_PHOTO_MIN_AXIS_ELONGATION,
+  PILL_PHONE_PHOTO_CENTER_CROP_RATIO,
+  PILL_PHONE_PHOTO_DETAIL_EDGE,
+  PILL_PHONE_PHOTO_PREPROCESSING_VERSION,
   PILL_PHOTO_VARIANT_PREPROCESSING_VERSION,
   preparePillPhotoOcrRotationViews,
+  prepareValidatedPhonePillPhotoVariants,
   prepareValidatedPillPhotoVariants,
 } from "../src/pill-photo-preprocessing.ts";
 import { loadPillPhotoEvaluationFixture } from "./pill-photo-evaluation.ts";
@@ -113,4 +117,53 @@ test("기존 외부 전송 경로의 9개 고정 원본만 변형 wrapper에 들
   const changed = Buffer.from(original);
   changed[100] = changed[100]! ^ 1;
   await assert.rejects(prepareReviewedPillPhotoVariants(changed), /unreviewed_photo/);
+});
+
+test("스마트폰 JPEG 기준선은 라벨 없이 고정 중앙 영역과 OCR 변형을 결정적으로 만든다", async () => {
+  const original = await sharp(Buffer.from(`
+    <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+      <rect width="400" height="300" fill="#161616"/>
+      <circle cx="200" cy="150" r="54" fill="#f4f4f0"/>
+      <text x="200" y="165" text-anchor="middle" font-size="42" fill="#777">YH</text>
+    </svg>`)).jpeg({ quality: 95, chromaSubsampling: "4:4:4" }).toBuffer();
+  const expected = { bytes: original.length, sha256: sha256(original) };
+  const first = await prepareValidatedPhonePillPhotoVariants(original, expected);
+  const second = await prepareValidatedPhonePillPhotoVariants(original, expected);
+
+  assert.equal(first.metadata.version, PILL_PHONE_PHOTO_PREPROCESSING_VERSION);
+  assert.deepEqual(first.metadata.source, { width: 400, height: 300, format: "jpeg" });
+  assert.deepEqual(first.metadata.crop, {
+    method: "centered_square_ratio",
+    ratio: PILL_PHONE_PHOTO_CENTER_CROP_RATIO,
+    bounds: { left: 140, top: 90, width: 120, height: 120 },
+  });
+  assert.deepEqual(first.metadata.orientation.textOrientationDegreesToEvaluate, [0, 90, 180, 270]);
+  assert.equal(first.metadata.variants.context.width, 400);
+  assert.equal(first.metadata.variants.context.height, 300);
+  assert.equal(first.metadata.variants.alignedColor.width, PILL_PHONE_PHOTO_DETAIL_EDGE);
+  assert.equal(first.metadata.variants.alignedColor.height, PILL_PHONE_PHOTO_DETAIL_EDGE);
+  assert.equal(first.metadata.variants.alignedContrast.channels, 1);
+  assert.notEqual(first.metadata.variants.alignedColor.sha256, first.metadata.variants.alignedContrast.sha256);
+  assert.deepEqual(first, second);
+  for (const output of [first.context, first.alignedColor, first.alignedContrast]) {
+    const metadata = await sharp(output).metadata();
+    assert.equal(metadata.format, "png");
+    assert.equal(metadata.hasAlpha, false);
+    assert.equal(metadata.exif, undefined);
+    assert.equal(metadata.xmp, undefined);
+  }
+});
+
+test("스마트폰 기준선도 manifest와 다른 바이트 및 JPEG가 아닌 입력을 거절한다", async () => {
+  const original = await sharp({ create: { width: 320, height: 240, channels: 3, background: "white" } })
+    .jpeg().toBuffer();
+  const expected = { bytes: original.length, sha256: sha256(original) };
+  const altered = Buffer.from(original);
+  altered[altered.length - 1] = altered[altered.length - 1]! ^ 1;
+  await assert.rejects(prepareValidatedPhonePillPhotoVariants(altered, expected), /unreviewed_photo/);
+  const opaquePng = await sharp(original).png().toBuffer();
+  await assert.rejects(
+    prepareValidatedPhonePillPhotoVariants(opaquePng, { bytes: opaquePng.length, sha256: sha256(opaquePng) }),
+    /invalid_photo/,
+  );
 });

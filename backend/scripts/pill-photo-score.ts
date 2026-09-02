@@ -14,7 +14,7 @@ import { serializePillProfile } from "./profile-pill-catalog.ts";
 const OUTPUT = fileURLToPath(new URL("../../verification-artifacts/pill-photo-score/", import.meta.url));
 const MAX_SCORE_INPUT_BYTES = 512 * 1024;
 const HELP = `Offline pill-photo feature score (no model/API calls):
-  --input <saved-features.json> --split validation [--fixture v2|v3]
+  --input <saved-features.json> --split validation [--fixture v2|v3|v4]
   --input <saved-features.json> --split holdout [--fixture v2|v3] --confirm-holdout-final
 
 The input must contain exactly the opaque case IDs in the selected fixture and split.
@@ -85,7 +85,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       "evaluation_fixture_official_label_mismatch", "evaluation_fixture_image_hash_mismatch",
       "fixture_catalog_hash_mismatch", "fixture_baseline_hash_mismatch", "fixture_baseline_mismatch",
       "fixture_image_manifest_mismatch", "fixture_catalog_invalid", "fixture_catalog_decode_failed",
-      "fixture_size_exceeded",
+      "fixture_size_exceeded", "phone_validation_fixture_scope_mismatch", "phone_validation_fixture_duplicate_entry",
+      "phone_validation_fixture_duplicate_product", "phone_validation_fixture_duplicate_official_record",
+      "phone_validation_fixture_duplicate_image", "phone_validation_fixture_overlaps_previous_images",
+      "phone_validation_fixture_history_mismatch", "phone_validation_fixture_case_mapping_invalid",
+      "phone_validation_fixture_side_mapping_invalid", "phone_validation_fixture_requires_opposite_sides",
+      "phone_validation_fixture_photo_reused", "phone_validation_fixture_unreferenced_image",
+      "phone_validation_fixture_catalog_version_mismatch", "phone_validation_fixture_official_label_mismatch",
+      "phone_validation_fixture_image_hash_mismatch", "phone_validation_fixture_image_metadata_mismatch",
     ]);
     console.error(JSON.stringify({ status: "unavailable", reason: error instanceof Error && safe.has(error.message) ? error.message : "local_operation_failed" }));
     process.exitCode = 1;

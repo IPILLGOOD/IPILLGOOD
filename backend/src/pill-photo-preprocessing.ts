@@ -4,9 +4,12 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 
 export const PILL_PHOTO_VARIANT_PREPROCESSING_VERSION = "pill-photo-alpha-pca-detail-contrast-v1";
+export const PILL_PHONE_PHOTO_PREPROCESSING_VERSION = "pill-phone-centered-detail-contrast-v1";
 export const PILL_PHOTO_CONTEXT_MAX_EDGE = 1280;
 export const PILL_PHOTO_DETAIL_EDGE = 1600;
+export const PILL_PHONE_PHOTO_DETAIL_EDGE = 1024;
 export const PILL_PHOTO_MIN_AXIS_ELONGATION = 1.2;
+export const PILL_PHONE_PHOTO_CENTER_CROP_RATIO = 0.4;
 const MAX_INPUT_BYTES = 5 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 25_000_000;
 const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 } as const;
@@ -53,6 +56,32 @@ export interface PillPhotoPreprocessingVariants {
   alignedColor: Buffer;
   alignedContrast: Buffer;
   metadata: PillPhotoPreprocessingMetadata;
+}
+
+export interface PillPhonePhotoPreprocessingMetadata {
+  version: typeof PILL_PHONE_PHOTO_PREPROCESSING_VERSION;
+  source: { width: number; height: number; format: "jpeg" };
+  crop: {
+    method: "centered_square_ratio";
+    ratio: number;
+    bounds: { left: number; top: number; width: number; height: number };
+  };
+  orientation: {
+    method: "cardinal_ocr_views_only";
+    textOrientationDegreesToEvaluate: readonly [0, 90, 180, 270];
+  };
+  variants: {
+    context: PillPhotoVariantInfo;
+    alignedColor: PillPhotoVariantInfo;
+    alignedContrast: PillPhotoVariantInfo;
+  };
+}
+
+export interface PillPhonePhotoPreprocessingVariants {
+  context: Buffer;
+  alignedColor: Buffer;
+  alignedContrast: Buffer;
+  metadata: PillPhonePhotoPreprocessingMetadata;
 }
 
 export type PillPhotoOcrRotationViews = readonly [Buffer, Buffer, Buffer, Buffer];
@@ -190,6 +219,76 @@ export async function prepareValidatedPillPhotoVariants(
         applied: rotationApplied,
         reason: rotationApplied ? "elongated_mask" : "round_or_uncertain_mask",
       },
+      variants: { context: contextInfo, alignedColor: alignedColorInfo, alignedContrast: alignedContrastInfo },
+    },
+  };
+}
+
+/**
+ * Initial smartphone baseline. It removes metadata and uses a fixed center crop only;
+ * no label, imprint, color, or product information influences the crop. A later
+ * segmentation version may replace this after the baseline is recorded.
+ */
+export async function prepareValidatedPhonePillPhotoVariants(
+  input: Uint8Array,
+  expected: ValidatedPillPhotoExpectation,
+): Promise<PillPhonePhotoPreprocessingVariants> {
+  if (!(input instanceof Uint8Array) || input.length < 1 || input.length > MAX_INPUT_BYTES
+    || !Number.isSafeInteger(expected.bytes) || expected.bytes < 1 || expected.bytes > MAX_INPUT_BYTES
+    || !/^[a-f0-9]{64}$/.test(expected.sha256)
+    || input.length !== expected.bytes || sha256(input) !== expected.sha256) {
+    throw new Error("unreviewed_photo");
+  }
+  const source = sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" });
+  const metadata = await source.metadata();
+  if (metadata.format !== "jpeg" || metadata.hasAlpha || (metadata.pages ?? 1) !== 1
+    || !metadata.width || !metadata.height || metadata.width * metadata.height > MAX_INPUT_PIXELS) {
+    throw new Error("invalid_photo");
+  }
+
+  // Auto-orient from pixels, then re-read dimensions so EXIF cannot affect later stages.
+  const oriented = await source.rotate().jpeg({ quality: 95, chromaSubsampling: "4:4:4" }).toBuffer();
+  const orientedMetadata = await sharp(oriented, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" }).metadata();
+  if (!orientedMetadata.width || !orientedMetadata.height) throw new Error("invalid_photo");
+  const cropEdge = Math.max(64, Math.floor(Math.min(orientedMetadata.width, orientedMetadata.height)
+    * PILL_PHONE_PHOTO_CENTER_CROP_RATIO));
+  const bounds = {
+    left: Math.floor((orientedMetadata.width - cropEdge) / 2),
+    top: Math.floor((orientedMetadata.height - cropEdge) / 2),
+    width: cropEdge,
+    height: cropEdge,
+  };
+  const detailBase = sharp(oriented, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" }).extract(bounds);
+  const context = await sharp(oriented, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" })
+    .resize({ width: PILL_PHOTO_CONTEXT_MAX_EDGE, height: PILL_PHOTO_CONTEXT_MAX_EDGE, fit: "inside", withoutEnlargement: true })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+  const alignedColor = await detailBase
+    .clone()
+    .resize({ width: PILL_PHONE_PHOTO_DETAIL_EDGE, height: PILL_PHONE_PHOTO_DETAIL_EDGE, fit: "inside" })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+  const alignedContrast = await detailBase
+    .clone()
+    .resize({ width: PILL_PHONE_PHOTO_DETAIL_EDGE, height: PILL_PHONE_PHOTO_DETAIL_EDGE, fit: "inside" })
+    .greyscale()
+    .normalise({ lower: 1, upper: 99 })
+    .sharpen({ sigma: 1, m1: 1, m2: 2, x1: 2, y2: 10, y3: 20 })
+    .toColourspace("b-w")
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+  const [contextInfo, alignedColorInfo, alignedContrastInfo] = await Promise.all([
+    variantInfo(context), variantInfo(alignedColor), variantInfo(alignedContrast),
+  ]);
+  return {
+    context,
+    alignedColor,
+    alignedContrast,
+    metadata: {
+      version: PILL_PHONE_PHOTO_PREPROCESSING_VERSION,
+      source: { width: orientedMetadata.width, height: orientedMetadata.height, format: "jpeg" },
+      crop: { method: "centered_square_ratio", ratio: PILL_PHONE_PHOTO_CENTER_CROP_RATIO, bounds },
+      orientation: { method: "cardinal_ocr_views_only", textOrientationDegreesToEvaluate: [0, 90, 180, 270] },
       variants: { context: contextInfo, alignedColor: alignedColorInfo, alignedContrast: alignedContrastInfo },
     },
   };

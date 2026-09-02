@@ -20,11 +20,12 @@ const SCORE_FAILURES = new Set([
   "invalid_photo", "refused", "incomplete_response", "invalid_response", "access_denied",
   "rate_limited", "provider_unavailable", "timeout", "network_error", "ocr_failed", "fusion_failed",
 ]);
-const HELP = `Reviewed public evaluation photos (NOT a user-upload service):
+const HELP = `Reviewed evaluation photos (NOT a user-upload service):
   validation [--fixture v2|v3] --live --confirm-public-transfer
+  validation --fixture v4 --live --confirm-reviewed-transfer
   holdout [--fixture v2|v3] --live --confirm-public-transfer --confirm-holdout-final
 
-The selected manifest's fixed, hash-verified public pairs are processed sequentially.
+The selected manifest's fixed, hash-verified photo pairs are processed sequentially.
 Each pair uses one Vision and two surface-specific OCR requests without retries.
 Labels and official product data never enter model requests. The output feature file
 contains opaque case IDs only and is scored separately with pill:score.`;
@@ -42,12 +43,20 @@ export function parsePillPhotoEvaluationArgs(args: string[]) {
       flags.add(flag);
       continue;
     }
-    if (!["--live", "--confirm-public-transfer", "--confirm-holdout-final"].includes(flag) || flags.has(flag)) {
+    if (!["--live", "--confirm-public-transfer", "--confirm-reviewed-transfer", "--confirm-holdout-final"].includes(flag) || flags.has(flag)) {
       throw new Error("invalid_arguments");
     }
     flags.add(flag);
   }
-  if (!flags.has("--live") || !flags.has("--confirm-public-transfer")) throw new Error("explicit_public_transfer_required");
+  if (!flags.has("--live")) throw new Error("explicit_transfer_required");
+  if (fixture === "v4") {
+    if (split !== "validation") throw new Error("phone_validation_split_required");
+    if (!flags.has("--confirm-reviewed-transfer") || flags.has("--confirm-public-transfer")) {
+      throw new Error("explicit_reviewed_transfer_required");
+    }
+  } else if (!flags.has("--confirm-public-transfer") || flags.has("--confirm-reviewed-transfer")) {
+    throw new Error("explicit_public_transfer_required");
+  }
   if (split === "holdout" && !flags.has("--confirm-holdout-final")) throw new Error("holdout_confirmation_required");
   if (split === "validation" && flags.has("--confirm-holdout-final")) throw new Error("holdout_confirmation_not_allowed");
   return { split: split as "validation" | "holdout", fixture };
@@ -78,6 +87,9 @@ export async function runPillPhotoEvaluation(
   const { manifest, inferenceInputs } = await loadRegisteredPillPhotoEvaluationFixture(parsed.fixture);
   const selected = inferenceInputs.filter((input) => input.split === parsed.split);
   const expectedCases = manifest.cases.filter((fixtureCase) => fixtureCase.split === parsed.split);
+  const preprocessingVersion = parsed.fixture === "v4"
+    ? pillPhotoExperimentVersions.phonePreprocessing
+    : pillPhotoExperimentVersions.preprocessing;
   if (!selected.length || selected.length !== expectedCases.length) throw new Error("evaluation_case_mismatch");
 
   // Read every selected image before the first request. The extractor independently
@@ -102,7 +114,7 @@ export async function runPillPhotoEvaluation(
     split: parsed.split,
     cases: selected.map((input) => input.id),
     maximumRequests: selected.length * 3,
-    pipeline: pillPhotoExperimentVersions,
+    pipeline: { ...pillPhotoExperimentVersions, preprocessing: preprocessingVersion },
     model,
     ocrModel,
   }), { flag: "wx", mode: 0o600 });
@@ -111,7 +123,8 @@ export async function runPillPhotoEvaluation(
   for (const pair of pairs) {
     const result = await extractor(pair.photos, {
       allowExternalTransfer: true,
-      photoSet: parsed.fixture === "v3" ? "unseen_evaluation" : "evaluation",
+      photoSet: parsed.fixture === "v4" ? "phone_validation"
+        : parsed.fixture === "v3" ? "unseen_evaluation" : "evaluation",
       apiKey,
       model,
       ocrModel,
@@ -135,7 +148,7 @@ export async function runPillPhotoEvaluation(
     requests,
     pipeline: {
       mode: "vision_ocr",
-      preprocessingVersion: pillPhotoExperimentVersions.preprocessing,
+      preprocessingVersion,
       visionVersion: pillPhotoExperimentVersions.prompt,
       model,
       ocrModel,
@@ -155,9 +168,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.log(serializePillProfile({ status: "saved", directory, featureFile, split: output.split, requests: output.requests }));
   }).catch((error: unknown) => {
     const safe = new Set([
-      "invalid_split", "invalid_fixture", "invalid_arguments", "explicit_public_transfer_required", "holdout_confirmation_required",
+      "invalid_split", "invalid_fixture", "invalid_arguments", "explicit_transfer_required", "explicit_public_transfer_required",
+      "explicit_reviewed_transfer_required", "phone_validation_split_required", "holdout_confirmation_required",
       "holdout_confirmation_not_allowed", "not_configured", "evaluation_case_mismatch", "evaluation_preflight_failed",
-      "evaluation_incomplete",
+      "evaluation_incomplete", "phone_validation_fixture_scope_mismatch", "phone_validation_fixture_duplicate_entry",
+      "phone_validation_fixture_duplicate_product", "phone_validation_fixture_duplicate_official_record",
+      "phone_validation_fixture_duplicate_image", "phone_validation_fixture_overlaps_previous_images",
+      "phone_validation_fixture_history_mismatch", "phone_validation_fixture_case_mapping_invalid",
+      "phone_validation_fixture_side_mapping_invalid", "phone_validation_fixture_requires_opposite_sides",
+      "phone_validation_fixture_photo_reused", "phone_validation_fixture_unreferenced_image",
+      "phone_validation_fixture_catalog_version_mismatch", "phone_validation_fixture_official_label_mismatch",
+      "phone_validation_fixture_image_hash_mismatch", "phone_validation_fixture_image_metadata_mismatch",
     ]);
     console.error(JSON.stringify({ status: "unavailable", reason: error instanceof Error && safe.has(error.message) ? error.message : "local_operation_failed" }));
     process.exitCode = 1;
