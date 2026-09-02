@@ -24,6 +24,7 @@ const HELP = `Reviewed evaluation photos (NOT a user-upload service):
   validation [--fixture v2|v3] --live --confirm-public-transfer
   validation --fixture v4 --live --confirm-reviewed-transfer
   holdout [--fixture v2|v3] --live --confirm-public-transfer --confirm-holdout-final
+  holdout --fixture v5 --live --confirm-reviewed-transfer --confirm-holdout-final
 
 The selected manifest's fixed, hash-verified photo pairs are processed sequentially.
 Each pair uses one Vision and two surface-specific OCR requests without retries.
@@ -49,8 +50,9 @@ export function parsePillPhotoEvaluationArgs(args: string[]) {
     flags.add(flag);
   }
   if (!flags.has("--live")) throw new Error("explicit_transfer_required");
-  if (fixture === "v4") {
-    if (split !== "validation") throw new Error("phone_validation_split_required");
+  if (fixture === "v4" || fixture === "v5") {
+    if (fixture === "v4" && split !== "validation") throw new Error("phone_validation_split_required");
+    if (fixture === "v5" && split !== "holdout") throw new Error("phone_holdout_split_required");
     if (!flags.has("--confirm-reviewed-transfer") || flags.has("--confirm-public-transfer")) {
       throw new Error("explicit_reviewed_transfer_required");
     }
@@ -87,7 +89,7 @@ export async function runPillPhotoEvaluation(
   const { manifest, inferenceInputs } = await loadRegisteredPillPhotoEvaluationFixture(parsed.fixture);
   const selected = inferenceInputs.filter((input) => input.split === parsed.split);
   const expectedCases = manifest.cases.filter((fixtureCase) => fixtureCase.split === parsed.split);
-  const preprocessingVersion = parsed.fixture === "v4"
+  const preprocessingVersion = parsed.fixture === "v4" || parsed.fixture === "v5"
     ? pillPhotoExperimentVersions.phonePreprocessing
     : pillPhotoExperimentVersions.preprocessing;
   if (!selected.length || selected.length !== expectedCases.length) throw new Error("evaluation_case_mismatch");
@@ -124,6 +126,7 @@ export async function runPillPhotoEvaluation(
     const result = await extractor(pair.photos, {
       allowExternalTransfer: true,
       photoSet: parsed.fixture === "v4" ? "phone_validation"
+        : parsed.fixture === "v5" ? "phone_holdout"
         : parsed.fixture === "v3" ? "unseen_evaluation" : "evaluation",
       apiKey,
       model,
@@ -169,7 +172,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   }).catch((error: unknown) => {
     const safe = new Set([
       "invalid_split", "invalid_fixture", "invalid_arguments", "explicit_transfer_required", "explicit_public_transfer_required",
-      "explicit_reviewed_transfer_required", "phone_validation_split_required", "holdout_confirmation_required",
+      "explicit_reviewed_transfer_required", "phone_validation_split_required", "phone_holdout_split_required", "holdout_confirmation_required",
       "holdout_confirmation_not_allowed", "not_configured", "evaluation_case_mismatch", "evaluation_preflight_failed",
       "evaluation_incomplete", "phone_validation_fixture_scope_mismatch", "phone_validation_fixture_duplicate_entry",
       "phone_validation_fixture_duplicate_product", "phone_validation_fixture_duplicate_official_record",

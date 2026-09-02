@@ -15,7 +15,7 @@ const OUTPUT = fileURLToPath(new URL("../../verification-artifacts/pill-photo-sc
 const MAX_SCORE_INPUT_BYTES = 512 * 1024;
 const HELP = `Offline pill-photo feature score (no model/API calls):
   --input <saved-features.json> --split validation [--fixture v2|v3|v4]
-  --input <saved-features.json> --split holdout [--fixture v2|v3] --confirm-holdout-final
+  --input <saved-features.json> --split holdout [--fixture v2|v3|v5] --confirm-holdout-final
 
 The input must contain exactly the opaque case IDs in the selected fixture and split.
 Labels are loaded only after inference from the fixed Git evaluation fixture.
@@ -39,6 +39,8 @@ export function parsePillPhotoScoreArgs(args: string[]) {
   if (split === "holdout" && !confirmed) throw new Error("holdout_confirmation_required");
   if (split === "validation" && confirmed) throw new Error("holdout_confirmation_not_allowed");
   const fixture = parsePillPhotoEvaluationFixtureKey(flags.get("--fixture"));
+  if (fixture === "v4" && split !== "validation") throw new Error("phone_validation_split_required");
+  if (fixture === "v5" && split !== "holdout") throw new Error("phone_holdout_split_required");
   return { inputPath: resolve(flags.get("--input")!), split: split as PillPhotoEvaluationSplit, fixture };
 }
 
@@ -74,7 +76,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (!report.passed) process.exitCode = 1;
   }).catch((error: unknown) => {
     const safe = new Set([
-      "invalid_arguments", "missing_arguments", "invalid_split", "invalid_fixture", "holdout_confirmation_required",
+      "invalid_arguments", "missing_arguments", "invalid_split", "invalid_fixture", "phone_validation_split_required",
+      "phone_holdout_split_required", "holdout_confirmation_required",
       "holdout_confirmation_not_allowed", "invalid_file_size", "invalid_file_size_limit",
       "invalid_evaluation_input", "evaluation_case_mismatch", "evaluation_fixture_duplicate_entry",
       "evaluation_fixture_duplicate_product", "evaluation_fixture_duplicate_image",

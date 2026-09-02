@@ -39,11 +39,12 @@ const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 export const PILL_PHOTO_TIMEOUT_MS = 90_000;
 type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "invalid_request" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error" | "ocr_failed" | "fusion_failed";
 type Usage = { inputTokens: number; outputTokens: number };
-export type ReviewedPillPhotoSet = "development" | "evaluation" | "unseen_evaluation" | "phone_validation";
+export type ReviewedPillPhotoSet = "development" | "evaluation" | "unseen_evaluation" | "phone_validation" | "phone_holdout";
 type ReviewedPillPhotoExpectation = ValidatedPillPhotoExpectation & { path: string };
 let evaluationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
 let unseenEvaluationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
 let phoneValidationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
+let phoneHoldoutPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
 
 function evaluationPhotoAllowlist() {
   evaluationPhotoAllowlistPromise ??= import("../test-support/pill-photo-evaluation.ts")
@@ -64,6 +65,13 @@ function phoneValidationPhotoAllowlist() {
     .then(({ loadPillPhotoPhoneValidationFixture }) => loadPillPhotoPhoneValidationFixture())
     .then(({ manifest }) => manifest.images);
   return phoneValidationPhotoAllowlistPromise;
+}
+
+function phoneHoldoutPhotoAllowlist() {
+  phoneHoldoutPhotoAllowlistPromise ??= import("../test-support/pill-photo-phone-validation.ts")
+    .then(({ loadPillPhotoPhoneHoldoutFixture }) => loadPillPhotoPhoneHoldoutFixture())
+    .then(({ manifest }) => manifest.images);
+  return phoneHoldoutPhotoAllowlistPromise;
 }
 export interface PhotoExtractionSignals {
   vision: { features: PillPhotoFeatures; usage: Usage | null };
@@ -349,10 +357,12 @@ export async function extractReviewedPillPhotos(
     if (indexes.some((index) => index < 0)) return { ok: false, reason: "unreviewed_photo" };
     if (indexes[0] === indexes[1]) return { ok: false, reason: "duplicate_photo" };
     expectations = [PILL_PHOTO_FILES[indexes[0]]!, PILL_PHOTO_FILES[indexes[1]]!];
-  } else if (photoSet === "evaluation" || photoSet === "unseen_evaluation" || photoSet === "phone_validation") {
+  } else if (photoSet === "evaluation" || photoSet === "unseen_evaluation"
+    || photoSet === "phone_validation" || photoSet === "phone_holdout") {
     try {
       const allowlist = photoSet === "unseen_evaluation" ? await unseenEvaluationPhotoAllowlist()
         : photoSet === "phone_validation" ? await phoneValidationPhotoAllowlist()
+          : photoSet === "phone_holdout" ? await phoneHoldoutPhotoAllowlist()
           : await evaluationPhotoAllowlist();
       const entries = photos.map((bytes) => {
         const digest = createHash("sha256").update(bytes).digest("hex");
@@ -376,7 +386,7 @@ export async function extractReviewedPillPhotos(
     { color: PillPhotoOcrRotationViews; contrast: PillPhotoOcrRotationViews },
   ];
   try {
-    const prepare = photoSet === "phone_validation"
+    const prepare = photoSet === "phone_validation" || photoSet === "phone_holdout"
       ? prepareValidatedPhonePillPhotoVariants
       : prepareValidatedPillPhotoVariants;
     prepared = [await prepare(photos[0], expectations[0]), await prepare(photos[1], expectations[1])];

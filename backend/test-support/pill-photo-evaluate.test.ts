@@ -32,10 +32,12 @@ test("validation과 holdout 외부 전송 확인을 분리하고 보류 세트�
   assert.deepEqual(parsePillPhotoEvaluationArgs(["validation", "--fixture", "v3", "--live", "--confirm-public-transfer"]), { split: "validation", fixture: "v3" });
   assert.deepEqual(parsePillPhotoEvaluationArgs(["validation", "--fixture", "v4", "--live", "--confirm-reviewed-transfer"]), { split: "validation", fixture: "v4" });
   assert.deepEqual(parsePillPhotoEvaluationArgs(["holdout", "--live", "--confirm-public-transfer", "--confirm-holdout-final"]), { split: "holdout", fixture: "v2" });
+  assert.deepEqual(parsePillPhotoEvaluationArgs(["holdout", "--fixture", "v5", "--live", "--confirm-reviewed-transfer", "--confirm-holdout-final"]), { split: "holdout", fixture: "v5" });
   assert.throws(() => parsePillPhotoEvaluationArgs(["validation"]), /explicit_transfer_required/);
-  assert.throws(() => parsePillPhotoEvaluationArgs(["validation", "--fixture", "v5", "--live", "--confirm-public-transfer"]), /invalid_fixture/);
+  assert.throws(() => parsePillPhotoEvaluationArgs(["validation", "--fixture", "v6", "--live", "--confirm-public-transfer"]), /invalid_fixture/);
   assert.throws(() => parsePillPhotoEvaluationArgs(["validation", "--fixture", "v4", "--live", "--confirm-public-transfer"]), /explicit_reviewed_transfer_required/);
   assert.throws(() => parsePillPhotoEvaluationArgs(["holdout", "--fixture", "v4", "--live", "--confirm-reviewed-transfer", "--confirm-holdout-final"]), /phone_validation_split_required/);
+  assert.throws(() => parsePillPhotoEvaluationArgs(["validation", "--fixture", "v5", "--live", "--confirm-reviewed-transfer"]), /phone_holdout_split_required/);
   assert.throws(() => parsePillPhotoEvaluationArgs(["holdout", "--live", "--confirm-public-transfer"]), /holdout_confirmation_required/);
   assert.throws(() => parsePillPhotoEvaluationArgs(["validation", "--live", "--confirm-public-transfer", "--confirm-holdout-final"]), /holdout_confirmation_not_allowed/);
 });

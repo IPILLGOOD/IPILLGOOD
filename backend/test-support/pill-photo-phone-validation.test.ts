@@ -8,14 +8,16 @@ import sharp from "sharp";
 import { loadFrozenPillPhotoFixture } from "./pill-photo-fixture.ts";
 import { officialPillRecordDigest } from "./pill-photo-label-audit.ts";
 import {
+  loadPillPhotoPhoneHoldoutFixture,
   loadPillPhotoPhoneValidationFixture,
+  PILL_PHOTO_PHONE_HOLDOUT_VERSION,
   PILL_PHOTO_PHONE_VALIDATION_DIRECTORY,
   PILL_PHOTO_PHONE_VALIDATION_VERSION,
 } from "./pill-photo-phone-validation.ts";
 
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
-async function createFixture(directory: string) {
+async function createFixture(directory: string, split: "validation" | "holdout" = "validation") {
   const frozen = await loadFrozenPillPhotoFixture();
   const items = frozen.snapshot.items.filter((item, index, all) =>
     (item.form === "tablet" || item.form === "capsule") && item.colors.length > 0
@@ -27,7 +29,7 @@ async function createFixture(directory: string) {
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
     const sequence = String(index + 1).padStart(2, "0");
-    const id = `v4-v${sequence}`;
+    const id = `v4-${split === "validation" ? "v" : "h"}${sequence}`;
     products.push({
       id,
       providedName: `fixture-${sequence}`,
@@ -69,24 +71,24 @@ async function createFixture(directory: string) {
       });
       photos.push(name);
     }
-    cases.push({ id, split: "validation", expectedItemSeq: item.itemSeq, photos });
+    cases.push({ id, split, expectedItemSeq: item.itemSeq, photos });
   }
   const manifest = {
     schemaVersion: 1,
-    fixtureVersion: PILL_PHOTO_PHONE_VALIDATION_VERSION,
+    fixtureVersion: split === "validation" ? PILL_PHOTO_PHONE_VALIDATION_VERSION : PILL_PHOTO_PHONE_HOLDOUT_VERSION,
     purpose: "smartphone_photo_feature_extraction_and_candidate_recall_validation",
     catalogFixtureVersion: frozen.manifest.fixtureVersion,
     reviewedAt: "2026-09-02",
     scope: {
-      split: "validation",
-      claim: "smartphone_validation_tuning_only",
+      split,
+      claim: split === "validation" ? "smartphone_validation_tuning_only" : "smartphone_final_holdout_only",
       productCount: 6,
       caseCount: 6,
       imageCount: 12,
       historicalAppearanceCaseCount: 0,
-      labelsMayBeUsedForTuning: true,
+      labelsMayBeUsedForTuning: split === "validation",
       labelsMayBeSentToModel: false,
-      gitTracking: "ignored_local_intake",
+      gitTracking: split === "validation" ? "ignored_local_intake" : "ignored_local_holdout",
     },
     products,
     images,
@@ -115,6 +117,16 @@ test("스마트폰 validation 로더는 해시 고정 사진만 읽고 라벨 �
     loadPillPhotoPhoneValidationFixture({ directory, previousImageHashes: new Set() }),
     /phone_validation_fixture_image_hash_mismatch/,
   );
+});
+
+test("스마트폰 holdout 로더는 별도 ID·버전·비튜닝 범위만 허용한다", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), `pill-phone-holdout-${process.pid}-`));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  await createFixture(directory, "holdout");
+  const loaded = await loadPillPhotoPhoneHoldoutFixture({ directory, previousImageHashes: new Set() });
+  assert.equal(loaded.manifest.fixtureVersion, PILL_PHOTO_PHONE_HOLDOUT_VERSION);
+  assert.equal(loaded.manifest.scope.labelsMayBeUsedForTuning, false);
+  assert.equal(loaded.inferenceInputs.every((input) => input.split === "holdout" && input.id.startsWith("v4-h")), true);
 });
 
 test("현재 로컬 v4 intake가 존재하면 전체 관계·공식 라벨·JPEG 무결성을 검증한다", {

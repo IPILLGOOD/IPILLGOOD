@@ -200,6 +200,14 @@ test("holdout은 명시적 최종 확인 없이는 실행하지 않고 validatio
   assert.throws(() => parsePillPhotoScoreArgs(["--input", "run.json", "--split", "holdout"]), /holdout_confirmation_required/);
   assert.throws(() => parsePillPhotoScoreArgs(["--input", "run.json", "--split", "validation", "--confirm-holdout-final"]), /holdout_confirmation_not_allowed/);
   assert.equal(parsePillPhotoScoreArgs(["--input", "run.json", "--split", "holdout", "--confirm-holdout-final"]).split, "holdout");
+  assert.deepEqual(
+    parsePillPhotoScoreArgs(["--input", "run.json", "--split", "holdout", "--fixture", "v5", "--confirm-holdout-final"]).fixture,
+    "v5",
+  );
+  assert.throws(
+    () => parsePillPhotoScoreArgs(["--input", "run.json", "--split", "validation", "--fixture", "v5"]),
+    /phone_holdout_split_required/,
+  );
   assert.equal(parsePillPhotoScoreArgs(["--input", "run.json", "--split", "validation", "--fixture", "v3"]).fixture, "v3");
 });
 
