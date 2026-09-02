@@ -156,6 +156,9 @@ CI와 로컬 검증이 같은 Node API를 사용하도록 Node.js 24를 사용�
 
 ```bash
 npm install
+cp front/.env.example front/.env.local
+# front/.env.local에서 IPILLGOOD_DEMO_MODE=true를 유지하고,
+# SESSION_SECRET과 CONNECTION_CODE_SECRET에 각각 `openssl rand -base64 32` 결과를 입력합니다.
 gcloud auth application-default login
 npm run seed
 npm run dev
@@ -177,11 +180,12 @@ npm run dev
 | `/profile` | 돌봄 대상자 최소 프로필 관리 |
 | `/report` | 출력 가능한 최근 7일 Care Report |
 
-Google 로그인은 `care-atlas-seoul-2026-v2` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키를 `front/.env.local`에 설정합니다. 데모 로그인도 고정 fallback 키를 사용하지 않으므로 `openssl rand -base64 32`처럼 생성한 충분히 강한 `SESSION_SECRET`이 필요합니다. 운영 데모는 `IPILLGOOD_PUBLIC_DEMO_MODE=isolated`와 `IPILLGOOD_DEMO_ALLOWED_HOSTS`의 정확한 호스트가 모두 일치해야 합니다.
+Google 로그인은 `care-atlas-seoul-2026-v2` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키를 `front/.env.local`에 설정합니다. 로컬 데모 로그인에는 `IPILLGOOD_DEMO_MODE=true`도 필요하며 환경 변수를 바꾼 뒤 개발 서버를 다시 시작해야 합니다. 데모 로그인도 고정 fallback 키를 사용하지 않으므로 `openssl rand -base64 32`처럼 생성한 충분히 강한 `SESSION_SECRET`이 필요합니다. 운영 데모는 `IPILLGOOD_PUBLIC_DEMO_MODE=isolated`와 `IPILLGOOD_DEMO_ALLOWED_HOSTS`의 정확한 호스트가 모두 일치해야 합니다.
 
 운영 배포 전에는 Firebase Console에서 Authentication을 초기화하고 Google 공급자를 활성화한 뒤, 실제 서비스 호스트를 **Authentication > 설정 > 승인된 도메인**에 추가해야 합니다. 이 단계가 빠지면 클라이언트에서 `auth/configuration-not-found` 또는 `auth/unauthorized-domain` 오류가 발생합니다.
 
 ```bash
+IPILLGOOD_DEMO_MODE=true
 SESSION_SECRET=openssl_rand_base64_32로_생성한_값
 CONNECTION_CODE_SECRET=별도로_생성한_openssl_rand_base64_32_값
 ```
