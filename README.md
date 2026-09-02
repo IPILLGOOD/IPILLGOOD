@@ -166,6 +166,15 @@ npm run dev
 
 브라우저에서 `http://localhost:3000`을 엽니다.
 
+Firebase IAM 권한 없이 Google 로그인 핵심 흐름을 개발할 때는 실제 프로젝트 대신 Auth·Firestore Emulator를 함께 실행합니다.
+
+```bash
+npm run doctor:local
+npm run dev:local
+```
+
+Google 버튼은 Auth Emulator의 로컬 가상 계정 화면을 사용하며 실제 Google 계정이나 ADC가 필요하지 않습니다. 실제 프로젝트 연결이 필요한 작업의 최소 역할, 승인 도메인, ADC 확인 방법과 예상 오류는 [`docs/local-firebase-development.md`](docs/local-firebase-development.md)에 정리했습니다. IAM 없는 로그인 회귀 검증은 `npm run verify:local-auth`로 실행합니다.
+
 ### 주요 경로
 
 | 경로 | 설명 |

@@ -196,6 +196,14 @@ test.describe("mobile Push status semantics (simulated user agent, no delivery)"
 });
 
 test("mobile reflow and 200 percent text size retain usable controls", async ({ page }, info) => {
+  // Reflow and text scaling are static layout checks. Reduced motion keeps axe
+  // from sampling transient opacity during page and component entrance effects.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // The core-flow audit covers the PWA prompt. Keep this audit scoped to page
+  // reflow so its delayed entrance animation cannot begin during an axe scan.
+  await page.addInitScript(() => {
+    window.sessionStorage.setItem("ipillgood:pwa-install-prompt:session-dismissed", "true");
+  });
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto("/login");
   await audit(page, "mobile-login", info);

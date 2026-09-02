@@ -7,10 +7,17 @@ const projectId =
   process.env.GOOGLE_CLOUD_PROJECT ??
   "care-atlas-seoul-2026-v2";
 
+export function assertSafeFirestoreEmulator(project: string, host: string | undefined) {
+  if (host && (!project.startsWith("demo-") || !/^(127\.0\.0\.1|localhost):\d+$/.test(host))) {
+    throw new Error("Firestore emulator requires a demo- project and loopback host.");
+  }
+}
+
 let firestorePromise: Promise<FirestoreLike> | undefined;
 
 export function getAdminFirestore() {
   if (!firestorePromise) {
+    assertSafeFirestoreEmulator(projectId, process.env.FIRESTORE_EMULATOR_HOST);
     if (globalThis.navigator?.userAgent === "Cloudflare-Workers") {
       const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
       if (!serviceAccountJson) {

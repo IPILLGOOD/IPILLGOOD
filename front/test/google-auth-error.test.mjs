@@ -31,6 +31,17 @@ test("서버 세션 생성 실패와 알 수 없는 오류를 안전하게 구�
   );
 });
 
+test("로컬 에뮬레이터와 서버 IAM 오류는 개발자가 조치할 수 있게 구분한다", () => {
+  assert.equal(
+    getGoogleAuthErrorMessage(googleAuthServerError("firebase_local_emulator_unavailable")),
+    "로컬 인증 서버에 연결하지 못했어요. 프로젝트 루트에서 npm run dev:local을 다시 실행해주세요.",
+  );
+  assert.equal(
+    getGoogleAuthErrorMessage(googleAuthServerError("firebase_server_permission")),
+    "서버의 Firebase 접근 권한이 부족해요. 개발자는 로컬 Emulator 실행 또는 ADC 권한을 확인해주세요.",
+  );
+});
+
 test("PWA redirect 결과 누락과 popup timeout을 다시 시도 가능한 오류로 안내한다", () => {
   assert.equal(
     getGoogleAuthErrorMessage({ code: "auth/redirect-result-missing" }),
