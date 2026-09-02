@@ -7,9 +7,10 @@ import {
   type PhotoExtractionResult,
 } from "../src/pill-photo-experiment.ts";
 import {
-  loadPillPhotoEvaluationFixture,
-  type PillPhotoEvaluationSplit,
-} from "../test-support/pill-photo-evaluation.ts";
+  loadRegisteredPillPhotoEvaluationFixture,
+  parsePillPhotoEvaluationFixtureKey,
+  type PillPhotoEvaluationFixtureKey,
+} from "../test-support/pill-photo-evaluation-registry.ts";
 import { PILL_PHOTO_SCORE_SCHEMA_VERSION, type PillPhotoScoreInput } from "../test-support/pill-photo-score.ts";
 import { serializePillProfile } from "./profile-pill-catalog.ts";
 
@@ -20,11 +21,11 @@ const SCORE_FAILURES = new Set([
   "rate_limited", "provider_unavailable", "timeout", "network_error", "ocr_failed", "fusion_failed",
 ]);
 const HELP = `Reviewed public evaluation photos (NOT a user-upload service):
-  validation --live --confirm-public-transfer
-  holdout --live --confirm-public-transfer --confirm-holdout-final
+  validation [--fixture v2|v3] --live --confirm-public-transfer
+  holdout [--fixture v2|v3] --live --confirm-public-transfer --confirm-holdout-final
 
-Exactly four fixed, hash-verified public pairs are processed sequentially.
-Each pair uses one Vision and two surface-specific OCR requests without retries (maximum 12 requests).
+The selected manifest's fixed, hash-verified public pairs are processed sequentially.
+Each pair uses one Vision and two surface-specific OCR requests without retries.
 Labels and official product data never enter model requests. The output feature file
 contains opaque case IDs only and is scored separately with pill:score.`;
 
@@ -32,7 +33,15 @@ export function parsePillPhotoEvaluationArgs(args: string[]) {
   const [split, ...rest] = args;
   if (split !== "validation" && split !== "holdout") throw new Error("invalid_split");
   const flags = new Set<string>();
-  for (const flag of rest) {
+  let fixture: PillPhotoEvaluationFixtureKey = "v2";
+  for (let index = 0; index < rest.length; index++) {
+    const flag = rest[index]!;
+    if (flag === "--fixture") {
+      if (flags.has(flag)) throw new Error("invalid_arguments");
+      fixture = parsePillPhotoEvaluationFixtureKey(rest[++index]);
+      flags.add(flag);
+      continue;
+    }
     if (!["--live", "--confirm-public-transfer", "--confirm-holdout-final"].includes(flag) || flags.has(flag)) {
       throw new Error("invalid_arguments");
     }
@@ -41,7 +50,7 @@ export function parsePillPhotoEvaluationArgs(args: string[]) {
   if (!flags.has("--live") || !flags.has("--confirm-public-transfer")) throw new Error("explicit_public_transfer_required");
   if (split === "holdout" && !flags.has("--confirm-holdout-final")) throw new Error("holdout_confirmation_required");
   if (split === "validation" && flags.has("--confirm-holdout-final")) throw new Error("holdout_confirmation_not_allowed");
-  return { split: split as PillPhotoEvaluationSplit };
+  return { split: split as "validation" | "holdout", fixture };
 }
 
 type Extractor = typeof extractReviewedPillPhotos;
@@ -66,9 +75,10 @@ export async function runPillPhotoEvaluation(
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
   const ocrModel = process.env.OPENAI_OCR_MODEL?.trim() || "gpt-5.6-sol";
   if (!apiKey || ![model, ocrModel].every((value) => /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(value))) throw new Error("not_configured");
-  const { manifest, inferenceInputs } = await loadPillPhotoEvaluationFixture();
+  const { manifest, inferenceInputs } = await loadRegisteredPillPhotoEvaluationFixture(parsed.fixture);
   const selected = inferenceInputs.filter((input) => input.split === parsed.split);
-  if (selected.length !== 4) throw new Error("evaluation_case_mismatch");
+  const expectedCases = manifest.cases.filter((fixtureCase) => fixtureCase.split === parsed.split);
+  if (!selected.length || selected.length !== expectedCases.length) throw new Error("evaluation_case_mismatch");
 
   // Read every selected image before the first request. The extractor independently
   // rechecks bytes against the fixed evaluation manifest to close the read/use gap.
@@ -91,7 +101,7 @@ export async function runPillPhotoEvaluation(
     fixtureVersion: manifest.fixtureVersion,
     split: parsed.split,
     cases: selected.map((input) => input.id),
-    maximumRequests: 12,
+    maximumRequests: selected.length * 3,
     pipeline: pillPhotoExperimentVersions,
     model,
     ocrModel,
@@ -101,7 +111,7 @@ export async function runPillPhotoEvaluation(
   for (const pair of pairs) {
     const result = await extractor(pair.photos, {
       allowExternalTransfer: true,
-      photoSet: "evaluation",
+      photoSet: parsed.fixture === "v3" ? "unseen_evaluation" : "evaluation",
       apiKey,
       model,
       ocrModel,
@@ -113,7 +123,7 @@ export async function runPillPhotoEvaluation(
     if (!result.ok && STOP_FAILURES.has(result.reason)) break;
   }
 
-  if (cases.length !== 4) {
+  if (cases.length !== selected.length) {
     await writeFile(join(directory, "incomplete.json"), serializePillProfile({ status: "incomplete", split: parsed.split, requests, completedCases: cases.map((entry) => entry.id) }), { flag: "wx", mode: 0o600 });
     throw new Error("evaluation_incomplete");
   }
@@ -145,7 +155,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.log(serializePillProfile({ status: "saved", directory, featureFile, split: output.split, requests: output.requests }));
   }).catch((error: unknown) => {
     const safe = new Set([
-      "invalid_split", "invalid_arguments", "explicit_public_transfer_required", "holdout_confirmation_required",
+      "invalid_split", "invalid_fixture", "invalid_arguments", "explicit_public_transfer_required", "holdout_confirmation_required",
       "holdout_confirmation_not_allowed", "not_configured", "evaluation_case_mismatch", "evaluation_preflight_failed",
       "evaluation_incomplete",
     ]);

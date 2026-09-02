@@ -37,15 +37,23 @@ const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 export const PILL_PHOTO_TIMEOUT_MS = 90_000;
 type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "invalid_request" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error" | "ocr_failed" | "fusion_failed";
 type Usage = { inputTokens: number; outputTokens: number };
-export type ReviewedPillPhotoSet = "development" | "evaluation";
+export type ReviewedPillPhotoSet = "development" | "evaluation" | "unseen_evaluation";
 type ReviewedPillPhotoExpectation = ValidatedPillPhotoExpectation & { path: string };
 let evaluationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
+let unseenEvaluationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
 
 function evaluationPhotoAllowlist() {
   evaluationPhotoAllowlistPromise ??= import("../test-support/pill-photo-evaluation.ts")
     .then(({ loadPillPhotoEvaluationFixture }) => loadPillPhotoEvaluationFixture())
     .then(({ manifest }) => manifest.images);
   return evaluationPhotoAllowlistPromise;
+}
+
+function unseenEvaluationPhotoAllowlist() {
+  unseenEvaluationPhotoAllowlistPromise ??= import("../test-support/pill-photo-unseen-evaluation.ts")
+    .then(({ loadPillPhotoUnseenEvaluationFixture }) => loadPillPhotoUnseenEvaluationFixture())
+    .then(({ manifest }) => manifest.images);
+  return unseenEvaluationPhotoAllowlistPromise;
 }
 export interface PhotoExtractionSignals {
   vision: { features: PillPhotoFeatures; usage: Usage | null };
@@ -331,9 +339,11 @@ export async function extractReviewedPillPhotos(
     if (indexes.some((index) => index < 0)) return { ok: false, reason: "unreviewed_photo" };
     if (indexes[0] === indexes[1]) return { ok: false, reason: "duplicate_photo" };
     expectations = [PILL_PHOTO_FILES[indexes[0]]!, PILL_PHOTO_FILES[indexes[1]]!];
-  } else if (photoSet === "evaluation") {
+  } else if (photoSet === "evaluation" || photoSet === "unseen_evaluation") {
     try {
-      const allowlist = await evaluationPhotoAllowlist();
+      const allowlist = photoSet === "unseen_evaluation"
+        ? await unseenEvaluationPhotoAllowlist()
+        : await evaluationPhotoAllowlist();
       const entries = photos.map((bytes) => {
         const digest = createHash("sha256").update(bytes).digest("hex");
         return allowlist.find((image) => image.bytes === bytes.length && image.sha256 === digest);

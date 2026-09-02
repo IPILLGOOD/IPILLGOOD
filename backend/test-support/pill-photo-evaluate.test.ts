@@ -28,11 +28,45 @@ const features = pillPhotoFeaturesSchema.parse({
 });
 
 test("validation과 holdout 외부 전송 확인을 분리하고 보류 세트의 조기 실행을 막는다", () => {
-  assert.deepEqual(parsePillPhotoEvaluationArgs(["validation", "--live", "--confirm-public-transfer"]), { split: "validation" });
-  assert.deepEqual(parsePillPhotoEvaluationArgs(["holdout", "--live", "--confirm-public-transfer", "--confirm-holdout-final"]), { split: "holdout" });
+  assert.deepEqual(parsePillPhotoEvaluationArgs(["validation", "--live", "--confirm-public-transfer"]), { split: "validation", fixture: "v2" });
+  assert.deepEqual(parsePillPhotoEvaluationArgs(["validation", "--fixture", "v3", "--live", "--confirm-public-transfer"]), { split: "validation", fixture: "v3" });
+  assert.deepEqual(parsePillPhotoEvaluationArgs(["holdout", "--live", "--confirm-public-transfer", "--confirm-holdout-final"]), { split: "holdout", fixture: "v2" });
   assert.throws(() => parsePillPhotoEvaluationArgs(["validation"]), /explicit_public_transfer_required/);
+  assert.throws(() => parsePillPhotoEvaluationArgs(["validation", "--fixture", "v4", "--live", "--confirm-public-transfer"]), /invalid_fixture/);
   assert.throws(() => parsePillPhotoEvaluationArgs(["holdout", "--live", "--confirm-public-transfer"]), /holdout_confirmation_required/);
   assert.throws(() => parsePillPhotoEvaluationArgs(["validation", "--live", "--confirm-public-transfer", "--confirm-holdout-final"]), /holdout_confirmation_not_allowed/);
+});
+
+test("v3 validation은 봉인 holdout을 제외한 새 품목 4건만 실행한다", async (context) => {
+  const outputRoot = join(tmpdir(), `pill-photo-evaluate-v3-${process.pid}-${Date.now()}`);
+  context.after(() => rm(outputRoot, { recursive: true, force: true }));
+  const previousKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-only-not-a-real-key";
+  context.after(() => {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  });
+  const photoSets: string[] = [];
+  const extractor = (async (_photos: readonly [Uint8Array, Uint8Array], options: { photoSet?: string; fetchImpl?: typeof fetch }) => {
+    photoSets.push(options.photoSet ?? "");
+    await options.fetchImpl!("https://api.openai.com/v1/responses", { method: "POST" });
+    await options.fetchImpl!("https://api.openai.com/v1/responses", { method: "POST" });
+    await options.fetchImpl!("https://api.openai.com/v1/responses", { method: "POST" });
+    return { ok: true as const, features, usage: null };
+  }) as typeof import("../src/pill-photo-experiment.ts").extractReviewedPillPhotos;
+  const result = await runPillPhotoEvaluation(
+    ["validation", "--fixture", "v3", "--live", "--confirm-public-transfer"],
+    {
+      outputDirectory: outputRoot,
+      extractor,
+      fetcher: async () => new Response("{}", { headers: { "content-type": "application/json" } }),
+      now: () => new Date("2026-09-02T01:00:00.000Z"),
+    },
+  );
+  assert.equal(result.output.cases.length, 4);
+  assert.equal(result.output.requests, 12);
+  assert.deepEqual(photoSets, ["unseen_evaluation", "unseen_evaluation", "unseen_evaluation", "unseen_evaluation"]);
+  assert.deepEqual(result.output.cases.map((entry) => entry.id), ["unseen-v-01", "unseen-v-02", "unseen-v-03", "unseen-v-04"]);
 });
 
 test("고정 validation 4건만 세 요청씩 실행하고 정답 없는 채점 입력을 저장한다", async (context) => {

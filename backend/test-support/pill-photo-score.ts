@@ -2,12 +2,6 @@
 import { z } from "zod";
 import { comparePillPhotoFeatures, pillPhotoFeaturesSchema } from "../src/pill-photo-features.ts";
 import type { PillCatalog } from "../src/pill-identification.ts";
-import {
-  PILL_PHOTO_EVALUATION_VERSION,
-  type PillPhotoEvaluationManifest,
-  type PillPhotoEvaluationSplit,
-} from "./pill-photo-evaluation.ts";
-
 export const PILL_PHOTO_SCORE_SCHEMA_VERSION = "pill-photo-score.v1";
 export const PILL_PHOTO_SCORE_POLICY_VERSION = "capture-candidate-recall-v1";
 export const PILL_PHOTO_RECALL_KS = [1, 5, 20] as const;
@@ -31,7 +25,7 @@ const extractionSchema = z.discriminatedUnion("status", [
 ]);
 const scoreInputSchema = z.object({
   schemaVersion: z.literal(PILL_PHOTO_SCORE_SCHEMA_VERSION),
-  fixtureVersion: z.literal(PILL_PHOTO_EVALUATION_VERSION),
+  fixtureVersion: safeVersionSchema,
   split: z.enum(["validation", "holdout"]),
   createdAt: z.string().datetime(),
   requests: z.number().int().nonnegative().max(32),
@@ -45,12 +39,22 @@ const scoreInputSchema = z.object({
     fusionVersion: safeVersionSchema.nullable(),
   }).strict(),
   cases: z.array(z.object({
-    id: z.string().regex(/^capture-[vh]-0[1-4]$/),
+    id: z.string().regex(/^[a-z0-9][a-z0-9-]{2,63}$/),
     extraction: extractionSchema,
-  }).strict()).length(4),
+  }).strict()).min(1).max(16),
 }).strict();
 
 export type PillPhotoScoreInput = z.infer<typeof scoreInputSchema>;
+export type PillPhotoEvaluationSplit = "validation" | "holdout";
+export interface PillPhotoScoringManifest {
+  fixtureVersion: string;
+  scope: { claim: string };
+  cases: readonly {
+    id: string;
+    split: PillPhotoEvaluationSplit;
+    expectedItemSeq: string;
+  }[];
+}
 
 export interface PillPhotoCaseScore {
   id: string;
@@ -90,19 +94,21 @@ export interface PillPhotoScoreSummary {
   expectedHeldCaseIds: string[];
 }
 
-function expectedCases(manifest: PillPhotoEvaluationManifest, split: PillPhotoEvaluationSplit) {
+function expectedCases(manifest: PillPhotoScoringManifest, split: PillPhotoEvaluationSplit) {
   return manifest.cases.filter((fixtureCase) => fixtureCase.split === split);
 }
 
 export function parsePillPhotoScoreInput(
   value: unknown,
-  manifest: PillPhotoEvaluationManifest,
+  manifest: PillPhotoScoringManifest,
   requiredSplit?: PillPhotoEvaluationSplit,
 ): PillPhotoScoreInput {
   const parsed = scoreInputSchema.safeParse(value);
-  if (!parsed.success || requiredSplit && parsed.data.split !== requiredSplit) throw new Error("invalid_evaluation_input");
+  if (!parsed.success || parsed.data.fixtureVersion !== manifest.fixtureVersion
+    || requiredSplit && parsed.data.split !== requiredSplit) throw new Error("invalid_evaluation_input");
   const expected = expectedCases(manifest, parsed.data.split);
-  if (expected.length !== 4 || parsed.data.cases.some((entry, index) => entry.id !== expected[index]?.id)) {
+  if (!expected.length || parsed.data.cases.length !== expected.length) throw new Error("invalid_evaluation_input");
+  if (parsed.data.cases.some((entry, index) => entry.id !== expected[index]?.id)) {
     throw new Error("evaluation_case_mismatch");
   }
   return parsed.data;
@@ -137,7 +143,7 @@ export function summarizePillPhotoCaseScores(rows: PillPhotoCaseScore[]): PillPh
 
 export function scorePillPhotoEvaluation(
   value: unknown,
-  manifest: PillPhotoEvaluationManifest,
+  manifest: PillPhotoScoringManifest,
   catalog: PillCatalog,
   requiredSplit?: PillPhotoEvaluationSplit,
 ) {
@@ -205,7 +211,7 @@ export function scorePillPhotoEvaluation(
     pipeline: input.pipeline,
     requests: input.requests,
     catalogVersion: catalog.version,
-    scope: "capture_level_repeatability_only" as const,
+    scope: manifest.scope.claim,
     productionReadinessClaim: false,
     recallKs: [...PILL_PHOTO_RECALL_KS],
     metrics,

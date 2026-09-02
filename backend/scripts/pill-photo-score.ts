@@ -1,19 +1,23 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { loadPillPhotoEvaluationFixture, type PillPhotoEvaluationSplit } from "../test-support/pill-photo-evaluation.ts";
+import {
+  loadRegisteredPillPhotoEvaluationFixture,
+  parsePillPhotoEvaluationFixtureKey,
+  type PillPhotoEvaluationFixtureKey,
+} from "../test-support/pill-photo-evaluation-registry.ts";
 import { loadFrozenPillPhotoFixture } from "../test-support/pill-photo-fixture.ts";
-import { scorePillPhotoEvaluation } from "../test-support/pill-photo-score.ts";
+import { scorePillPhotoEvaluation, type PillPhotoEvaluationSplit } from "../test-support/pill-photo-score.ts";
 import { readBoundedJson } from "./pill-catalog.ts";
 import { serializePillProfile } from "./profile-pill-catalog.ts";
 
 const OUTPUT = fileURLToPath(new URL("../../verification-artifacts/pill-photo-score/", import.meta.url));
 const MAX_SCORE_INPUT_BYTES = 512 * 1024;
 const HELP = `Offline pill-photo feature score (no model/API calls):
-  --input <saved-features.json> --split validation
-  --input <saved-features.json> --split holdout --confirm-holdout-final
+  --input <saved-features.json> --split validation [--fixture v2|v3]
+  --input <saved-features.json> --split holdout [--fixture v2|v3] --confirm-holdout-final
 
-The input must contain exactly the four opaque case IDs for the selected split.
+The input must contain exactly the opaque case IDs in the selected fixture and split.
 Labels are loaded only after inference from the fixed Git evaluation fixture.
 The holdout flag confirms that tuning rules are already frozen.
 Reports are written under ignored verification-artifacts/pill-photo-score/.`;
@@ -22,7 +26,7 @@ export function parsePillPhotoScoreArgs(args: string[]) {
   const flags = new Map<string, string>();
   for (let index = 0; index < args.length; index++) {
     const flag = args[index]!;
-    if (!["--input", "--split", "--confirm-holdout-final"].includes(flag) || flags.has(flag)) throw new Error("invalid_arguments");
+    if (!["--input", "--split", "--fixture", "--confirm-holdout-final"].includes(flag) || flags.has(flag)) throw new Error("invalid_arguments");
     if (flag === "--confirm-holdout-final") { flags.set(flag, "true"); continue; }
     const value = args[++index];
     if (!value || value.startsWith("--")) throw new Error("invalid_arguments");
@@ -34,7 +38,8 @@ export function parsePillPhotoScoreArgs(args: string[]) {
   const confirmed = flags.has("--confirm-holdout-final");
   if (split === "holdout" && !confirmed) throw new Error("holdout_confirmation_required");
   if (split === "validation" && confirmed) throw new Error("holdout_confirmation_not_allowed");
-  return { inputPath: resolve(flags.get("--input")!), split: split as PillPhotoEvaluationSplit };
+  const fixture = parsePillPhotoEvaluationFixtureKey(flags.get("--fixture"));
+  return { inputPath: resolve(flags.get("--input")!), split: split as PillPhotoEvaluationSplit, fixture };
 }
 
 export async function runPillPhotoScore(
@@ -44,7 +49,7 @@ export async function runPillPhotoScore(
   const parsed = parsePillPhotoScoreArgs(args);
   const [value, evaluation, frozen] = await Promise.all([
     readBoundedJson(parsed.inputPath, MAX_SCORE_INPUT_BYTES),
-    loadPillPhotoEvaluationFixture(),
+    loadRegisteredPillPhotoEvaluationFixture(parsed.fixture),
     loadFrozenPillPhotoFixture(),
   ]);
   const report = scorePillPhotoEvaluation(value, evaluation.manifest, frozen.catalog, parsed.split);
@@ -69,7 +74,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (!report.passed) process.exitCode = 1;
   }).catch((error: unknown) => {
     const safe = new Set([
-      "invalid_arguments", "missing_arguments", "invalid_split", "holdout_confirmation_required",
+      "invalid_arguments", "missing_arguments", "invalid_split", "invalid_fixture", "holdout_confirmation_required",
       "holdout_confirmation_not_allowed", "invalid_file_size", "invalid_file_size_limit",
       "invalid_evaluation_input", "evaluation_case_mismatch", "evaluation_fixture_duplicate_entry",
       "evaluation_fixture_duplicate_product", "evaluation_fixture_duplicate_image",

@@ -26,3 +26,15 @@
 이 자료는 검은 배경에 분리된 공개 알약 사진이다. 실제 사용자가 촬영한 휴대폰 사진, 손·포장·여러 알약이 함께 나온 사진, 파손·흐림·반사·복잡한 배경에 대한 성능을 입증하지 않는다. 표본도 7개뿐이므로 통과하더라도 운영 정확도나 자동 확정을 주장할 수 없다.
 
 전체 원본 압축파일과 실행 산출물은 계속 `verification-artifacts/` 아래에 두고 Git에는 포함하지 않는다. Git에는 재현에 필요한 선택 사진 14장, 정답 manifest, 출처와 한계만 포함한다.
+
+## 실행 명령
+
+정답 연결과 validation 실행·채점은 v3를 명시한다. 첫 명령과 채점은 외부 요청이 없고, 두 번째 명령만 공개사진 8장을 OpenAI로 전송한다.
+
+```sh
+npm run pill:labels --workspace @care-atlas/backend -- --fixture v3
+npm run pill:evaluate --workspace @care-atlas/backend -- validation --fixture v3 --live --confirm-public-transfer
+npm run pill:score --workspace @care-atlas/backend -- --input <saved-features.json> --split validation --fixture v3
+```
+
+holdout은 구현과 기준을 커밋으로 동결하기 전에는 실행하지 않는다. 동결 뒤 최종 실행 시에만 `holdout --fixture v3 --live --confirm-public-transfer --confirm-holdout-final`을 사용한다.

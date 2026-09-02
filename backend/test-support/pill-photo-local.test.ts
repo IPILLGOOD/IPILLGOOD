@@ -9,6 +9,7 @@ import { extractReviewedPillPhotos, prepareReviewedPillPhoto, reviewedPhotoIndex
 import { PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION } from "../src/pill-photo-ocr.ts";
 import { PILL_PHOTO_FILES } from "./pill-photo-review.ts";
 import { loadPillPhotoEvaluationFixture } from "./pill-photo-evaluation.ts";
+import { loadPillPhotoUnseenEvaluationFixture } from "./pill-photo-unseen-evaluation.ts";
 
 const providerResponse = (value: unknown, inputTokens: number, outputTokens: number) => new Response(JSON.stringify({
   status: "completed",
@@ -143,6 +144,32 @@ test("새 평가 사진도 고정 매니페스트 해시만 허용하고 같은 
   const changed = Buffer.from(pair[1]);
   changed[100] = changed[100]! ^ 1;
   assert.deepEqual(await extractReviewedPillPhotos([pair[0], changed], {
+    allowExternalTransfer: true,
+    photoSet: "evaluation",
+    apiKey: "test-only-not-a-real-key",
+    fetchImpl: async () => { throw new Error("must_not_call"); },
+  }), { ok: false, reason: "unreviewed_photo" });
+});
+
+test("신규 품목 평가 사진은 별도 v3 allowlist로만 세 요청 경로에 들어간다", async () => {
+  const { inferenceInputs } = await loadPillPhotoUnseenEvaluationFixture();
+  const input = inferenceInputs.find((entry) => entry.id === "unseen-v-01")!;
+  const pair = await Promise.all(input.photos.map((path) => readFile(path))) as [Buffer, Buffer];
+  let calls = 0;
+  const result = await extractReviewedPillPhotos(pair, {
+    allowExternalTransfer: true,
+    photoSet: "unseen_evaluation",
+    apiKey: "test-only-not-a-real-key",
+    model: "test-model",
+    fetchImpl: async () => {
+      calls++;
+      if (calls === 1) return providerResponse(visionFeatures, 100, 20);
+      return providerResponse(calls === 2 ? ocrFront : ocrBack, 60, 10);
+    },
+  });
+  assert.equal(calls, 3);
+  assert.equal(result.ok, true);
+  assert.deepEqual(await extractReviewedPillPhotos(pair, {
     allowExternalTransfer: true,
     photoSet: "evaluation",
     apiKey: "test-only-not-a-real-key",
