@@ -211,6 +211,15 @@ node --experimental-strip-types --test backend/test-support/pill-photo-local.tes
 - 결과를 확인한 뒤 프롬프트·전처리·OCR 결합·검색 규칙·임계값을 변경하지 않았다. 요약은 `backend/test-support/pill-photo-evaluation/holdout-result-2026-09-02.json`에 보존한다.
 - 이 holdout은 이제 진단 자료일 뿐 다음 개선의 최종 평가 자료가 아니다. 실패 원인을 개발 자료로 전환해 개선하려면 평가 세트 버전을 올리고, 새로운 제품·촬영 조건의 미사용 holdout을 따로 준비해야 한다.
 
+## 2026-09-02 신규 품목 v3 validation
+
+- 기존 개발·v2 평가에 없던 공개사진 7개 품목을 validation 4건과 봉인 holdout 3건으로 나눴다. 원본 그룹 ID를 품목코드로 간주하지 않고, 사진 외형·health.kr 제품 페이지·식약처 고정 레코드의 지문을 함께 검증했다.
+- 범용 Vision과 면별 OCR은 모두 `gpt-5.6-sol`, reasoning `low`를 사용했다. 프롬프트에는 정답 코드·약명·공식 특징을 넣지 않았고, 네 사례를 12요청·재시도 0회로 추출한 뒤 오프라인에서만 채점했다.
+- 검색기는 한 면의 원문 exact 근거가 있으면 반대쪽 `partial` 판독 충돌을 삭제 사유가 아닌 `possible` 후보의 conflict로 보존한다. 동일 길이 단일 문자 차이는 이미지 partial + 반대 면 exact 조건에서만 감사 가능한 `single_substitution`으로 표시한다. clear·수동 입력과 단독 유사 문자열은 완화하지 않는다.
+- 결과는 `recall@1·5·20` 4/4, 강한 후보 0건, 강한 오답 0건, 재촬영 대상 후보 노출 0건이다. 두 건은 `needs_review`, 두 건은 `candidates_found`였으며 사용자에게 약을 확정하는 결과는 없다.
+- 검색 코드는 `f9a3d87`, 검색 규칙은 `pill-structured-v8-anchored-partial-imprint`로 동결했다. 이 validation은 튜닝 자료이므로 운영 정확도를 주장하지 않고, v3 holdout은 같은 코드·모델·통과 기준으로 최종 1회만 실행한다.
+- 재현 요약은 `backend/test-support/pill-photo-unseen-evaluation/validation-result-2026-09-02.json`에 보존한다. `OPENAI_MODEL`과 `OPENAI_OCR_MODEL`을 모두 `gpt-5.6-sol`로 명시해야 같은 모델 조합이 된다.
+
 ## 검증과 다음 작업
 
 최초 사진 연결 단계에는 기본 14개 + 로컬 공개 자료 테스트 4개를 추가했다. 팀 공통 자료 단계에서 고정 카탈로그·기록 결과·오프라인 재생·만료 경계 검증 5개를 더했다. 리뷰 반영 단계에서는 복수 각인 계약·각인 우선 재정렬·마스크 품질·회귀 diff 테스트를 보강했고, 최종 감사에서 부분 판독의 `strong` 승격을 막는 회귀 1개를 추가했다. 현재 전체 단위 테스트는 **프론트 89 + 백엔드 314 = 403개**, 실패·건너뜀 0개다. `pill:regression` 필수 게이트 6/6, 프로젝트 타입 검사, 변경 백엔드 파일 strict 타입 검사, ESLint, 프로덕션 빌드, `git diff --check`도 통과했다. 모든 사진 재생·회귀 검사는 외부 `fetch`를 차단하거나 요청 0회를 확인한다.
