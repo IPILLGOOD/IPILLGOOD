@@ -3,9 +3,12 @@
 import { LoaderCircle } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
+import { getDemoLoginErrorMessage } from "@/lib/auth/demo-login-error";
+
 type DemoLoginResponse = {
   redirectTo?: string;
   error?: string;
+  reason?: string;
 };
 
 export function DemoLoginButton({
@@ -33,12 +36,14 @@ export function DemoLoginButton({
       });
       const body = (await response.json()) as DemoLoginResponse;
       if (!response.ok || !body.redirectTo) {
-        throw new Error(body.error ?? "demo_session_failed");
+        setPending(false);
+        setErrorMessage(getDemoLoginErrorMessage(body.error, body.reason));
+        return;
       }
       window.location.replace(body.redirectTo);
     } catch {
       setPending(false);
-      setErrorMessage("데모를 준비하지 못했어요. 잠시 후 다시 시도해주세요.");
+      setErrorMessage(getDemoLoginErrorMessage(undefined));
     }
   }
 

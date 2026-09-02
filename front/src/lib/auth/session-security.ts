@@ -20,6 +20,13 @@ type DemoLoginEnvironment = {
   publicDemoMode?: string;
 };
 
+export type DemoLoginAvailability =
+  | { allowed: true }
+  | {
+      allowed: false;
+      reason?: "local_demo_mode_disabled";
+    };
+
 function estimatedShannonEntropyBits(value: string) {
   const counts = new Map<string, number>();
   for (const character of value) {
@@ -72,13 +79,26 @@ function allowedPublicDemoHostname(hostname: string, allowedHosts: string | unde
   );
 }
 
-export function isDemoLoginAllowed(environment: DemoLoginEnvironment) {
-  if (environment.demoMode !== "true") return false;
-  if (environment.nodeEnv !== "production") {
-    return isLoopbackHostname(environment.hostname);
+export function demoLoginAvailability(environment: DemoLoginEnvironment): DemoLoginAvailability {
+  if (environment.demoMode !== "true") {
+    return {
+      allowed: false,
+      reason:
+        environment.nodeEnv !== "production" && isLoopbackHostname(environment.hostname)
+          ? "local_demo_mode_disabled"
+          : undefined,
+    };
   }
-  return (
-    environment.publicDemoMode === "isolated" &&
-    allowedPublicDemoHostname(environment.hostname, environment.allowedHosts)
-  );
+  if (environment.nodeEnv !== "production") {
+    return { allowed: isLoopbackHostname(environment.hostname) };
+  }
+  return {
+    allowed:
+      environment.publicDemoMode === "isolated" &&
+      allowedPublicDemoHostname(environment.hostname, environment.allowedHosts),
+  };
+}
+
+export function isDemoLoginAllowed(environment: DemoLoginEnvironment) {
+  return demoLoginAvailability(environment).allowed;
 }
