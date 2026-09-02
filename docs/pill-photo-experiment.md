@@ -220,6 +220,15 @@ node --experimental-strip-types --test backend/test-support/pill-photo-local.tes
 - 검색 코드는 `f9a3d87`, 검색 규칙은 `pill-structured-v8-anchored-partial-imprint`로 동결했다. 이 validation은 튜닝 자료이므로 운영 정확도를 주장하지 않고, v3 holdout은 같은 코드·모델·통과 기준으로 최종 1회만 실행한다.
 - 재현 요약은 `backend/test-support/pill-photo-unseen-evaluation/validation-result-2026-09-02.json`에 보존한다. `OPENAI_MODEL`과 `OPENAI_OCR_MODEL`을 모두 `gpt-5.6-sol`로 명시해야 같은 모델 조합이 된다.
 
+## 2026-09-02 v3 holdout 최종 1회 평가
+
+- 동결 커밋 `f9a3d87`에서 한 번도 모델에 전송하지 않았던 holdout 3건을 Sol/Sol 조합으로 실행했다. 총 9요청·재시도 0회였고 추출 뒤에만 정답을 결합했다.
+- `recall@1·5·20`은 모두 **1/3**으로 `recall@5` 3/3 게이트를 통과하지 못했다. 강한 후보·강한 오답·재촬영 대상 후보 노출은 0건이다.
+- `unseen-h-01`의 `FN / 20`만 정답 1위였다. `unseen-h-02`는 `KF`를 `K K / 44`로, `unseen-h-03`은 `KIM / 100`을 `44 194 / 93·90·06` 계열로 읽어 정답이 상위 20개에 없었다.
+- 안전한 보류는 유지했지만 정상 사진 후보 recall이 부족하므로 사용자 기능을 활성화하지 않는다. 결과를 본 뒤 규칙은 변경하지 않았고, 이 holdout은 재평가가 아닌 진단 자료로만 사용한다.
+- 요약은 `backend/test-support/pill-photo-unseen-evaluation/holdout-result-2026-09-02.json`에 보존한다. 다음 실험은 새 validation/holdout 분할과 실제 휴대폰 촬영 조건을 준비해야 한다.
+- 최종 검증은 백엔드 322개·프론트 89개, 총 411개 테스트와 타입 검사, ESLint, 프로덕션 빌드, `pill:regression` 6/6, `git diff --check`를 통과했다.
+
 ## 검증과 다음 작업
 
 최초 사진 연결 단계에는 기본 14개 + 로컬 공개 자료 테스트 4개를 추가했다. 팀 공통 자료 단계에서 고정 카탈로그·기록 결과·오프라인 재생·만료 경계 검증 5개를 더했다. 리뷰 반영 단계에서는 복수 각인 계약·각인 우선 재정렬·마스크 품질·회귀 diff 테스트를 보강했고, 최종 감사에서 부분 판독의 `strong` 승격을 막는 회귀 1개를 추가했다. 현재 전체 단위 테스트는 **프론트 89 + 백엔드 314 = 403개**, 실패·건너뜀 0개다. `pill:regression` 필수 게이트 6/6, 프로젝트 타입 검사, 변경 백엔드 파일 strict 타입 검사, ESLint, 프로덕션 빌드, `git diff --check`도 통과했다. 모든 사진 재생·회귀 검사는 외부 `fetch`를 차단하거나 요청 0회를 확인한다.

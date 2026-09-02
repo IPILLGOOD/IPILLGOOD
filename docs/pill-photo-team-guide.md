@@ -91,7 +91,7 @@ node --env-file=front/.env.local --experimental-strip-types backend/scripts/pill
 - Git의 `.gz` 고정 카탈로그는 오프라인 과거 비교용이다. `evaluate`에서 자동으로 이를 읽거나 만료 검사를 생략하는 fallback은 없다. 고정 자료의 시간/해시를 고쳐 현재 데이터처럼 사용하지 않는다.
 - 이미 승인·수집한 최신 카탈로그가 있다면 공유된 9장과 자신의 AI 키로 실행할 수 있다. 새 카탈로그 버전을 썼다면 과거 기준선과 데이터 조건도 달라졌다는 점을 기록한다.
 - 프롬프트·전처리 버전, Vision/OCR 모델 설정, 데이터 버전, 호출 수, 정상/예외 결과를 실험 기록에 함께 남긴다. 고정 validation은 `npm run pill:evaluate --workspace @care-atlas/backend -- validation --live --confirm-public-transfer`로 12요청을 사용하며, holdout은 규칙 동결 후 `--confirm-holdout-final`까지 명시할 때만 실행한다.
-- 신규 품목 v3는 명령에 `--fixture v3`를 추가한다. 동결 결과는 Vision/OCR 모두 `gpt-5.6-sol`이므로 재현 또는 최종 holdout 실행 전 현재 셸의 `OPENAI_MODEL`과 `OPENAI_OCR_MODEL`을 같은 값으로 명시한다. v3 holdout은 세 사례·최대 9요청이며 한 번 연 뒤에는 다시 튜닝용 최종 세트로 사용할 수 없다.
+- 신규 품목 v3는 명령에 `--fixture v3`를 추가한다. 동결 결과는 Vision/OCR 모두 `gpt-5.6-sol`이었다. v3 holdout은 이미 최종 1회 사용했고 `recall@5` 1/3으로 실패했으므로 다시 튜닝용 최종 세트로 사용하지 않는다. 결과 재생은 진단으로만 표시하고, 다음 최종 평가는 새 fixture 버전과 새 미사용 사진으로 만든다.
 
 ## 6. 자료를 추가하거나 갱신할 때
 

@@ -9,7 +9,7 @@
 | `validation` | 4 | 각인 영역 보존·전처리·OCR·결합 규칙 개선 |
 | `holdout` | 3 | 구현과 통과 기준을 동결한 뒤 마지막 한 번만 평가 |
 
-두 분할은 품목기준코드가 겹치지 않으며, v2의 개발·검증·holdout 사진과도 파일 해시가 겹치지 않는다. 이 manifest와 분할은 새 사진에 대한 AI 호출 전에 고정했다. `holdout` 세 건은 현재 `sealed_unopened`이고 외부 AI에 전송하지 않았다.
+두 분할은 품목기준코드가 겹치지 않으며, v2의 개발·검증·holdout 사진과도 파일 해시가 겹치지 않는다. 이 manifest와 분할은 새 사진에 대한 AI 호출 전에 고정했다. `holdout` 세 건은 validation과 검색 규칙을 동결할 때까지 `sealed_unopened`였고, 커밋 `f9a3d87` 뒤 최종 1회만 외부 AI에 전송했다.
 
 ## 정답 연결 원칙
 
@@ -26,6 +26,18 @@
 검색 규칙을 커밋 `f9a3d87`로 동결한 뒤, validation 네 품목을 범용 Vision `gpt-5.6-sol`과 면별 OCR `gpt-5.6-sol`로 실행했다. 총 12요청·재시도 0회였고 `recall@1·5·20`은 모두 4/4였다. 강한 후보·강한 오답·재촬영 대상 후보 노출은 모두 0건이다. 두 사례는 부분 판독 때문에 `needs_review`, 두 사례는 `candidates_found`였지만 어느 결과도 자동 확정 가능한 `strong` 등급은 아니었다.
 
 이 결과는 모델과 검색 규칙 조정에 사용한 validation 통과일 뿐 최종 일반화 성능이 아니다. 요약은 [validation-result-2026-09-02.json](validation-result-2026-09-02.json)에 고정하며, holdout 세 품목은 이 결과와 규칙을 동결하기 전까지 열지 않았다.
+
+## Holdout 최종 결과
+
+동결된 코드·모델·통과 기준으로 holdout 3건을 총 9요청·재시도 0회로 최종 평가했다. `recall@1·5·20`은 모두 1/3으로 필수 `recall@5` 게이트에 실패했다. 강한 후보·강한 오답·재촬영 대상 후보 노출은 0건이었다.
+
+- `unseen-h-01`: 공식 `FN / 20`이 정답 후보 1위였다.
+- `unseen-h-02`: 공식 `KF / 무각인` 중 앞면을 Vision은 `K K`, OCR은 `44`로 읽고 반대 면은 판독하지 못해 상위 20개에 포함하지 못했다.
+- `unseen-h-03`: 공식 `KIM / 100`을 `44 194 / 93·90·06` 계열로 읽고 색상도 연두 대신 초록으로 관찰해 상위 20개에 포함하지 못했다.
+
+결과 확인 뒤 규칙·프롬프트·모델·임계값을 변경하지 않았다. 이 holdout은 더 이상 최종 평가 세트가 아니며, 요약은 [holdout-result-2026-09-02.json](holdout-result-2026-09-02.json)에 고정한다. 다음 개선은 이 세 건을 진단 자료로만 사용하고 새로운 품목·촬영 조건으로 별도 validation/holdout 버전을 만들어야 한다.
+
+최종 검증은 백엔드 322개·프론트 89개, 총 411개 테스트와 타입 검사, ESLint, 프로덕션 빌드, `pill:regression` 6/6, `git diff --check`를 통과했다.
 
 ## 범위 제한
 
@@ -51,4 +63,4 @@ $env:OPENAI_OCR_MODEL = "gpt-5.6-sol"
 npm run pill:evaluate --workspace @care-atlas/backend -- validation --fixture v3 --live --confirm-public-transfer
 ```
 
-holdout은 구현과 기준을 커밋으로 동결하기 전에는 실행하지 않는다. 동결 뒤 최종 실행 시에만 `holdout --fixture v3 --live --confirm-public-transfer --confirm-holdout-final`을 사용한다.
+holdout 명령은 구현과 기준을 커밋으로 동결하기 전에는 실행하지 않는다. v3 holdout은 이미 최종 1회 사용했으므로 같은 세트의 반복 결과를 새로운 최종 성능으로 보고하지 않는다.
