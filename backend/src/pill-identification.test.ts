@@ -266,6 +266,58 @@ test("사진의 한쪽 정확 각인은 흐림·반대 면 판독 불가에도 p
   assert.equal(searchPillCandidates(unreadableBoth, catalog()).status, "needs_retake");
 });
 
+test("사진의 한쪽 원문 각인이 정확하면 반대쪽 부분 판독 충돌을 기록하고 possible 후보로 보존한다", () => {
+  const partialConflict = pillObservation({
+    source: "image_features",
+    front: { ...observedSide("CR", "unknown"), imprintVisibility: "partial" },
+    back: { ...observedSide("7J", "unknown"), imprintCandidates: ["7J", "UJ"], imprintVisibility: "partial" },
+  });
+  const expected = pillRecord({ ITEM_SEQ: "201902911", PRINT_FRONT: "2K", PRINT_BACK: "CR", LINE_FRONT: "", LINE_BACK: "" });
+  const result = searchPillCandidates(partialConflict, catalog([expected]));
+
+  assert.equal(result.status, "needs_review");
+  assert.equal(result.candidates[0]?.itemSeq, "201902911");
+  assert.equal(result.candidates[0]?.grade, "possible");
+  assert.equal(result.candidates[0]?.variants[0]?.orientation, "swapped");
+  assert.deepEqual(result.candidates[0]?.variants[0]?.conflicts.map((entry) => entry.field), ["back.imprint"]);
+  assert.equal(result.candidates.some((candidate) => candidate.grade === "strong"), false);
+
+  const clearConflict = pillObservation({
+    source: "image_features",
+    front: observedSide("CR", "unknown"),
+    back: observedSide("7J", "unknown"),
+  });
+  assert.equal(searchPillCandidates(clearConflict, catalog([expected])).status, "unidentified",
+    "양면을 명확히 읽었다고 주장한 입력의 실제 각인 충돌은 완화하지 않는다");
+});
+
+test("반대 면 exact 근거가 있을 때만 부분 판독의 단일 문자 차이를 partial 후보로 제한한다", () => {
+  const observed = pillObservation({
+    source: "image_features",
+    front: { ...observedSide("CR", "unknown"), imprintVisibility: "partial" },
+    back: { ...observedSide("2U", "unknown"), imprintVisibility: "partial" },
+  });
+  const expected = pillRecord({ ITEM_SEQ: "201902911", PRINT_FRONT: "2K", PRINT_BACK: "CR", LINE_FRONT: "", LINE_BACK: "" });
+  const otherNear = pillRecord({ ITEM_SEQ: "201902819", PRINT_FRONT: "PU", PRINT_BACK: "CR", LINE_FRONT: "", LINE_BACK: "" });
+  const unrelated = pillRecord({ ITEM_SEQ: "201902821", PRINT_FRONT: "SW", PRINT_BACK: "CR", LINE_FRONT: "", LINE_BACK: "" });
+  const result = searchPillCandidates(observed, catalog([unrelated, expected, otherNear]));
+
+  assert.deepEqual(result.candidates.map((candidate) => candidate.itemSeq), ["201902819", "201902911", "201902821"]);
+  const expectedEvidence = result.candidates[1]?.variants[0]?.evidence.find((entry) => entry.field === "back.imprint");
+  assert.equal(expectedEvidence?.match, "partial");
+  assert.equal(expectedEvidence?.imprintApproximation, "single_substitution");
+  assert.equal(result.candidates[1]?.grade, "possible");
+  assert.deepEqual(result.candidates[1]?.variants[0]?.conflicts, []);
+
+  const noAnchor = pillObservation({
+    source: "image_features",
+    front: { ...observedSide("XX", "unknown"), imprintVisibility: "partial" },
+    back: { ...observedSide("2U", "unknown"), imprintVisibility: "partial" },
+  });
+  assert.equal(searchPillCandidates(noAnchor, catalog([expected])).status, "needs_retake",
+    "유사 각인만 있고 반대 면 exact 원문 근거가 없으면 후보를 만들지 않는다");
+});
+
 test("잘못된 입력·미설정·불완전 카탈로그와 정상 무결과를 구분한다", () => {
   assert.equal(searchPillCandidates({}, catalog()).status, "invalid_input");
   assert.equal(searchPillCandidates({ ...pillObservation(), image: "sensitive" }, catalog()).status, "invalid_input");

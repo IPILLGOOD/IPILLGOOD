@@ -3,7 +3,7 @@ import type { OfficialPillItem, OfficialPillSide, PillScoreLine } from "./offici
 import { stableJson } from "./stable-json.ts";
 import { classifyPillForm, PILL_FORM_POLICY_VERSION, type PillFormAssessment } from "./pill-form-policy.ts";
 
-export const PILL_SEARCH_RULES_VERSION = "pill-structured-v6-partial-image-review";
+export const PILL_SEARCH_RULES_VERSION = "pill-structured-v8-anchored-partial-imprint";
 export const PILL_OBSERVATION_SCHEMA_VERSION = "pill-observation.v2";
 export const PILL_IMPRINT_CONFUSION_RULES_VERSION = "pill-imprint-confusion-v1";
 export const MAX_IMPRINT_CANDIDATES_PER_SIDE = 5;
@@ -121,6 +121,8 @@ export interface PillFeatureMatch {
   official: string | null;
   match: Match;
   imprintReading?: PillImprintReadingEvidence;
+  /** Only emitted for a bounded image-reading approximation; never an exact match. */
+  imprintApproximation?: "single_substitution";
 }
 export interface PillCandidateVariant {
   item: OfficialPillItem;
@@ -308,17 +310,38 @@ function compareText(field: string, observed: string, official: string | null, p
   return { field, observed, official, match };
 }
 
+function isSingleImprintSubstitution(observed: string, official: string): boolean {
+  const wanted = imprintText(observed);
+  const actual = imprintText(official);
+  if (wanted.length < 2 || wanted.length > 8 || wanted.length !== actual.length) return false;
+  let differences = 0;
+  for (let index = 0; index < wanted.length; index++) {
+    if (wanted[index] !== actual[index] && ++differences > 1) return false;
+  }
+  return differences === 1;
+}
+
 function compareScore(field: string, observed: PillScoreLine, official: PillScoreLine): PillFeatureMatch {
   // "other" does not mean two unrecognized line patterns are the same.
   const unknown = [observed, official].some((value) => value === "unknown" || value === "other");
   return { field, observed, official, match: unknown ? "unknown" : observed === official ? "exact" : "mismatch" };
 }
 
-function imprintEvidence(readings: PillImprintReadingEvidence[], actual: OfficialPillSide, label: string): PillFeatureMatch {
+function imprintEvidence(
+  observed: PreparedObservedSide,
+  actual: OfficialPillSide,
+  label: string,
+  allowImageApproximation: boolean,
+): PillFeatureMatch {
+  const { readings } = observed;
   const ranked = readings.map((reading) => ({
     ...compareText(`${label}.imprint`, reading.value, actual.imprint, true),
     imprintReading: reading,
-  })).sort((a, b) => {
+  })).map((entry) => entry.match === "mismatch" && allowImageApproximation
+      && entry.imprintReading.origin === "observed_candidate" && observed.side.imprintVisibility === "partial"
+      && actual.imprint !== null && isSingleImprintSubstitution(entry.observed, actual.imprint)
+    ? { ...entry, match: "partial" as const, imprintApproximation: "single_substitution" as const }
+    : entry).sort((a, b) => {
     const rank = (entry: PillFeatureMatch) => entry.match === "exact"
       ? entry.imprintReading?.origin === "observed_candidate" ? 0 : 1
       : entry.match === "partial" ? entry.imprintReading?.origin === "observed_candidate" ? 2 : 3
@@ -334,8 +357,14 @@ function imprintEvidence(readings: PillImprintReadingEvidence[], actual: Officia
   };
 }
 
-function sideEvidence(observed: PreparedObservedSide, actual: OfficialPillSide, label: string, withScore: boolean): PillFeatureMatch[] {
-  const imprint = imprintEvidence(observed.readings, actual, label);
+function sideEvidence(
+  observed: PreparedObservedSide,
+  actual: OfficialPillSide,
+  label: string,
+  withScore: boolean,
+  allowImageApproximation: boolean,
+): PillFeatureMatch[] {
+  const imprint = imprintEvidence(observed, actual, label, allowImageApproximation);
   // A separate official logo is not evidence of an unmarked surface.
   if (observed.side.noImprintObserved && actual.mark) imprint.match = "mismatch";
   return [
@@ -347,15 +376,34 @@ function sideEvidence(observed: PreparedObservedSide, actual: OfficialPillSide, 
   ];
 }
 
-function matchingSides(prepared: { front: PreparedObservedSide; back: PreparedObservedSide }, item: OfficialPillItem, withScore: boolean) {
+function matchingSides(
+  prepared: { front: PreparedObservedSide; back: PreparedObservedSide },
+  item: OfficialPillItem,
+  withScore: boolean,
+  allowImageApproximation: boolean,
+) {
   return (["direct", "swapped"] as const).map((orientation) => ({
     orientation,
     evidence: [
-      ...sideEvidence(prepared.front, orientation === "direct" ? item.front : item.back, "front", withScore),
-      ...sideEvidence(prepared.back, orientation === "direct" ? item.back : item.front, "back", withScore),
+      ...sideEvidence(prepared.front, orientation === "direct" ? item.front : item.back, "front", withScore, allowImageApproximation),
+      ...sideEvidence(prepared.back, orientation === "direct" ? item.back : item.front, "back", withScore, allowImageApproximation),
     ],
-  })).filter(({ evidence }) => evidence.filter((entry) => entry.field.endsWith(".imprint"))
-    .every((entry) => entry.match !== "mismatch"));
+  })).filter(({ evidence }) => {
+    const imprints = evidence.filter((entry) => entry.field.endsWith(".imprint"));
+    const hasExactObservedImprint = imprints.some((entry) => entry.match === "exact"
+      && entry.imprintReading?.origin === "observed_candidate"
+      && entry.imprintReading.normalized.length > 0);
+    if (imprints.some((entry) => entry.imprintApproximation === "single_substitution") && !hasExactObservedImprint) {
+      return false;
+    }
+    if (!hasExactObservedImprint) return imprints.every((entry) => entry.match !== "mismatch");
+
+    // Image OCR disagreements make a fused surface partial. Preserve a candidate supported by
+    // the other surface's exact raw reading, but keep the uncertain mismatch as a conflict.
+    return imprints.every((entry) => entry.match !== "mismatch"
+      || entry.field === "front.imprint" && prepared.front.side.imprintVisibility === "partial"
+      || entry.field === "back.imprint" && prepared.back.side.imprintVisibility === "partial");
+  });
 }
 
 function matchType(evidence: PillFeatureMatch[]): MatchType {
@@ -484,9 +532,10 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
 
   metrics.catalogRecords = catalog.items.length;
   const assessed = catalog.items.map((item) => ({ item, formAssessment: classifyPillForm(item.formName) }));
+  const allowImageApproximation = observation.source === "image_features";
   metrics.unsupportedCatalogRecords = assessed.filter((entry) => entry.formAssessment.status === "unsupported").length;
   const records = assessed.filter((entry) => entry.formAssessment.status !== "unsupported")
-    .filter(({ item }) => matchingSides(prepared, item, false).length > 0);
+    .filter(({ item }) => matchingSides(prepared, item, false, allowImageApproximation).length > 0);
   metrics.stages.push({ stage: "imprint", remaining: records.length });
   metrics.stages.push({ stage: "form", remaining: records.length });
   metrics.stages.push({ stage: "shape", remaining: records.length });
@@ -498,7 +547,7 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
       shapeEvidence(observation.shape, entry.item),
       colorEvidence(observation.colors, entry.item),
     ];
-    const choices = matchingSides(prepared, entry.item, true).map((choice) => {
+    const choices = matchingSides(prepared, entry.item, true, allowImageApproximation).map((choice) => {
       const evidence = [...visualEvidence, ...choice.evidence];
       const conflicts = evidence.filter((feature) => feature.match === "mismatch");
       const reviewReasons: PillReviewReason[] = [];
