@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "types": ["node"]
+  },
+  "include": [
+    "scripts/pill-*.ts",
+    "scripts/profile-pill-catalog.ts",
+    "src/official-pill-*.ts",
+    "src/pill-*.ts",
+    "test-support/pill-*.ts"
+  ]
+}

@@ -7,7 +7,7 @@ export const PILL_PHOTO_LABEL_AUDIT_VERSION = "pill-photo-official-label-audit-v
 export interface ExpectedPillPhotoProduct {
   receipt: string;
   expectedItemSeq: string;
-  mappingEvidenceUrl: string;
+  mappingEvidenceUrl: string | null;
   expectedOfficialRecordSha256: string;
   expectedObservation: {
     form: Extract<PillForm, "tablet" | "capsule">;
@@ -28,7 +28,7 @@ export type PillPhotoLabelAuditStatus =
 export interface PillPhotoLabelAuditRow {
   receipt: string;
   expectedItemSeq: string;
-  mappingEvidenceUrl: string;
+  mappingEvidenceUrl: string | null;
   status: PillPhotoLabelAuditStatus;
   officialRecordCount: number;
   appearanceMatchCount: number;

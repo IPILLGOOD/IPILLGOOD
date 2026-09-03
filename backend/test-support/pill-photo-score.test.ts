@@ -74,10 +74,10 @@ async function perfectInput(split: "validation" | "holdout" = "validation"): Pro
 }
 
 async function perfectUnseenValidationInput(): Promise<{
-  manifest: Awaited<ReturnType<typeof loadRegisteredPillPhotoEvaluationFixture>>["manifest"];
+  manifest: Awaited<ReturnType<typeof loadRegisteredPillPhotoEvaluationFixture>>;
   input: PillPhotoScoreInput;
 }> {
-  const { manifest } = await loadRegisteredPillPhotoEvaluationFixture("v3");
+  const manifest = await loadRegisteredPillPhotoEvaluationFixture("v3");
   const products = new Map(manifest.products.map((product) => [product.expectedItemSeq, product]));
   const images = new Map(manifest.images.map((image) => [image.path, image]));
   const cases = manifest.cases.filter((fixtureCase) => fixtureCase.split === "validation").map((fixtureCase) => {

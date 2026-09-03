@@ -86,10 +86,10 @@ export async function runPillPhotoEvaluation(
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-luna";
   const ocrModel = process.env.OPENAI_OCR_MODEL?.trim() || "gpt-5.6-sol";
   if (!apiKey || ![model, ocrModel].every((value) => /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(value))) throw new Error("not_configured");
-  const { manifest, inferenceInputs } = await loadRegisteredPillPhotoEvaluationFixture(parsed.fixture);
-  const selected = inferenceInputs.filter((input) => input.split === parsed.split);
-  const expectedCases = manifest.cases.filter((fixtureCase) => fixtureCase.split === parsed.split);
-  const preprocessingVersion = parsed.fixture === "v4" || parsed.fixture === "v5"
+  const evaluation = await loadRegisteredPillPhotoEvaluationFixture(parsed.fixture);
+  const selected = evaluation.inferenceInputs.filter((input) => input.split === parsed.split);
+  const expectedCases = evaluation.cases.filter((fixtureCase) => fixtureCase.split === parsed.split);
+  const preprocessingVersion = evaluation.preprocessing === "phone_centered"
     ? pillPhotoExperimentVersions.phonePreprocessing
     : pillPhotoExperimentVersions.preprocessing;
   if (!selected.length || selected.length !== expectedCases.length) throw new Error("evaluation_case_mismatch");
@@ -112,7 +112,7 @@ export async function runPillPhotoEvaluation(
   };
   await writeFile(join(directory, "preflight.json"), serializePillProfile({
     status: "ready",
-    fixtureVersion: manifest.fixtureVersion,
+    fixtureVersion: evaluation.fixtureVersion,
     split: parsed.split,
     cases: selected.map((input) => input.id),
     maximumRequests: selected.length * 3,
@@ -125,9 +125,7 @@ export async function runPillPhotoEvaluation(
   for (const pair of pairs) {
     const result = await extractor(pair.photos, {
       allowExternalTransfer: true,
-      photoSet: parsed.fixture === "v4" ? "phone_validation"
-        : parsed.fixture === "v5" ? "phone_holdout"
-        : parsed.fixture === "v3" ? "unseen_evaluation" : "evaluation",
+      photoSet: evaluation.photoSet,
       apiKey,
       model,
       ocrModel,
@@ -145,7 +143,7 @@ export async function runPillPhotoEvaluation(
   }
   const output: PillPhotoScoreInput = {
     schemaVersion: PILL_PHOTO_SCORE_SCHEMA_VERSION,
-    fixtureVersion: manifest.fixtureVersion,
+    fixtureVersion: evaluation.fixtureVersion,
     split: parsed.split,
     createdAt,
     requests,

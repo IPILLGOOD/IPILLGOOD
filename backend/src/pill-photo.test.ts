@@ -243,7 +243,7 @@ test("평가는 보류·미실행·단순 무검색 결과를 올바른 약 또�
 });
 
 test("정적 HTML은 모델·제품 텍스트를 이스케이프하고 외부 이미지를 자동 요청하지 않는다", () => {
-  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "pill-photo-alpha-pca-detail-contrast-v1", prompt: "pill-photo-observation-v3-multiview", ocrPrompt: "pill-photo-imprint-ocr-per-side-dual-view-v2", fusion: "pill-photo-vision-ocr-consensus-v1", maskPolicy: "reviewed-alpha-solidity-v1" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
+  const report: PillPhotoReport = { mode: "review", createdAt: "test", versions: { review: "healthkr-pilot-2026-08-31-v1", preprocessing: "pill-photo-alpha-pca-detail-contrast-v1", phonePreprocessing: "pill-phone-centered-detail-contrast-v1", prompt: "pill-photo-observation-v3-multiview", ocrPrompt: "pill-photo-imprint-ocr-per-side-dual-view-v2", fusion: "pill-photo-vision-ocr-consensus-v1", maskPolicy: "reviewed-alpha-solidity-v1" }, model: null, catalogVersion: "test", catalogRecords: 1, catalogVerifiedAt: "test", maxAgeHours: 24, requests: 0,
     sourceUrl: "javascript:alert(1)", rows: [{ id: "<script>alert(1)</script>", kind: "candidate", expectedItemSeq: "209900001", expectedProduct: "<img src=x onerror=alert(1)>", evidenceUrl: null, photos: ["0", "1"], extraction: null, maskAssessments: [], comparison: null, evaluation: scorePillPhotoCase("209900001", null) }] };
   const rendered = renderPillPhotoReport(report);
   assert.ok(!rendered.includes("<script>"));

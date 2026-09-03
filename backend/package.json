@@ -8,6 +8,7 @@
     "./dates": "./src/dates.ts"
   },
   "scripts": {
+    "typecheck": "tsc -p tsconfig.pill.json --incremental false",
     "test": "node --experimental-strip-types --test src/*.test.ts test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts test-support/pill-photo-unseen-evaluation.test.ts test-support/pill-photo-phone-validation.test.ts test-support/pill-photo-evaluate.test.ts test-support/pill-photo-label-audit.test.ts test-support/pill-photo-preprocessing.test.ts test-support/pill-photo-score.test.ts",
     "pill:replay": "node --experimental-strip-types scripts/pill-photo.ts replay",
     "pill:regression": "node --experimental-strip-types scripts/pill-regression.ts",

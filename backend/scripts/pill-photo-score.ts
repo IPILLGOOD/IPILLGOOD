@@ -54,7 +54,7 @@ export async function runPillPhotoScore(
     loadRegisteredPillPhotoEvaluationFixture(parsed.fixture),
     loadFrozenPillPhotoFixture(),
   ]);
-  const report = scorePillPhotoEvaluation(value, evaluation.manifest, frozen.catalog, parsed.split);
+  const report = scorePillPhotoEvaluation(value, evaluation, frozen.catalog, parsed.split);
   const root = options.outputDirectory ?? OUTPUT;
   await mkdir(root, { recursive: true });
   const directory = await mkdtemp(join(root, "score-"));
