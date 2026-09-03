@@ -1,6 +1,7 @@
 import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
 
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
+import { DiagnosisDraftReview } from "@/components/documents/DiagnosisDraftReview";
 import { MedicationDraftReview } from "@/components/documents/MedicationDraftReview";
 import { DeleteDocumentButton } from "@/components/documents/DeleteDocumentButton";
 import { Badge } from "@/components/ui/Badge";
@@ -96,6 +97,13 @@ export default async function DocumentsPage() {
                               </div>
                             ))}
                           </dl>
+                          {document.documentType === "진단서" ? (
+                            <DiagnosisDraftReview
+                              documentId={document.id}
+                              analysisRevision={document.analysisRevision ?? 1}
+                              diagnoses={document.analysis.diagnoses ?? []}
+                            />
+                          ) : null}
                           {document.documentType === "진단서" &&
                           supportedNutritionDiagnoses(document.analysis).some((diagnosis) =>
                             !snapshot.recipient.confirmedConditions?.some((condition) =>

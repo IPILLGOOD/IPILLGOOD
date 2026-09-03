@@ -454,6 +454,72 @@ export async function updateRecipientProfile(scope: CareDataScope, recipient: Ca
   }, { expectedRevision });
 }
 
+export interface UpdateDocumentDiagnosesInput {
+  documentId: string;
+  expectedAnalysisRevision: number;
+  diagnoses: Array<{ name: string; code?: string }>;
+  updatedBy: string;
+}
+
+export async function updateDocumentDiagnoses(
+  scope: CareDataScope,
+  input: UpdateDocumentDiagnosesInput,
+) {
+  if (!/^[^/]{1,256}$/.test(input.documentId)) throw new Error("올바르지 않은 문서 식별자입니다.");
+  if (!input.updatedBy.trim()) throw new Error("수정 사용자를 확인할 수 없습니다.");
+  if (!Number.isInteger(input.expectedAnalysisRevision) || input.expectedAnalysisRevision < 1) {
+    throw new Error("진단 정보 revision을 확인해주세요.");
+  }
+  if (input.diagnoses.length === 0 || input.diagnoses.length > 20) {
+    throw new Error("진단명을 하나 이상 입력해주세요.");
+  }
+  const diagnoses = input.diagnoses.map((diagnosis) => ({
+    name: diagnosis.name.trim(),
+    ...(diagnosis.code?.trim() ? { code: diagnosis.code.trim().toUpperCase() } : {}),
+  }));
+  if (diagnoses.some((diagnosis) => !diagnosis.name || diagnosis.name.length > 100)) {
+    throw new Error("진단명을 확인해주세요.");
+  }
+
+  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
+    const document = snapshot.documents.find((item) => item.id === input.documentId);
+    if (!document || document.documentType !== "진단서" || !document.analysis) {
+      throw new Error("수정할 진단서를 찾지 못했어요.");
+    }
+    if ((document.analysisRevision ?? 1) !== input.expectedAnalysisRevision) {
+      throw new Error("진단 정보가 변경됐어요. 최신 내용을 다시 확인해주세요.");
+    }
+    const {
+      diseaseInformation: _staleDiseaseInformation,
+      diseaseLookup: _staleDiseaseLookup,
+      ...analysisWithoutStaleLookup
+    } = document.analysis;
+    const nextDocument: ClinicalDocument = {
+      ...document,
+      status: "needs_review",
+      sourceLabel: "진단서 자동 추출 · 보호자 수정 후 확정 대기",
+      analysisRevision: (document.analysisRevision ?? 1) + 1,
+      analysis: {
+        ...analysisWithoutStaleLookup,
+        diagnoses,
+        findings: diagnoses.map((diagnosis) => ({
+          label: "확인된 진단명",
+          value: diagnosis.code ? `${diagnosis.name} (${diagnosis.code})` : diagnosis.name,
+        })),
+        extraction: { status: "complete", issues: [], missingFields: [] },
+      },
+    };
+    tx.set(ref.collection("clinicalDocuments").doc(document.id), nextDocument);
+    return {
+      snapshot: {
+        ...snapshot,
+        documents: snapshot.documents.map((item) => item.id === document.id ? nextDocument : item),
+      },
+      result: nextDocument,
+    };
+  }, { requiresConsent: true });
+}
+
 export async function confirmDocumentDiagnoses(
   scope: CareDataScope,
   documentId: string,
@@ -476,15 +542,28 @@ export async function confirmDocumentDiagnoses(
     });
     if (additions.length === 0) throw new Error("MVP에서 지원하는 확정 질환을 찾지 못했어요.");
     const existingIds = new Set((snapshot.recipient.confirmedConditions ?? []).map((condition) => condition.id));
-    if (additions.every((condition) => existingIds.has(condition.id))) {
+    if (document.status === "confirmed" && additions.every((condition) => existingIds.has(condition.id))) {
       return { snapshot, result: additions, unchanged: true };
     }
     const merged = new Map(
       [...(snapshot.recipient.confirmedConditions ?? []), ...additions].map((condition) => [condition.id, condition]),
     );
     const recipient = { ...snapshot.recipient, confirmedConditions: [...merged.values()], lastConfirmedAt: confirmedAt };
+    const confirmedDocument: ClinicalDocument = {
+      ...document,
+      status: "confirmed",
+      sourceLabel: "진단서 정보 · 보호자 원본 대조 완료",
+    };
     tx.set(ref, recipient);
-    return { snapshot: { ...snapshot, recipient }, result: additions };
+    tx.set(ref.collection("clinicalDocuments").doc(document.id), confirmedDocument);
+    return {
+      snapshot: {
+        ...snapshot,
+        recipient,
+        documents: snapshot.documents.map((item) => item.id === document.id ? confirmedDocument : item),
+      },
+      result: additions,
+    };
   }, { requiresConsent: true });
 }
 
@@ -702,8 +781,8 @@ function createMedicationPlanDraft(
   analysis: ClinicalDocument["analysis"],
   now: Date,
 ): MedicationPlanDraft | null {
+  if (analysis?.documentType !== "처방전") return null;
   const medications = analysis?.documentType === "처방전" ? analysis.medications ?? [] : [];
-  if (medications.length === 0) return null;
   const timestamp = now.toISOString();
   const id = medicationDraftId(documentId);
   const prescriptionDate = validCalendarDate(analysis?.prescriptionDate);
@@ -717,15 +796,16 @@ function createMedicationPlanDraft(
     candidates: medications.map((medication, index) => {
       const startDate = validCalendarDate(medication.startDate) ?? prescriptionDate ?? "";
       const explicitEndDate = validCalendarDate(medication.endDate);
-      const endDate = explicitEndDate ?? (startDate && totalSupplyDays
-        ? addCalendarDays(startDate, totalSupplyDays - 1)
+      const supplyDays = validSupplyDays(medication.supplyDays) ?? totalSupplyDays;
+      const endDate = explicitEndDate ?? (startDate && supplyDays
+        ? addCalendarDays(startDate, supplyDays - 1)
         : undefined);
       return {
         ...medication,
         startDate,
         ...(endDate ? { endDate } : {}),
         id: `${id}-candidate-${index + 1}`,
-        included: medication.reviewStatus === "verified",
+        included: medication.reviewStatus === "verified" && Boolean(startDate && endDate),
         state: "needs_review",
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -798,8 +878,12 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
       throw new Error("병합할 기존 복약 계획을 찾을 수 없습니다.");
     }
 
+    const requiresExtractionReview = input.analysis?.extraction?.status !== undefined &&
+      input.analysis.extraction.status !== "complete";
+    const prescriptionMedications = input.analysis?.medications ?? [];
     const requiresMedicationReview = input.documentType === "처방전" &&
-      (input.analysis?.medications ?? []).some((medication) => medication.reviewStatus !== "verified");
+      (prescriptionMedications.length === 0 ||
+        prescriptionMedications.some((medication) => medication.reviewStatus !== "verified"));
     const draft = input.duplicateAction === "merge"
       ? null
       : createMedicationPlanDraft(documentRef.id, revision, input.analysis, now);
@@ -809,12 +893,14 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
       contentHash: input.contentHash,
       documentType: input.documentType,
       uploadedAt: now.toISOString(),
-      status: draft ? "needs_review" : "confirmed",
+      status: draft || requiresExtractionReview ? "needs_review" : "confirmed",
       redacted: input.isSample,
       sourceLabel: input.duplicateAction === "merge"
         ? "기존 복약과 병합 · 중복 일정 미생성"
         : draft && requiresMedicationReview
           ? "OCR·공식 정보 대조 필요 · 복약 초안"
+          : requiresExtractionReview
+            ? "자동 추출 일부 누락 · 원본 대조 필요"
           : draft
             ? "분석 초안 · 복약 일정 반영 전 검토 필요"
             : input.analysis?.source === "api"
@@ -823,6 +909,7 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
                 ? "OpenAI 분석 완료"
                 : "비식별 데모 분석 · 원본과 확인 필요",
       revision,
+      analysisRevision: 1,
       ...(draft ? { medicationDraftId: draft.id } : {}),
       size: input.size,
       analysis: input.analysis,
@@ -945,13 +1032,18 @@ export async function getMedicationPlanDraft(
 export interface MedicationCandidateConfirmation {
   id: string;
   included: boolean;
+  isManual?: boolean;
+  confirmedAgainstOriginal?: boolean;
   productName: string;
   ingredientName: string;
+  mfdsItemSeq?: string;
+  insuranceCode?: string;
   doseAmount: string;
   frequency: string;
   timing: string;
   startDate: string;
   endDate?: string;
+  supplyDays?: number;
 }
 
 export interface ConfirmMedicationPlanDraftInput {
@@ -976,6 +1068,13 @@ function assertValidConfirmationInput(input: ConfirmMedicationPlanDraftInput) {
   if (input.candidates.length === 0 || input.candidates.length > 50) throw new Error("확정할 복약 후보를 선택해주세요.");
   if (new Set(input.candidates.map((candidate) => candidate.id)).size !== input.candidates.length) {
     throw new Error("중복된 복약 후보가 있어요.");
+  }
+  if (input.candidates.some((candidate) =>
+    !/^[^/]{1,256}$/.test(candidate.id) ||
+    (candidate.mfdsItemSeq !== undefined && !/^\d{0,20}$/.test(candidate.mfdsItemSeq)) ||
+    (candidate.insuranceCode !== undefined && !/^\d{0,20}$/.test(candidate.insuranceCode)) ||
+    (candidate.supplyDays !== undefined && !validSupplyDays(candidate.supplyDays)))) {
+    throw new Error("복약 후보의 코드 또는 투약일수를 확인해주세요.");
   }
 }
 
@@ -1016,6 +1115,53 @@ function confirmedMedicationPlan(
     confirmedAt,
     sourceDocumentRevision: draft.sourceDocumentRevision,
     stateChangedAt: confirmedAt,
+  };
+}
+
+function candidateChanged(
+  original: MedicationPlanCandidate,
+  reviewed: MedicationCandidateConfirmation,
+) {
+  return [
+    [original.productName, reviewed.productName],
+    [original.ingredientName, reviewed.ingredientName],
+    [original.mfdsItemSeq ?? original.itemCode ?? "", reviewed.mfdsItemSeq ?? ""],
+    [original.insuranceCode ?? "", reviewed.insuranceCode ?? ""],
+    [original.doseAmount, reviewed.doseAmount],
+    [original.frequency, reviewed.frequency],
+    [original.timing, reviewed.timing],
+    [original.startDate, reviewed.startDate],
+    [original.endDate ?? "", reviewed.endDate ?? ""],
+    [String(original.supplyDays ?? ""), String(reviewed.supplyDays ?? "")],
+  ].some(([before, after]) => before.trim() !== after.trim());
+}
+
+function manualCandidate(
+  input: MedicationCandidateConfirmation,
+  timestamp: string,
+): MedicationPlanCandidate {
+  if (!input.id.startsWith("manual-")) throw new Error("직접 추가한 약의 식별자가 올바르지 않아요.");
+  return {
+    id: input.id,
+    included: input.included,
+    isManual: true,
+    productName: input.productName,
+    ingredientName: input.ingredientName,
+    ...(input.mfdsItemSeq ? { mfdsItemSeq: input.mfdsItemSeq, itemCode: input.mfdsItemSeq } : {}),
+    ...(input.insuranceCode ? { insuranceCode: input.insuranceCode } : {}),
+    doseAmount: input.doseAmount,
+    frequency: input.frequency,
+    timing: input.timing,
+    startDate: input.startDate,
+    ...(input.endDate ? { endDate: input.endDate } : {}),
+    ...(input.supplyDays ? { supplyDays: input.supplyDays } : {}),
+    purposePlain: "처방 목적을 의료진에게 확인해주세요.",
+    precautions: [],
+    reviewStatus: "needs_review",
+    reviewReasons: [input.mfdsItemSeq ? "official_unavailable" : "missing_mfds_item_seq"],
+    state: "needs_review",
+    createdAt: timestamp,
+    updatedAt: timestamp,
   };
 }
 
@@ -1072,28 +1218,75 @@ export async function confirmMedicationPlanDraft(
       throw new Error("근거 문서가 변경됐어요. 다시 분석하고 검토해주세요.");
     }
 
+    const timestamp = now.toISOString();
     const originalById = new Map(draft.candidates.map((candidate) => [candidate.id, candidate]));
     for (const candidate of input.candidates) {
-      if (!originalById.has(candidate.id)) throw new Error("초안에 없는 복약 후보가 포함됐어요.");
+      if (!originalById.has(candidate.id)) {
+        if (!candidate.isManual) throw new Error("초안에 없는 복약 후보가 포함됐어요.");
+        originalById.set(candidate.id, manualCandidate(candidate, timestamp));
+      }
     }
     const selected = input.candidates.filter((candidate) => candidate.included);
     if (selected.length === 0) throw new Error("활성화할 약을 하나 이상 선택해주세요.");
-    if (selected.some((candidate) => originalById.get(candidate.id)?.reviewStatus !== "verified")) {
-      throw new Error("OCR 근거와 식약처 정보 대조가 완료된 약만 활성화할 수 있어요.");
+    if (selected.some((candidate) => {
+      const original = originalById.get(candidate.id)!;
+      return (original.reviewStatus !== "verified" || candidateChanged(original, candidate)) &&
+        !candidate.confirmedAgainstOriginal;
+    })) {
+      throw new Error("검토가 필요한 약은 원본 처방전과 모든 필드를 대조한 뒤 확정해주세요.");
     }
-    const timestamp = now.toISOString();
     const medications = selected.map((candidate) =>
       confirmedMedicationPlan(draft, originalById.get(candidate.id)!, candidate, input.confirmedBy, timestamp));
     const medicationIds = new Set(medications.map((medication) => medication.id));
-    const nextCandidates = draft.candidates.map((candidate) => {
+    const allCandidates = [
+      ...draft.candidates,
+      ...input.candidates.flatMap((candidate) =>
+        draft.candidates.some((item) => item.id === candidate.id)
+          ? []
+          : [originalById.get(candidate.id)!],
+      ),
+    ];
+    const nextCandidates = allCandidates.map((candidate) => {
       const reviewed = input.candidates.find((item) => item.id === candidate.id);
       if (!reviewed) return candidate;
-      return {
+      const humanConfirmed = reviewed.included &&
+        (candidate.reviewStatus !== "verified" || candidateChanged(candidate, reviewed));
+      const nextCandidate: MedicationPlanCandidate = {
         ...candidate,
-        ...reviewed,
+        included: reviewed.included,
+        productName: reviewed.productName.trim(),
+        ingredientName: reviewed.ingredientName.trim(),
+        doseAmount: reviewed.doseAmount.trim(),
+        frequency: reviewed.frequency.trim(),
+        timing: reviewed.timing.trim(),
+        startDate: reviewed.startDate,
+        ...(reviewed.endDate ? { endDate: reviewed.endDate } : {}),
+        ...(reviewed.supplyDays ? { supplyDays: reviewed.supplyDays } : {}),
+        reviewStatus: humanConfirmed ? "human_confirmed" as const : candidate.reviewStatus,
+        ...(humanConfirmed
+          ? {
+              humanConfirmation: {
+                confirmedBy: input.confirmedBy,
+                confirmedAt: timestamp,
+                documentRevision: draft.sourceDocumentRevision,
+                reason: "checked_against_original" as const,
+              },
+            }
+          : {}),
         state: reviewed.included ? "active" as const : "cancelled" as const,
         updatedAt: timestamp,
       };
+      delete nextCandidate.itemCode;
+      delete nextCandidate.mfdsItemSeq;
+      delete nextCandidate.insuranceCode;
+      if (reviewed.mfdsItemSeq) {
+        nextCandidate.itemCode = reviewed.mfdsItemSeq;
+        nextCandidate.mfdsItemSeq = reviewed.mfdsItemSeq;
+      }
+      if (reviewed.insuranceCode) nextCandidate.insuranceCode = reviewed.insuranceCode;
+      if (!reviewed.endDate) delete nextCandidate.endDate;
+      if (!reviewed.supplyDays) delete nextCandidate.supplyDays;
+      return nextCandidate;
     });
     const activeDraft: MedicationPlanDraft = {
       ...draft,
@@ -1202,8 +1395,9 @@ export function medicationPlansFromPrescription(
       const startDate = validCalendarDate(medication.startDate) ?? prescriptionDate;
       if (!startDate) return [];
       const explicitEndDate = validCalendarDate(medication.endDate);
-      const endDate = explicitEndDate ?? (totalSupplyDays
-        ? addCalendarDays(startDate, totalSupplyDays - 1)
+      const supplyDays = validSupplyDays(medication.supplyDays) ?? totalSupplyDays;
+      const endDate = explicitEndDate ?? (supplyDays
+        ? addCalendarDays(startDate, supplyDays - 1)
         : undefined);
       if (!endDate || endDate < startDate) return [];
       return {

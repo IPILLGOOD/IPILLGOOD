@@ -1,44 +1,108 @@
 "use client";
 
-import { BellRing, CheckCircle2, LoaderCircle, TriangleAlert } from "lucide-react";
+import {
+  BellRing,
+  CheckCircle2,
+  LoaderCircle,
+  Plus,
+  TriangleAlert,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import {
+  MedicationDraftCandidate,
+  type EditableMedicationCandidate,
+} from "@/components/documents/MedicationDraftCandidate";
 import type { MedicationPlanCandidate, MedicationPlanDraft } from "@care-atlas/backend";
-
-type EditableCandidate = Pick<
-  MedicationPlanCandidate,
-  | "id"
-  | "included"
-  | "productName"
-  | "ingredientName"
-  | "doseAmount"
-  | "frequency"
-  | "timing"
-  | "startDate"
-  | "endDate"
-  | "reviewStatus"
->;
 
 interface ConfirmationResponse {
   message?: string;
   result?: { medications: Array<{ id: string }> };
 }
 
+function editableCandidate(candidate: MedicationPlanCandidate): EditableMedicationCandidate {
+  return {
+    ...candidate,
+    mfdsItemSeq: candidate.mfdsItemSeq ?? candidate.itemCode,
+    confirmedAgainstOriginal: candidate.reviewStatus === "human_confirmed",
+  };
+}
+
 export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft }) {
   const router = useRouter();
-  const [candidates, setCandidates] = useState<EditableCandidate[]>(draft.candidates);
+  const [candidates, setCandidates] = useState<EditableMedicationCandidate[]>(() =>
+    draft.candidates.map(editableCandidate),
+  );
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
-  const selectedCount = candidates.filter((candidate) => candidate.included).length;
+  const selected = candidates.filter((candidate) => candidate.included);
+  const selectedCount = selected.length;
+  const selectionReady = selected.every(
+    (candidate) =>
+      Boolean(
+        candidate.productName.trim() &&
+        candidate.doseAmount.trim() &&
+        candidate.frequency.trim() &&
+        candidate.timing.trim() &&
+        candidate.startDate &&
+        candidate.endDate,
+      ) &&
+      (candidate.reviewStatus === "verified" || candidate.confirmedAgainstOriginal),
+  );
 
-  function updateCandidate(id: string, update: Partial<EditableCandidate>) {
-    setCandidates((current) => current.map((candidate) =>
-      candidate.id === id ? { ...candidate, ...update } : candidate));
+  function resetRequestState() {
     setIdempotencyKey(crypto.randomUUID());
     setStatus("idle");
     setMessage("");
+  }
+
+  function updateCandidate(
+    id: string,
+    update: Partial<EditableMedicationCandidate>,
+    marksEdited = false,
+  ) {
+    setCandidates((current) => current.map((candidate) =>
+      candidate.id === id
+        ? {
+            ...candidate,
+            ...update,
+            ...(marksEdited
+              ? { reviewStatus: "needs_review" as const, confirmedAgainstOriginal: false }
+              : {}),
+          }
+        : candidate));
+    resetRequestState();
+  }
+
+  function addManualCandidate() {
+    setCandidates((current) => [
+      ...current,
+      {
+        id: `manual-${crypto.randomUUID()}`,
+        included: false,
+        isManual: true,
+        productName: "",
+        ingredientName: "",
+        mfdsItemSeq: undefined,
+        insuranceCode: undefined,
+        doseAmount: "",
+        frequency: "",
+        timing: "",
+        startDate: "",
+        endDate: undefined,
+        supplyDays: undefined,
+        reviewStatus: "needs_review",
+        confirmedAgainstOriginal: false,
+      },
+    ]);
+    resetRequestState();
+  }
+
+  function removeManualCandidate(id: string) {
+    setCandidates((current) => current.filter((candidate) => candidate.id !== id));
+    resetRequestState();
   }
 
   async function confirmDraft() {
@@ -66,49 +130,42 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
     }
   }
 
+  const disabled = status === "pending" || status === "success";
+
   return (
     <section className="medication-draft-review" aria-labelledby="medication-draft-title">
       <div className="medication-draft-review__heading">
         <div>
           <span>복약 후보 초안</span>
           <h3 id="medication-draft-title">원본과 비교해 약과 일정을 검토하세요</h3>
-          <p>선택하고 확정하기 전에는 현재 복용약·오늘 일정·알림에 반영되지 않아요.</p>
+          <p>누락된 약은 직접 추가할 수 있어요. 확정하기 전에는 복약 일정과 알림에 반영되지 않아요.</p>
         </div>
         <strong>{selectedCount}/{candidates.length}개 선택</strong>
       </div>
 
+      {candidates.length === 0 ? (
+        <div className="medication-draft-empty" role="status">
+          <TriangleAlert size={20} aria-hidden="true" />
+          <p><strong>자동으로 찾은 약이 없어요.</strong> 원본 처방전을 보며 약을 직접 추가해주세요.</p>
+        </div>
+      ) : null}
+
       <div className="medication-draft-review__list">
-        {candidates.map((candidate, index) => {
-          const verified = candidate.reviewStatus === "verified";
-          return <fieldset className="medication-draft-candidate" disabled={status === "pending" || status === "success"} key={candidate.id}>
-            <legend>약 {index + 1}</legend>
-            <label className="medication-draft-candidate__include">
-              <input
-                type="checkbox"
-                checked={candidate.included}
-                disabled={!verified}
-                onChange={(event) => updateCandidate(candidate.id, { included: event.target.checked })}
-              />
-              <span>
-                <strong>이 약을 복약 일정에 포함</strong>
-                <small>{verified ? "제외한 후보는 저장만 되고 활성화되지 않아요." : "OCR 근거와 식약처 정보 대조를 완료해야 선택할 수 있어요."}</small>
-              </span>
-            </label>
-            <div className="medication-draft-fields">
-              <label>약 이름<input value={candidate.productName} onChange={(event) => updateCandidate(candidate.id, { productName: event.target.value })} required /></label>
-              <label>성분명<input value={candidate.ingredientName} onChange={(event) => updateCandidate(candidate.id, { ingredientName: event.target.value })} /></label>
-              <label>1회 용량<input value={candidate.doseAmount} onChange={(event) => updateCandidate(candidate.id, { doseAmount: event.target.value })} required /></label>
-              <label>횟수<input value={candidate.frequency} onChange={(event) => updateCandidate(candidate.id, { frequency: event.target.value })} required /></label>
-              <label>복용 시점<input value={candidate.timing} onChange={(event) => updateCandidate(candidate.id, { timing: event.target.value })} required /></label>
-              <label>시작일<input type="date" value={candidate.startDate} onChange={(event) => updateCandidate(candidate.id, { startDate: event.target.value })} required /></label>
-              <label>종료일<input type="date" value={candidate.endDate ?? ""} onChange={(event) => updateCandidate(candidate.id, { endDate: event.target.value || undefined })} required /></label>
-            </div>
-            <p className="medication-draft-candidate__notice">
-              <TriangleAlert size={16} aria-hidden="true" /> {verified ? "분석값은 확인이 필요한 초안이에요. 처방전과 약 봉투를 기준으로 수정해주세요." : "공식 대조가 끝나지 않아 이 약은 활성화할 수 없어요."}
-            </p>
-          </fieldset>
-        })}
+        {candidates.map((candidate, index) => (
+          <MedicationDraftCandidate
+            candidate={candidate}
+            disabled={disabled}
+            index={index}
+            key={candidate.id}
+            onRemove={removeManualCandidate}
+            onUpdate={updateCandidate}
+          />
+        ))}
       </div>
+
+      <button className="button button--secondary medication-draft-add" type="button" disabled={disabled || candidates.length >= 50} onClick={addManualCandidate}>
+        <Plus size={17} aria-hidden="true" /> 원본에서 약 직접 추가
+      </button>
 
       <div className="medication-draft-summary">
         <BellRing size={20} aria-hidden="true" />
@@ -116,7 +173,7 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
           <strong>확정 전 요약</strong>
           선택한 약 {selectedCount}개가 활성 복약 계획과 오늘 일정에 반영되고, 알림을 사용 중이면 새 일정이 생성돼요.
         </p>
-        <button className="button button--primary" type="button" disabled={selectedCount === 0 || status === "pending" || status === "success"} onClick={confirmDraft}>
+        <button className="button button--primary" type="button" disabled={selectedCount === 0 || !selectionReady || disabled} onClick={confirmDraft}>
           {status === "pending" ? <LoaderCircle className="spin" size={18} aria-hidden="true" /> : null}
           {status === "success" ? <CheckCircle2 size={18} aria-hidden="true" /> : null}
           {status === "pending" ? "확정하는 중…" : status === "success" ? "복약 일정 반영 완료" : `선택한 약 ${selectedCount}개 확정`}

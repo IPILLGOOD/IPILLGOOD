@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
+import { DiagnosisDraftReview } from "@/components/documents/DiagnosisDraftReview";
 import { confirmDiagnosesAction } from "@/app/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { supportedNutritionDiagnoses } from "@/lib/nutrition-presentation";
@@ -19,22 +20,27 @@ import type { DocumentAnalysis } from "@care-atlas/backend";
 const evidenceLabels = {
   productName: "제품명",
   ingredientName: "성분명",
-  itemCode: "품목코드",
+  itemCode: "품목기준코드(이전 형식)",
+  mfdsItemSeq: "품목기준코드",
+  insuranceCode: "보험코드",
   doseAmount: "1회 복용량",
   frequency: "복용 횟수",
   timing: "복용 시점",
   startDate: "시작일",
   endDate: "종료일",
+  supplyDays: "투약일수",
 } as const;
 
 export function DocumentAnalysisResult({
   analysis,
   documentId,
+  analysisRevision = 1,
   requiresPeriodReview = false,
   medicationRegistration = "draft",
 }: {
   analysis: DocumentAnalysis;
   documentId?: string;
+  analysisRevision?: number;
   requiresPeriodReview?: boolean;
   medicationRegistration?: "draft" | "pending" | "merged";
 }) {
@@ -74,6 +80,16 @@ export function DocumentAnalysisResult({
         ))}
       </dl>
 
+      {analysis.extraction?.status !== undefined && analysis.extraction.status !== "complete" ? (
+        <div className="disease-lookup-status disease-lookup-status--failed" role="status">
+          <TriangleAlert size={18} aria-hidden="true" />
+          <p>
+            <strong>{analysis.extraction.status === "failed" ? "자동 추출 결과 없음" : "일부 항목 확인 필요"}</strong>
+            찾지 못한 값은 버리지 않고 검토 초안으로 남겼어요. 원본을 보며 수정하거나 직접 추가해주세요.
+          </p>
+        </div>
+      ) : null}
+
       {analysis.documentType === "처방전" && analysis.medications?.length ? (
         <div
           className={`disease-lookup-status disease-lookup-status--${medicationRegistration === "pending" || requiresMedicationVerification ? "failed" : requiresPeriodReview ? "not_configured" : "official_match"}`}
@@ -99,7 +115,7 @@ export function DocumentAnalysisResult({
               : medicationRegistration === "pending"
                 ? "등록 방식을 선택하기 전에는 복약 초안·오늘 일정·알림을 만들지 않아요."
                 : requiresMedicationVerification
-                  ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 선택할 수 없어요. 대조 완료된 약도 아래에서 검토하고 확정해야 반영돼요.`
+                  ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 원본과 모든 값을 대조한 기록이 있어야 활성화할 수 있어요.`
                   : requiresPeriodReview
                     ? "처방일과 총 투약일수를 원본에서 확인하고 확정하기 전에는 약을 활성화하지 않아요."
                     : `처방전에서 약 ${analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.`}
@@ -121,8 +137,12 @@ export function DocumentAnalysisResult({
                     <span>약 {index + 1}</span>
                     <h5>{medication.productName}</h5>
                   </div>
-                  <Badge tone={medication.reviewStatus === "verified" ? "success" : "warning"}>
-                    {medication.reviewStatus === "verified" ? "대조 완료" : "확인 필요"}
+                  <Badge tone={medication.reviewStatus === "verified" || medication.reviewStatus === "human_confirmed" ? "success" : "warning"}>
+                    {medication.reviewStatus === "verified"
+                      ? "공식 대조 완료"
+                      : medication.reviewStatus === "human_confirmed"
+                        ? "보호자 대조 완료"
+                        : "확인 필요"}
                   </Badge>
                 </header>
                 <dl>
@@ -131,10 +151,14 @@ export function DocumentAnalysisResult({
                       <dt>{evidenceLabels[evidence.field]}</dt>
                       <dd>
                         <q>{evidence.sourceText}</q>
-                        <small>
-                          신뢰도 {Math.round(evidence.confidence * 100)}%
-                          {evidence.region ? ` · ${evidence.region.page}쪽 위치 ${Math.round(evidence.region.x * 100)}, ${Math.round(evidence.region.y * 100)}%` : ""}
-                        </small>
+                        {evidence.confidence !== undefined || evidence.region ? (
+                          <small>
+                            {evidence.confidence !== undefined
+                              ? `신뢰도 ${Math.round(evidence.confidence * 100)}%`
+                              : "원문에서 추출"}
+                            {evidence.region ? ` · ${evidence.region.page}쪽 위치 ${Math.round(evidence.region.x * 100)}, ${Math.round(evidence.region.y * 100)}%` : ""}
+                          </small>
+                        ) : null}
                       </dd>
                     </div>
                   ))}
@@ -192,6 +216,14 @@ export function DocumentAnalysisResult({
             {analysis.diseaseLookup.message}
           </p>
         </div>
+      ) : null}
+
+      {analysis.documentType === "진단서" && documentId ? (
+        <DiagnosisDraftReview
+          documentId={documentId}
+          analysisRevision={analysisRevision}
+          diagnoses={analysis.diagnoses ?? []}
+        />
       ) : null}
 
       {analysis.documentType === "진단서" && documentId && nutritionDiagnoses.length > 0 ? (

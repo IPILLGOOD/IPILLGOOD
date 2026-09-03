@@ -7,7 +7,6 @@ import {
   withCareAccountProcessing,
   DocumentAnalysisCancelledError,
   isServiceAccountActive,
-  DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   DocumentUploadValidationError,
   getCareSnapshot,
@@ -287,7 +286,7 @@ export async function POST(request: Request) {
       message: document.duplicateResolution === "merge"
         ? `${result.message} 기존 복약 계획과 병합해 중복 일정은 만들지 않았어요.`
         : reviewMedicationCount > 0
-          ? `${result.message} OCR 또는 공식 정보 확인이 필요한 약 ${reviewMedicationCount}개는 선택할 수 없어요. 나머지 약도 검토하고 확정하기 전에는 반영하지 않아요.`
+          ? `${result.message} OCR 또는 공식 정보 확인이 필요한 약 ${reviewMedicationCount}개는 원본 대조 확인 후 선택할 수 있어요. 검토하고 확정하기 전에는 반영하지 않아요.`
           : draft
             ? requiresPeriodReview
               ? `${result.message} 복약 일정에는 아직 반영하지 않았어요. 약 ${draft.candidates.length}개의 처방 기간을 확인하고 확정해주세요.`
@@ -313,15 +312,12 @@ export async function POST(request: Request) {
           code: timeout ? "OVERALL_TIMEOUT" :
             error instanceof DocumentUploadValidationError ? "FILE_VALIDATION" :
               error instanceof DocumentAnalysisNotConfiguredError ? "SERVICE_NOT_CONFIGURED" :
-                error instanceof DocumentAnalysisIncompleteError ? "INCOMPLETE_ANALYSIS" :
-                  "ANALYSIS_FAILED",
+                "ANALYSIS_FAILED",
           message: timeout
             ? "전체 분석 시간이 초과됐어요. 같은 작업을 안전하게 다시 시도할 수 있어요."
             : error instanceof DocumentUploadValidationError
               ? error.userMessage
-              : error instanceof DocumentAnalysisIncompleteError
-                ? "문서에서 정보를 충분히 읽지 못했어요. 더 선명한 파일로 다시 시도해주세요."
-                : "문서를 분석하지 못했어요. 잠시 후 다시 시도해주세요.",
+              : "문서를 분석하지 못했어요. 잠시 후 다시 시도해주세요.",
           retryable: !(error instanceof DocumentUploadValidationError),
         },
       });
@@ -350,12 +346,6 @@ export async function POST(request: Request) {
             : "문서 분석 서비스를 준비 중이에요. 잠시 후 다시 시도해주세요.",
         },
         { status: 503 },
-      );
-    }
-    if (error instanceof DocumentAnalysisIncompleteError) {
-      return Response.json(
-        { message: "문서에서 약 또는 진단 정보를 충분히 읽지 못했어요. 더 선명한 파일로 다시 시도해주세요." },
-        { status: 422 },
       );
     }
     console.error("Document analysis failed", error);
