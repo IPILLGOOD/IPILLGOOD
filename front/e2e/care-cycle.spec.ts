@@ -68,21 +68,42 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     const baselineDoseEventCount = (await recipient.collection("doseEvents").get()).size;
     for (const documentType of ["처방전", "진단서"]) {
       await page.getByRole("radio", { name: new RegExp(`^${documentType}`) }).check();
-      await page.getByRole("button", { name: `비식별 샘플 ${documentType}으로 체험` }).click();
+      if (documentType === "진단서") {
+        await expect(page.getByRole("heading", { name: "처방전 분석 결과" })).toHaveCount(0);
+      }
+      const sampleButtonName = documentType === "진단서"
+        ? "비식별 샘플 진단서로 체험"
+        : "비식별 샘플 처방전으로 체험";
+      await page.getByRole("button", { name: sampleButtonName }).click();
       if (documentType === "처방전") {
         await expect(page.getByRole("heading", { name: "기존 복약과 겹치는 항목이 있어요" })).toBeVisible();
         await page.getByRole("button", { name: "별도 처방으로 등록" }).click();
         await expect(page.getByText("복약 일정에는 아직 반영하지 않았어요.", { exact: false })).toBeVisible();
       } else {
         await expect(page.getByText("비식별 데모 분석을 마쳤어요.")).toBeVisible();
+        const diagnosisReview = page.getByRole("region", { name: "원본과 대조해 진단 정보를 수정하세요" });
+        await diagnosisReview.getByLabel("진단명 1").fill("본태성 고혈압");
+        await diagnosisReview.getByRole("button", { name: "수정값 저장" }).click();
+        await expect(diagnosisReview.getByText("진단 정보를 수정했어요.", { exact: false })).toBeVisible();
+        await expect(page.locator(".diagnosis-confirmation")).toContainText("본태성 고혈압");
       }
+      await expect.poll(() => page.evaluate(() => sessionStorage.getItem("ipillgood:document-analysis-job"))).toBeNull();
       await expect(page.locator(".document-item")).toHaveCount(before + 1);
       if (documentType === "처방전") {
         expect((await recipient.collection("medicationPlans").get()).size).toBe(baselineMedicationCount);
         expect((await recipient.collection("doseEvents").get()).size).toBe(baselineDoseEventCount);
-        const endDates = page.getByRole("region", { name: "원본과 비교해 약과 일정을 검토하세요" }).getByLabel("종료일");
+        const medicationReview = page.getByRole("region", { name: "원본과 비교해 약과 일정을 검토하세요" });
+        const endDates = medicationReview.getByLabel("종료일");
         for (let index = 0; index < await endDates.count(); index++) {
           if (!await endDates.nth(index).inputValue()) await endDates.nth(index).fill("2027-12-31");
+        }
+        const comparisons = medicationReview.getByRole("checkbox", { name: /원본 처방전과 모든 입력값을 대조했어요/ });
+        for (let index = 0; index < await comparisons.count(); index++) {
+          await checkChoice(comparisons.nth(index));
+        }
+        const inclusions = medicationReview.getByRole("checkbox", { name: /이 약을 복약 일정에 포함/ });
+        for (let index = 0; index < await inclusions.count(); index++) {
+          await checkChoice(inclusions.nth(index));
         }
         await page.getByRole("button", { name: "선택한 약 3개 확정" }).click();
         await expect(page.getByText("선택한 약 3개를 복약 일정에 반영했어요.")).toBeVisible();

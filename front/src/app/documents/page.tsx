@@ -99,6 +99,7 @@ export default async function DocumentsPage() {
                           </dl>
                           {document.documentType === "진단서" ? (
                             <DiagnosisDraftReview
+                              key={`${document.id}-${document.analysisRevision ?? 1}`}
                               documentId={document.id}
                               analysisRevision={document.analysisRevision ?? 1}
                               diagnoses={document.analysis.diagnoses ?? []}

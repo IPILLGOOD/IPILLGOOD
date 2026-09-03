@@ -15,7 +15,7 @@ import { DiagnosisDraftReview } from "@/components/documents/DiagnosisDraftRevie
 import { confirmDiagnosesAction } from "@/app/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { supportedNutritionDiagnoses } from "@/lib/nutrition-presentation";
-import type { DocumentAnalysis } from "@care-atlas/backend";
+import type { ClinicalDocument, DocumentAnalysis } from "@care-atlas/backend";
 
 const evidenceLabels = {
   productName: "제품명",
@@ -37,12 +37,14 @@ export function DocumentAnalysisResult({
   analysisRevision = 1,
   requiresPeriodReview = false,
   medicationRegistration = "draft",
+  onDiagnosesSaved,
 }: {
   analysis: DocumentAnalysis;
   documentId?: string;
   analysisRevision?: number;
   requiresPeriodReview?: boolean;
   medicationRegistration?: "draft" | "pending" | "merged";
+  onDiagnosesSaved?: (document: ClinicalDocument) => void;
 }) {
   const analysisSource =
     analysis.source === "api"
@@ -223,6 +225,7 @@ export function DocumentAnalysisResult({
           documentId={documentId}
           analysisRevision={analysisRevision}
           diagnoses={analysis.diagnoses ?? []}
+          onSaved={onDiagnosesSaved}
         />
       ) : null}
 

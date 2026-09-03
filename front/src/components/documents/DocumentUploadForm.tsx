@@ -7,13 +7,13 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 
 import { DocumentAnalysisResult } from "@/components/documents/DocumentAnalysisResult";
 import { MedicationDraftReview } from "@/components/documents/MedicationDraftReview";
-import type { ClinicalDocumentType, DocumentAnalysis, DocumentAnalysisJob, MedicationPlanDraft } from "@care-atlas/backend";
+import type { ClinicalDocument, ClinicalDocumentType, DocumentAnalysis, DocumentAnalysisJob, MedicationPlanDraft } from "@care-atlas/backend";
 
 interface AnalysisResponse {
   message?: string;
   analysis?: DocumentAnalysis;
   addedMedicationCount?: number;
-  document?: { id: string };
+  document?: Pick<ClinicalDocument, "id" | "analysis" | "analysisRevision">;
   reviewMedicationCount?: number;
   draft?: MedicationPlanDraft | null;
   requiresPeriodReview?: boolean;
@@ -54,6 +54,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   const [message, setMessage] = useState("");
   const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
+  const [analysisRevision, setAnalysisRevision] = useState(1);
   const [draft, setDraft] = useState<MedicationPlanDraft | null>(null);
   const [requiresPeriodReview, setRequiresPeriodReview] = useState(false);
   const [duplicateCandidates, setDuplicateCandidates] = useState<NonNullable<AnalysisResponse["duplicateCandidates"]>>([]);
@@ -77,6 +78,8 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   }, [previewUrl]);
 
   const applyCompletedResponse = useCallback((body: AnalysisResponse) => {
+    sessionStorage.removeItem(activeJobStorageKey);
+    setActiveJobId(null);
     if (body.duplicateResolutionRequired && body.analysis) {
       setStatus("success");
       setMessage(body.message ?? "기존 복약과 겹치는 후보를 확인해주세요.");
@@ -92,6 +95,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     setMessage(body.message ?? "문서 분석을 마쳤어요.");
     setAnalysis(body.analysis);
     setDocumentId(body.document?.id ?? null);
+    setAnalysisRevision(body.document?.analysisRevision ?? 1);
     setDraft(body.draft ?? null);
     setRequiresPeriodReview(body.requiresPeriodReview === true);
     setMedicationRegistration(body.duplicateResolution === "merge" ? "merged" : "draft");
@@ -127,6 +131,8 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
           return;
         }
         if (job.state === "cancelled") {
+          sessionStorage.removeItem(activeJobStorageKey);
+          setActiveJobId(null);
           setStatus("error");
           setMessage("문서 분석을 취소했어요. 결과와 초안은 저장하지 않았어요. 같은 파일을 다시 선택하면 이 작업을 안전하게 재시도해요.");
           setRetryJob({ id: job.id, idempotencyKey: job.idempotencyKey });
@@ -134,6 +140,8 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
           return;
         }
         if (job.state === "failed") {
+          sessionStorage.removeItem(activeJobStorageKey);
+          setActiveJobId(null);
           setStatus("error");
           setMessage(`${job.error?.message ?? "문서 분석에 실패했어요."} 같은 파일을 다시 선택하면 이 작업을 이어서 재시도해요.`);
           setRetryJob(job.error?.retryable === true
@@ -248,6 +256,31 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     await requestAnalysis(copyFormData(retryFormData.current));
   }
 
+  function selectDocumentType(type: ClinicalDocumentType) {
+    if (type === documentType) return;
+    sessionStorage.removeItem(activeJobStorageKey);
+    setActiveJobId(null);
+    retryFormData.current = null;
+    setDocumentType(type);
+    setFile(null);
+    setStatus("idle");
+    setMessage("");
+    setAnalysis(null);
+    setDocumentId(null);
+    setAnalysisRevision(1);
+    setDraft(null);
+    setRequiresPeriodReview(false);
+    setDuplicateCandidates([]);
+    setMedicationRegistration("draft");
+    setRetryJob(null);
+    setRetryable(false);
+  }
+
+  const handleDiagnosesSaved = useCallback((document: ClinicalDocument) => {
+    if (document.analysis) setAnalysis(document.analysis);
+    setAnalysisRevision(document.analysisRevision ?? 1);
+  }, []);
+
   const pending = status === "pending";
 
   return (
@@ -263,7 +296,8 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
                   type="radio"
                   value={type}
                   checked={documentType === type}
-                  onChange={() => setDocumentType(type)}
+                  disabled={pending}
+                  onChange={() => selectDocumentType(type)}
                 />
                 <span>
                   <strong>{type}</strong>
@@ -296,6 +330,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
             </span>
           )}
           <input
+            key={documentType}
             id="document"
             name="document"
             type="file"
@@ -349,7 +384,9 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
             onClick={handleSample}
           >
             <FlaskConical size={18} aria-hidden="true" />
-            비식별 샘플 {documentType}으로 체험
+            {documentType === "진단서"
+              ? "비식별 샘플 진단서로 체험"
+              : "비식별 샘플 처방전으로 체험"}
           </button>
         </>
       ) : null}
@@ -369,7 +406,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         <div className="document-verification-layout">
           <figure className="document-verification-original">
             <figcaption>
-              <strong>원본 {documentType}</strong>
+              <strong>원본 {analysis.documentType}</strong>
               <span>{file?.name ?? "비식별 데모 문서"}</span>
             </figcaption>
             {previewUrl ? (
@@ -378,7 +415,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
                 width={720}
                 height={960}
                 unoptimized
-                alt={`대조할 원본 ${documentType}`}
+                alt={`대조할 원본 ${analysis.documentType}`}
               />
             ) : (
               <div className="document-verification-original__placeholder">
@@ -390,8 +427,10 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
           <DocumentAnalysisResult
             analysis={analysis}
             documentId={documentId ?? undefined}
+            analysisRevision={analysisRevision}
             requiresPeriodReview={requiresPeriodReview}
             medicationRegistration={medicationRegistration}
+            onDiagnosesSaved={handleDiagnosesSaved}
           />
         </div>
       ) : null}

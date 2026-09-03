@@ -4,6 +4,8 @@ import { LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import type { ClinicalDocument } from "@care-atlas/backend";
+
 interface DiagnosisDraft {
   name: string;
   code?: string;
@@ -13,10 +15,12 @@ export function DiagnosisDraftReview({
   documentId,
   analysisRevision,
   diagnoses,
+  onSaved,
 }: {
   documentId: string;
   analysisRevision: number;
   diagnoses: DiagnosisDraft[];
+  onSaved?: (document: ClinicalDocument) => void;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<DiagnosisDraft[]>(() =>
@@ -45,10 +49,11 @@ export function DiagnosisDraftReview({
           diagnoses: rows.map((row) => ({ name: row.name.trim(), code: row.code?.trim() || undefined })),
         }),
       });
-      const body = await response.json() as { message?: string; document?: unknown };
+      const body = await response.json() as { message?: string; document?: ClinicalDocument };
       if (!response.ok || !body.document) throw new Error(body.message ?? "진단 정보를 저장하지 못했어요.");
       setStatus("success");
       setMessage(body.message ?? "진단 정보를 저장했어요.");
+      onSaved?.(body.document);
       router.refresh();
     } catch (error) {
       setStatus("error");
