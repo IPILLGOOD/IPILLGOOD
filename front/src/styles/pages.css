@@ -2484,6 +2484,50 @@
   font-weight: 800;
 }
 
+.medication-draft-empty,
+.medication-draft-candidate__verification {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  padding: var(--space-3);
+}
+
+.medication-draft-empty p,
+.medication-draft-candidate__verification strong,
+.medication-draft-candidate__verification small {
+  display: block;
+  margin: 0;
+}
+
+.medication-draft-candidate__verification input {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+}
+
+.medication-draft-candidate__verification small {
+  margin-top: var(--space-1);
+  font-size: 0.7rem;
+}
+
+.medication-draft-candidate__remove {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--color-danger);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .medication-draft-candidate__include {
   display: flex;
   align-items: center;
@@ -2539,6 +2583,10 @@
 
 .medication-draft-candidate__notice svg {
   flex: 0 0 auto;
+}
+
+.medication-draft-add {
+  justify-self: start;
 }
 
 .medication-draft-summary {
@@ -2839,8 +2887,13 @@
 
   .today-quick-actions,
   .document-type-options,
-  .medication-draft-fields {
+  .medication-draft-fields,
+  .diagnosis-draft-review__row {
     grid-template-columns: 1fr;
+  }
+
+  .diagnosis-draft-review__row .icon-button {
+    justify-self: end;
   }
 
   .medication-draft-review__heading {
@@ -3182,6 +3235,61 @@
 }
 .diagnosis-confirmation .button {
   flex: 0 0 auto;
+}
+
+.diagnosis-draft-review {
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-4);
+}
+
+.diagnosis-draft-review h4,
+.diagnosis-draft-review p {
+  margin: 0;
+}
+
+.diagnosis-draft-review p {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.diagnosis-draft-review__rows {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.diagnosis-draft-review__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-2);
+}
+
+.diagnosis-draft-review__row label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.diagnosis-draft-review__row input {
+  min-height: 2.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius-sm) / 2);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 0.7rem 0.75rem;
+}
+
+.diagnosis-draft-review__actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 .saved-analysis__confirm {
   margin-top: var(--space-4);

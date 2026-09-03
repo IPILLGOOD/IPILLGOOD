@@ -1,12 +1,13 @@
 import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
 
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
+import { DiagnosisDraftReview } from "@/components/documents/DiagnosisDraftReview";
 import { MedicationDraftReview } from "@/components/documents/MedicationDraftReview";
 import { DeleteDocumentButton } from "@/components/documents/DeleteDocumentButton";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareSnapshot, getMedicationPlanDraft } from "@care-atlas/backend";
+import { getCareSnapshot, getMedicationPlanDrafts } from "@care-atlas/backend";
 import { formatDate } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
 import { confirmDiagnosesAction } from "@/app/actions";
@@ -18,13 +19,14 @@ export const dynamic = "force-dynamic";
 export default async function DocumentsPage() {
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
-  const drafts = new Map((await Promise.all(snapshot.documents.map(async (document) => {
-    if (!document.medicationDraftId || document.status !== "needs_review") return null;
-    const draft = await getMedicationPlanDraft(scope, document.medicationDraftId);
+  const reviewDocuments = snapshot.documents.filter((document) => document.medicationDraftId && document.status === "needs_review");
+  const draftsById = await getMedicationPlanDrafts(scope, reviewDocuments.map((document) => document.medicationDraftId!));
+  const drafts = new Map(reviewDocuments.map((document) => {
+    const draft = draftsById.get(document.medicationDraftId!);
     return draft && (draft.state === "draft" || draft.state === "needs_review")
       ? [document.id, draft] as const
       : null;
-  }))).filter((entry) => entry !== null));
+  }).filter((entry) => entry !== null));
   return (
     <>
       <PageHeader
@@ -96,6 +98,14 @@ export default async function DocumentsPage() {
                               </div>
                             ))}
                           </dl>
+                          {document.documentType === "진단서" ? (
+                            <DiagnosisDraftReview
+                              key={`${document.id}-${document.analysisRevision ?? 1}`}
+                              documentId={document.id}
+                              analysisRevision={document.analysisRevision ?? 1}
+                              diagnoses={document.analysis.diagnoses ?? []}
+                            />
+                          ) : null}
                           {document.documentType === "진단서" &&
                           supportedNutritionDiagnoses(document.analysis).some((diagnosis) =>
                             !snapshot.recipient.confirmedConditions?.some((condition) =>

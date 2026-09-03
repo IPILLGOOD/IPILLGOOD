@@ -36,7 +36,7 @@ test("운영 HTML CSP는 요청 nonce와 필요한 Firebase 브라우저 출처�
   assert.match(policy, /style-src-attr 'unsafe-inline'/);
   assert.match(policy, /connect-src[^;]+identitytoolkit\.googleapis\.com/);
   assert.match(policy, /connect-src[^;]+securetoken\.googleapis\.com/);
-  assert.match(policy, /frame-src[^;]+care-atlas-seoul-2026-v2\.firebaseapp\.com/);
+  assert.match(policy, /frame-src[^;]+care-atlas-seoul-2026-v3\.firebaseapp\.com/);
   assert.doesNotMatch(policy, /script-src[^;]+'unsafe-inline'|unsafe-eval|\*/);
   assert.doesNotMatch(policy, /api\.openai\.com|apis\.data\.go\.kr/);
   assert.match(policy, /upgrade-insecure-requests/);

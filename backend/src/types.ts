@@ -152,33 +152,43 @@ export interface MedicationPlan {
 export interface PrescriptionMedication {
   productName: string;
   ingredientName: string;
+  /** @deprecated Legacy field kept for previously stored documents. */
   itemCode?: string;
+  mfdsItemSeq?: string;
+  insuranceCode?: string;
   doseAmount: string;
   frequency: string;
   timing: string;
   startDate: string;
   endDate?: string;
+  supplyDays?: number;
+  sourceRow?: number;
   purposePlain: string;
   precautions: string[];
   fieldEvidence?: MedicationFieldEvidence[];
   verification?: MedicationVerification;
-  reviewStatus?: "verified" | "needs_review";
+  reviewStatus?: "verified" | "needs_review" | "human_confirmed";
+  reviewReasons?: MedicationReviewReason[];
+  humanConfirmation?: MedicationHumanConfirmation;
 }
 
 export type MedicationEvidenceField =
   | "productName"
   | "ingredientName"
   | "itemCode"
+  | "mfdsItemSeq"
+  | "insuranceCode"
   | "doseAmount"
   | "frequency"
   | "timing"
   | "startDate"
-  | "endDate";
+  | "endDate"
+  | "supplyDays";
 
 export interface MedicationFieldEvidence {
   field: MedicationEvidenceField;
   sourceText: string;
-  confidence: number;
+  confidence?: number;
   region?: {
     page: number;
     x: number;
@@ -186,6 +196,26 @@ export interface MedicationFieldEvidence {
     width: number;
     height: number;
   };
+}
+
+export type MedicationReviewReason =
+  | "missing_product_name"
+  | "missing_dose_amount"
+  | "missing_frequency"
+  | "missing_timing"
+  | "missing_period"
+  | "missing_mfds_item_seq"
+  | "low_confidence"
+  | "official_not_found"
+  | "official_not_configured"
+  | "official_unavailable"
+  | "official_mismatch";
+
+export interface MedicationHumanConfirmation {
+  confirmedBy: string;
+  confirmedAt: string;
+  documentRevision: string;
+  reason: "checked_against_original";
 }
 
 export interface MedicationVerification {
@@ -208,6 +238,7 @@ export type MedicationDraftState =
 export interface MedicationPlanCandidate extends PrescriptionMedication {
   id: string;
   included: boolean;
+  isManual?: boolean;
   state: "draft" | "needs_review" | "confirmed" | "active" | "cancelled";
   createdAt: string;
   updatedAt: string;
@@ -485,6 +516,7 @@ export interface ClinicalDocument {
   duplicateResolution?: "merge" | "separate";
   duplicateMedicationPlanIds?: string[];
   revision?: string;
+  analysisRevision?: number;
   medicationDraftId?: string;
 }
 
@@ -530,6 +562,7 @@ export interface DocumentAnalysis {
   questionsForProfessional: string[];
   disclaimer: string;
   source: "demo" | "api" | "openai";
+  extraction?: DocumentExtractionReview;
   medications?: PrescriptionMedication[];
   diagnoses?: Array<{
     name: string;
@@ -537,6 +570,17 @@ export interface DocumentAnalysis {
   }>;
   diseaseInformation?: DiseaseInformation[];
   diseaseLookup?: DiseaseLookupStatus;
+}
+
+export type DocumentExtractionIssueCode =
+  | "medication_not_found"
+  | "diagnosis_not_found"
+  | "missing_field";
+
+export interface DocumentExtractionReview {
+  status: "complete" | "partial" | "failed";
+  issues: DocumentExtractionIssueCode[];
+  missingFields: string[];
 }
 
 export interface ClinicianQuestion {

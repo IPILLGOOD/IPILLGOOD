@@ -5,7 +5,7 @@ import type { FirestoreLike } from "./firestore-rest.ts";
 const projectId =
   process.env.FIREBASE_PROJECT_ID ??
   process.env.GOOGLE_CLOUD_PROJECT ??
-  "care-atlas-seoul-2026-v2";
+  "care-atlas-seoul-2026-v3";
 
 export function assertSafeFirestoreEmulator(project: string, host: string | undefined) {
   if (host && (!project.startsWith("demo-") || !/^(127\.0\.0\.1|localhost):\d+$/.test(host))) {

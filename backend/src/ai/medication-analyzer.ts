@@ -2,7 +2,9 @@ import type {
   ClinicalDocumentType,
   DiseaseInformation,
   DocumentAnalysis,
+  DocumentExtractionReview,
   MedicationEvidenceField,
+  MedicationReviewReason,
   PrescriptionMedication,
 } from "../types.ts";
 import { addCalendarDays, dateKeyInSeoul } from "../dates.ts";
@@ -39,15 +41,6 @@ export class DocumentAnalysisNotConfiguredError extends Error {
   }
 }
 
-export class DocumentAnalysisIncompleteError extends Error {
-  readonly code = "DOCUMENT_ANALYSIS_INCOMPLETE";
-
-  constructor(documentType: ClinicalDocumentType) {
-    super(`${documentType}에서 필수 구조화 정보를 찾지 못했습니다.`);
-    this.name = "DocumentAnalysisIncompleteError";
-  }
-}
-
 type MedicationAnalyzerDependencies = {
   analyzeClinicalDocumentWithOpenAI: typeof analyzeClinicalDocumentWithOpenAI;
   verifyOfficialMedicationCode?: typeof verifyOfficialMedicationCode;
@@ -55,11 +48,12 @@ type MedicationAnalyzerDependencies = {
 
 const requiredMedicationEvidence = [
   "productName",
-  "ingredientName",
   "doseAmount",
   "frequency",
   "timing",
 ] satisfies MedicationEvidenceField[];
+
+const lowConfidenceThreshold = 0.65;
 
 function normalizedMedicationIdentity(value: string) {
   return value.toLocaleLowerCase("ko-KR").replace(/[^0-9a-z가-힣]/g, "");
@@ -74,12 +68,44 @@ function medicationNamesOverlap(first: string, second: string) {
 function lowConfidenceWarnings(medication: PrescriptionMedication) {
   return requiredMedicationEvidence.flatMap((field) => {
     const evidence = medication.fieldEvidence?.find((candidate) => candidate.field === field);
-    if (!evidence) return [`${field} 필드의 원문 근거가 없어요.`];
-    if (evidence.confidence < 0.8) {
+    if (evidence?.confidence !== undefined && evidence.confidence < lowConfidenceThreshold) {
       return [`${field} 필드의 OCR 신뢰도가 ${Math.round(evidence.confidence * 100)}%예요.`];
     }
     return [];
   });
+}
+
+function medicationValueWarnings(medication: PrescriptionMedication) {
+  const warnings: string[] = [];
+  if (!medication.productName.trim()) warnings.push("약품명을 확인하지 못했어요.");
+  if (!medication.doseAmount.trim()) warnings.push("1회 투약량을 확인하지 못했어요.");
+  if (!medication.frequency.trim()) warnings.push("1일 투여횟수를 확인하지 못했어요.");
+  if (!medication.timing.trim()) warnings.push("복용방법을 확인하지 못했어요.");
+  return warnings;
+}
+
+function medicationReviewReasons(medication: PrescriptionMedication) {
+  const reasons: MedicationReviewReason[] = [];
+  if (!medication.productName.trim()) reasons.push("missing_product_name");
+  if (!medication.doseAmount.trim()) reasons.push("missing_dose_amount");
+  if (!medication.frequency.trim()) reasons.push("missing_frequency");
+  if (!medication.timing.trim()) reasons.push("missing_timing");
+  if (!medication.supplyDays && !medication.endDate?.trim()) reasons.push("missing_period");
+  if (!medication.mfdsItemSeq?.trim() && !medication.itemCode?.trim()) {
+    reasons.push("missing_mfds_item_seq");
+  }
+  if (lowConfidenceWarnings(medication).length > 0) reasons.push("low_confidence");
+  return reasons;
+}
+
+function officialReviewReason(
+  official: OfficialMedicationCodeVerification,
+  warnings: string[],
+): MedicationReviewReason | undefined {
+  if (official.status === "not_found") return "official_not_found";
+  if (official.status === "not_configured") return "official_not_configured";
+  if (official.status !== "matched") return "official_unavailable";
+  return warnings.length > 0 ? "official_mismatch" : undefined;
 }
 
 function officialVerificationWarnings(
@@ -130,11 +156,15 @@ async function enrichMedicationVerification(
     ...analysis,
     medications: await Promise.all((analysis.medications ?? []).map(async (medication) => {
       const evidenceWarnings = lowConfidenceWarnings(medication);
-      if (!medication.itemCode) {
-        const warnings = [...evidenceWarnings, "문서에서 품목코드를 확인하지 못했어요."];
+      const valueWarnings = medicationValueWarnings(medication);
+      const reviewReasons = medicationReviewReasons(medication);
+      const mfdsItemSeq = medication.mfdsItemSeq ?? medication.itemCode;
+      if (!mfdsItemSeq) {
+        const warnings = [...valueWarnings, ...evidenceWarnings, "문서에서 품목기준코드를 확인하지 못했어요."];
         return {
           ...medication,
           reviewStatus: "needs_review" as const,
+          reviewReasons,
           verification: {
             status: "not_found" as const,
             sourceLabel: "식약처 의약품 제품 허가정보",
@@ -143,14 +173,21 @@ async function enrichMedicationVerification(
         };
       }
 
-      const official = await verifyCode(medication.itemCode);
+      const official = await verifyCode(mfdsItemSeq);
       const officialWarnings = officialVerificationWarnings(medication, official);
-      const warnings = [...evidenceWarnings, ...officialWarnings];
+      const warnings = [...valueWarnings, ...evidenceWarnings, ...officialWarnings];
       const matched = official.status === "matched";
       const verified = matched && warnings.length === 0;
+      const officialReason = officialReviewReason(official, officialWarnings);
       return {
         ...medication,
+        mfdsItemSeq,
+        itemCode: mfdsItemSeq,
         reviewStatus: verified ? "verified" as const : "needs_review" as const,
+        reviewReasons: [
+          ...reviewReasons,
+          ...(officialReason ? [officialReason] : []),
+        ],
         verification: {
           status: verified
             ? "verified" as const
@@ -295,11 +332,105 @@ function diagnosisCandidates(
     .slice(0, 3);
 }
 
-function analysisNeedsRetry(analysis: DocumentAnalysis) {
-  if (analysis.documentType === "처방전") {
-    return !(analysis.medications ?? []).some((medication) => medication.productName.trim());
+function analysisMissingFields(analysis: DocumentAnalysis): string[] {
+  if (analysis.documentType === "진단서") {
+    return diagnosisCandidates(analysis).length === 0 ? ["diagnoses"] : [];
   }
-  return diagnosisCandidates(analysis).length === 0;
+
+  const medications = analysis.medications ?? [];
+  if (medications.length === 0) return ["medications"];
+
+  return medications.flatMap((medication, index) => {
+    const row = medication.sourceRow ?? index + 1;
+    const missing: string[] = [];
+    if (!medication.productName.trim()) missing.push(`medications[${row}].productName`);
+    if (!medication.doseAmount.trim()) missing.push(`medications[${row}].doseAmount`);
+    if (!medication.frequency.trim()) missing.push(`medications[${row}].frequency`);
+    if (!medication.timing.trim()) missing.push(`medications[${row}].timing`);
+    return missing;
+  });
+}
+
+function extractionReview(analysis: DocumentAnalysis): DocumentExtractionReview {
+  const missingFields = analysisMissingFields(analysis);
+  const hasPrimaryEntity = analysis.documentType === "처방전"
+    ? (analysis.medications?.length ?? 0) > 0
+    : diagnosisCandidates(analysis).length > 0;
+  return {
+    status: !hasPrimaryEntity ? "failed" : missingFields.length > 0 ? "partial" : "complete",
+    issues: !hasPrimaryEntity
+      ? [analysis.documentType === "처방전" ? "medication_not_found" : "diagnosis_not_found"]
+      : missingFields.length > 0
+        ? ["missing_field"]
+        : [],
+    missingFields,
+  };
+}
+
+function withExtractionReview(analysis: DocumentAnalysis): DocumentAnalysis {
+  return { ...analysis, extraction: extractionReview(analysis) };
+}
+
+function nonEmpty<T>(preferred: T | undefined, fallback: T | undefined): T | undefined {
+  if (typeof preferred === "string") {
+    return (preferred.trim() ? preferred : fallback) as T | undefined;
+  }
+  return preferred ?? fallback;
+}
+
+function mergeMedication(
+  original: PrescriptionMedication | undefined,
+  retry: PrescriptionMedication | undefined,
+): PrescriptionMedication | undefined {
+  if (!original) return retry;
+  if (!retry) return original;
+  const retryEvidence = new Map(
+    (retry.fieldEvidence ?? []).map((evidence) => [evidence.field, evidence]),
+  );
+  for (const evidence of original.fieldEvidence ?? []) {
+    if (!retryEvidence.has(evidence.field)) retryEvidence.set(evidence.field, evidence);
+  }
+  return {
+    ...original,
+    ...retry,
+    productName: nonEmpty(retry.productName, original.productName) ?? "",
+    ingredientName: nonEmpty(retry.ingredientName, original.ingredientName) ?? "",
+    itemCode: nonEmpty(retry.itemCode, original.itemCode),
+    mfdsItemSeq: nonEmpty(retry.mfdsItemSeq, original.mfdsItemSeq),
+    insuranceCode: nonEmpty(retry.insuranceCode, original.insuranceCode),
+    doseAmount: nonEmpty(retry.doseAmount, original.doseAmount) ?? "",
+    frequency: nonEmpty(retry.frequency, original.frequency) ?? "",
+    timing: nonEmpty(retry.timing, original.timing) ?? "",
+    startDate: nonEmpty(retry.startDate, original.startDate) ?? "",
+    endDate: nonEmpty(retry.endDate, original.endDate),
+    supplyDays: retry.supplyDays ?? original.supplyDays,
+    sourceRow: retry.sourceRow ?? original.sourceRow,
+    purposePlain: nonEmpty(retry.purposePlain, original.purposePlain) ?? "",
+    precautions: retry.precautions.length > 0 ? retry.precautions : original.precautions,
+    fieldEvidence: [...retryEvidence.values()],
+  };
+}
+
+function mergeDocumentAnalyses(
+  original: DocumentAnalysis,
+  retry: DocumentAnalysis,
+): DocumentAnalysis {
+  const originalMedications = original.medications ?? [];
+  const retryMedications = retry.medications ?? [];
+  const medicationCount = Math.max(originalMedications.length, retryMedications.length);
+  const medications = Array.from({ length: medicationCount }, (_, index) =>
+    mergeMedication(originalMedications[index], retryMedications[index]),
+  ).filter((medication): medication is PrescriptionMedication => Boolean(medication));
+  const diagnoses = (retry.diagnoses?.length ?? 0) > 0 ? retry.diagnoses : original.diagnoses;
+
+  return {
+    ...original,
+    ...retry,
+    prescriptionDate: nonEmpty(retry.prescriptionDate, original.prescriptionDate),
+    totalSupplyDays: retry.totalSupplyDays ?? original.totalSupplyDays,
+    diagnoses,
+    medications,
+  };
 }
 
 function withStructuredEvidenceFindings(analysis: DocumentAnalysis): DocumentAnalysis {
@@ -452,11 +583,17 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
             typeof medication.productName === "string" &&
             typeof medication.ingredientName === "string" &&
             (medication.itemCode === undefined || typeof medication.itemCode === "string") &&
+            (medication.mfdsItemSeq === undefined || typeof medication.mfdsItemSeq === "string") &&
+            (medication.insuranceCode === undefined || typeof medication.insuranceCode === "string") &&
             typeof medication.doseAmount === "string" &&
             typeof medication.frequency === "string" &&
             typeof medication.timing === "string" &&
             typeof medication.startDate === "string" &&
             (medication.endDate === undefined || typeof medication.endDate === "string") &&
+            (medication.supplyDays === undefined ||
+              (typeof medication.supplyDays === "number" && Number.isInteger(medication.supplyDays))) &&
+            (medication.sourceRow === undefined ||
+              (typeof medication.sourceRow === "number" && Number.isInteger(medication.sourceRow))) &&
             typeof medication.purposePlain === "string" &&
             Array.isArray(medication.precautions) &&
             medication.precautions.every((item) => typeof item === "string") &&
@@ -467,9 +604,10 @@ function isDocumentAnalysis(value: unknown): value is DocumentAnalysis {
                   typeof evidence === "object" &&
                   typeof evidence.field === "string" &&
                   typeof evidence.sourceText === "string" &&
-                  typeof evidence.confidence === "number" &&
-                  evidence.confidence >= 0 &&
-                  evidence.confidence <= 1,
+                  (evidence.confidence === undefined ||
+                    (typeof evidence.confidence === "number" &&
+                      evidence.confidence >= 0 &&
+                      evidence.confidence <= 1)),
                 ))),
         ))) &&
     typeof analysis.disclaimer === "string"
@@ -526,19 +664,18 @@ export async function analyzeMedicationDocument(
       documentType: input.documentType,
       source: "api",
     });
-    if (analysisNeedsRetry(structuredAnalysis)) {
-      throw new DocumentAnalysisIncompleteError(input.documentType);
-    }
-    const analysis = await enrichDiagnosisAnalysis(
+    const analysis = withExtractionReview(await enrichDiagnosisAnalysis(
       await enrichMedicationVerification(
         structuredAnalysis,
         dependencies.verifyOfficialMedicationCode ?? verifyOfficialMedicationCode,
       ),
-    );
+    ));
     return {
       status: "complete",
       message:
-        input.documentType === "진단서"
+        analysis.extraction?.status !== "complete"
+          ? "일부 항목을 확인하지 못해 검토가 필요한 초안으로 저장했어요. 원본을 보며 보완해주세요."
+          : input.documentType === "진단서"
           ? "진단서 분석과 질병 정보 조회를 마쳤어요. 원본과 출처를 함께 확인해주세요."
           : "문서 분석을 마쳤어요. 원본과 비교해 내용을 확인해주세요.",
       analysis,
@@ -550,25 +687,27 @@ export async function analyzeMedicationDocument(
       ...input,
       contentBase64: input.contentBase64,
     });
-    if (analysisNeedsRetry(structuredAnalysis)) {
-      structuredAnalysis = await dependencies.analyzeClinicalDocumentWithOpenAI({
+    const retryFocus = analysisMissingFields(structuredAnalysis);
+    if (retryFocus.length > 0) {
+      const retryAnalysis = await dependencies.analyzeClinicalDocumentWithOpenAI({
         ...input,
         contentBase64: input.contentBase64,
+        retryFocus,
       });
+      structuredAnalysis = mergeDocumentAnalyses(structuredAnalysis, retryAnalysis);
     }
-    if (analysisNeedsRetry(structuredAnalysis)) {
-      throw new DocumentAnalysisIncompleteError(input.documentType);
-    }
-    const analysis = await enrichDiagnosisAnalysis(
+    const analysis = withExtractionReview(await enrichDiagnosisAnalysis(
       await enrichMedicationVerification(
         withStructuredEvidenceFindings(structuredAnalysis),
         dependencies.verifyOfficialMedicationCode ?? verifyOfficialMedicationCode,
       ),
-    );
+    ));
     return {
       status: "complete",
       message:
-        input.documentType === "진단서"
+        analysis.extraction?.status !== "complete"
+          ? "일부 항목을 확인하지 못해 검토가 필요한 초안으로 저장했어요. 원본을 보며 보완해주세요."
+          : input.documentType === "진단서"
           ? "진단서 분석과 질병 정보 조회를 마쳤어요. 원본과 출처를 함께 확인해주세요."
           : "OpenAI 문서 분석을 마쳤어요. 원본과 비교해 내용을 확인해주세요.",
       analysis,

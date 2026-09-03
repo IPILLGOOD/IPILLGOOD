@@ -48,6 +48,36 @@ test("REST batch는 모든 작업을 단일 commit으로 전송하고 merge를 �
   assert.equal(writes[2]!.delete, "projects/demo-contract/databases/(default)/documents/contracts/c");
 });
 
+test("REST query는 IN과 실행 기한 조건을 structured query로 전송한다", async () => {
+  let body: Record<string, unknown> | undefined;
+  const firestore = createEmulatorFirestoreRestClient("demo-contract", "127.0.0.1:8080", async (_url, init) => {
+    body = JSON.parse(String(init?.body));
+    return Response.json([]);
+  });
+
+  await firestore.collection("accountDeletions")
+    .where("status", "in", ["pending", "failed"])
+    .where("nextAttemptAt", "<=", "2026-08-23T23:00:00.000Z")
+    .orderBy("nextAttemptAt")
+    .limit(25)
+    .get();
+
+  const query = body?.structuredQuery as Record<string, unknown>;
+  const filters = (query.where as { compositeFilter: { filters: Array<{ fieldFilter: Record<string, unknown> }> } }).compositeFilter.filters;
+  assert.deepEqual(filters[0]!.fieldFilter, {
+    field: { fieldPath: "status" },
+    op: "IN",
+    value: { arrayValue: { values: [{ stringValue: "pending" }, { stringValue: "failed" }] } },
+  });
+  assert.deepEqual(filters[1]!.fieldFilter, {
+    field: { fieldPath: "nextAttemptAt" },
+    op: "LESS_THAN_OR_EQUAL",
+    value: { stringValue: "2026-08-23T23:00:00.000Z" },
+  });
+  assert.deepEqual(query.orderBy, [{ field: { fieldPath: "nextAttemptAt" }, direction: "ASCENDING" }]);
+  assert.equal(query.limit, 25);
+});
+
 test("REST 트랜잭션은 ABORTED 충돌에서 읽기와 쓰기를 함께 재시도한다", async () => {
   let attempts = 0;
   let commits = 0;

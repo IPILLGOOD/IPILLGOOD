@@ -160,18 +160,19 @@ export async function retryAccountDeletions(dependencies: Dependencies = {}) {
   const now = (dependencies.now ?? (() => new Date()))();
   let failed = 0;
   let processed = 0;
-  // Single-field queries avoid introducing a composite index dependency at rollout.
-  for (const status of ["pending", "failed", "processing", "soft_deleted"] as const) {
-    const jobs = await firestore.collection(ACCOUNT_DELETIONS_COLLECTION).where("status", "==", status).get();
-    for (const doc of jobs.docs) {
-      const job = doc.data() as AccountDeletion;
-      if (job.nextAttemptAt > now.toISOString() || processed >= 25) continue;
-      try {
-        const result = await processAccountDeletion(job.userId, { ...dependencies, firestore });
-        processed++;
-        if (result?.status === "failed") failed++;
-      } catch { failed++; }
-    }
+  const jobs = await firestore.collection(ACCOUNT_DELETIONS_COLLECTION)
+    .where("status", "in", ["pending", "failed", "processing", "soft_deleted"])
+    .where("nextAttemptAt", "<=", now.toISOString())
+    .orderBy("nextAttemptAt")
+    .limit(25)
+    .get();
+  for (const doc of jobs.docs) {
+    const job = doc.data() as AccountDeletion;
+    try {
+      const result = await processAccountDeletion(job.userId, { ...dependencies, firestore });
+      processed++;
+      if (result?.status === "failed") failed++;
+    } catch { failed++; }
   }
   const expired = await firestore.collection(ACCOUNT_DELETIONS_COLLECTION).where("purgeAfter", "<=", now.toISOString()).limit(100).get();
   for (const doc of expired.docs) {

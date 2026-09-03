@@ -3,5 +3,17 @@
     "database": "(default)",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "IPILLGOOD",
+        "supportEmail": "wkddudgk4869@gmail.com",
+        "authorizedRedirectUris": [
+          "https://care-atlas-seoul-2026.wkddudgk4869.workers.dev/__/auth/handler",
+          "https://ipillgood.wkddudgk4869.workers.dev/__/auth/handler"
+        ]
+      }
+    }
   }
 }

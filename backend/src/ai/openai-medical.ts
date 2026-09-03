@@ -4,7 +4,14 @@ import type {
   ResponseInputContent,
 } from "openai/resources/responses/responses";
 
-import type { ConfirmedCondition, DiseaseInformation, DiseaseReference, DocumentAnalysis, NutritionInsight } from "../types.ts";
+import type {
+  ConfirmedCondition,
+  DiseaseInformation,
+  DiseaseReference,
+  DocumentAnalysis,
+  MedicationEvidenceField,
+  NutritionInsight,
+} from "../types.ts";
 import type {
   PharmacogenomicInfo,
   PlainMedicationExplanation,
@@ -19,6 +26,26 @@ interface DocumentInput {
   fileName: string;
   contentType: string;
   contentBase64: string;
+  retryFocus?: string[];
+}
+
+interface CoreDocumentExtraction {
+  prescriptionDate: string;
+  totalSupplyDays: number;
+  diagnoses: Array<{ name: string; code: string }>;
+  medications: Array<{
+    sourceRow: number;
+    productName: string;
+    ingredientName: string;
+    mfdsItemSeq: string;
+    insuranceCode: string;
+    doseAmount: string;
+    frequency: string;
+    timing: string;
+    startDate: string;
+    endDate: string;
+    supplyDays: number;
+  }>;
 }
 
 interface DiseaseSearchPayload {
@@ -48,28 +75,12 @@ interface MedicationSearchPlainPayload {
   items: Array<OfficialMedicationPlainExplanation & { index: number }>;
 }
 
-const documentAnalysisSchema = {
+const documentExtractionSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
     prescriptionDate: { type: "string" },
     totalSupplyDays: { type: "integer" },
-    summary: { type: "string" },
-    findings: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          label: { type: "string" },
-          value: { type: "string" },
-        },
-        required: ["label", "value"],
-      },
-    },
-    carePoints: { type: "array", items: { type: "string" } },
-    questionsForProfessional: { type: "array", items: { type: "string" } },
-    disclaimer: { type: "string" },
     diagnoses: {
       type: "array",
       items: {
@@ -88,59 +99,30 @@ const documentAnalysisSchema = {
         type: "object",
         additionalProperties: false,
         properties: {
+          sourceRow: { type: "integer", minimum: 1 },
           productName: { type: "string" },
           ingredientName: { type: "string" },
-          itemCode: { type: "string" },
+          mfdsItemSeq: { type: "string" },
+          insuranceCode: { type: "string" },
           doseAmount: { type: "string" },
           frequency: { type: "string" },
           timing: { type: "string" },
           startDate: { type: "string" },
           endDate: { type: "string" },
-          purposePlain: { type: "string" },
-          precautions: { type: "array", items: { type: "string" } },
-          fieldEvidence: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                field: {
-                  type: "string",
-                  enum: [
-                    "productName",
-                    "ingredientName",
-                    "itemCode",
-                    "doseAmount",
-                    "frequency",
-                    "timing",
-                    "startDate",
-                    "endDate",
-                  ],
-                },
-                sourceText: { type: "string" },
-                confidence: { type: "number", minimum: 0, maximum: 1 },
-                page: { type: "integer", minimum: 1 },
-                x: { type: "number", minimum: 0, maximum: 1 },
-                y: { type: "number", minimum: 0, maximum: 1 },
-                width: { type: "number", minimum: 0, maximum: 1 },
-                height: { type: "number", minimum: 0, maximum: 1 },
-              },
-              required: ["field", "sourceText", "confidence", "page", "x", "y", "width", "height"],
-            },
-          },
+          supplyDays: { type: "integer" },
         },
         required: [
+          "sourceRow",
           "productName",
           "ingredientName",
-          "itemCode",
+          "mfdsItemSeq",
+          "insuranceCode",
           "doseAmount",
           "frequency",
           "timing",
           "startDate",
           "endDate",
-          "purposePlain",
-          "precautions",
-          "fieldEvidence",
+          "supplyDays",
         ],
       },
     },
@@ -148,11 +130,6 @@ const documentAnalysisSchema = {
   required: [
     "prescriptionDate",
     "totalSupplyDays",
-    "summary",
-    "findings",
-    "carePoints",
-    "questionsForProfessional",
-    "disclaimer",
     "diagnoses",
     "medications",
   ],
@@ -280,6 +257,146 @@ function parseJson<T>(value: string, label: string): T {
   }
 }
 
+function positiveInteger(value: number): number | undefined {
+  return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function digitsOnly(value: string): string | undefined {
+  const normalized = value.replace(/\D/g, "");
+  return normalized || undefined;
+}
+
+export function normalizeExtractedMedicationCodes(
+  mfdsValue: string,
+  insuranceValue: string,
+): { mfdsItemSeq?: string; insuranceCode?: string } {
+  const mfdsItemSeq = digitsOnly(mfdsValue);
+  const insuranceCode = digitsOnly(insuranceValue);
+  if (mfdsItemSeq && insuranceCode && mfdsItemSeq === insuranceCode) {
+    // A single visible billing code is sometimes copied into both model fields.
+    // Keep it only as an insurance code so it can never trigger a false MFDS match.
+    return { insuranceCode };
+  }
+  return {
+    ...(mfdsItemSeq ? { mfdsItemSeq } : {}),
+    ...(insuranceCode ? { insuranceCode } : {}),
+  };
+}
+
+function medicationEvidence(
+  medication: CoreDocumentExtraction["medications"][number],
+): NonNullable<DocumentAnalysis["medications"]>[number]["fieldEvidence"] {
+  const values: Array<[
+    MedicationEvidenceField,
+    string | number | undefined,
+  ]> = [
+    ["productName", medication.productName],
+    ["ingredientName", medication.ingredientName],
+    ["mfdsItemSeq", medication.mfdsItemSeq],
+    ["insuranceCode", medication.insuranceCode],
+    ["doseAmount", medication.doseAmount],
+    ["frequency", medication.frequency],
+    ["timing", medication.timing],
+    ["startDate", medication.startDate],
+    ["endDate", medication.endDate],
+    ["supplyDays", positiveInteger(medication.supplyDays)],
+  ];
+
+  return values.flatMap(([field, value]) => {
+    const sourceText = String(value ?? "").trim();
+    return sourceText ? [{ field, sourceText }] : [];
+  });
+}
+
+function documentAnalysisFromExtraction(
+  documentType: DocumentInput["documentType"],
+  parsed: CoreDocumentExtraction,
+): DocumentAnalysis {
+  const prescriptionDate = parsed.prescriptionDate.trim() || undefined;
+  const totalSupplyDays = positiveInteger(parsed.totalSupplyDays);
+  const diagnoses = parsed.diagnoses.flatMap((diagnosis) => {
+    const name = diagnosis.name.trim();
+    if (!name) return [];
+    const code = diagnosis.code.trim();
+    return [{ name, ...(code ? { code } : {}) }];
+  });
+  const medications = parsed.medications.map((medication, index) => {
+    const { mfdsItemSeq, insuranceCode } = normalizeExtractedMedicationCodes(
+      medication.mfdsItemSeq,
+      medication.insuranceCode,
+    );
+    const productName = medication.productName.trim();
+    const ingredientName = medication.ingredientName.trim();
+    const doseAmount = medication.doseAmount.trim();
+    const frequency = medication.frequency.trim();
+    const timing = medication.timing.trim();
+    const startDate = medication.startDate.trim();
+    const endDate = medication.endDate.trim();
+
+    return {
+      productName,
+      ingredientName,
+      ...(mfdsItemSeq ? { mfdsItemSeq, itemCode: mfdsItemSeq } : {}),
+      ...(insuranceCode ? { insuranceCode } : {}),
+      doseAmount,
+      frequency,
+      timing,
+      startDate,
+      ...(endDate ? { endDate } : {}),
+      ...(positiveInteger(medication.supplyDays)
+        ? { supplyDays: positiveInteger(medication.supplyDays) }
+        : {}),
+      sourceRow: positiveInteger(medication.sourceRow) ?? index + 1,
+      purposePlain: "처방 목적은 원본 문서와 의료진에게 확인하세요.",
+      precautions: [],
+      fieldEvidence: medicationEvidence({
+        ...medication,
+        mfdsItemSeq: mfdsItemSeq ?? "",
+        insuranceCode: insuranceCode ?? "",
+      }),
+    };
+  });
+
+  if (documentType === "진단서") {
+    return {
+      documentType,
+      source: "openai",
+      summary: diagnoses.length
+        ? `${diagnoses.length}개의 진단 정보를 문서에서 추출했습니다.`
+        : "문서에서 진단 정보를 확인하지 못했습니다.",
+      findings: diagnoses.map((diagnosis) => ({
+        label: "확인된 진단명",
+        value: diagnosis.code ? `${diagnosis.name} (${diagnosis.code})` : diagnosis.name,
+      })),
+      carePoints: ["진단명과 코드를 원본 문서와 대조해 주세요."],
+      questionsForProfessional: ["추출된 진단 정보가 현재 진료 내용과 일치하나요?"],
+      disclaimer: "자동 추출 결과이며 원본 문서와 의료진의 확인을 우선하세요.",
+      diagnoses,
+      medications: [],
+    };
+  }
+
+  return {
+    documentType,
+    source: "openai",
+    summary: medications.length
+      ? `${medications.length}개의 처방약 정보를 문서에서 추출했습니다.`
+      : "문서에서 처방약 정보를 확인하지 못했습니다.",
+    findings: medications.flatMap((medication) =>
+      medication.productName
+        ? [{ label: "확인된 약 이름", value: medication.productName }]
+        : [],
+    ),
+    carePoints: ["약 이름, 복용량, 횟수와 기간을 원본 처방전과 대조해 주세요."],
+    questionsForProfessional: ["추출된 복용법과 투약 기간이 현재 처방과 일치하나요?"],
+    disclaimer: "자동 추출 결과이며 원본 처방전과 의료진의 확인을 우선하세요.",
+    ...(prescriptionDate ? { prescriptionDate } : {}),
+    ...(totalSupplyDays ? { totalSupplyDays } : {}),
+    diagnoses: [],
+    medications,
+  };
+}
+
 function documentContent(input: DocumentInput): ResponseInputContent[] {
   const fileData = `data:${input.contentType};base64,${input.contentBase64}`;
   const documentPart: ResponseInputContent =
@@ -301,17 +418,23 @@ function documentContent(input: DocumentInput): ResponseInputContent[] {
     {
       type: "input_text",
       text: [
-        `첨부된 ${input.documentType}의 내용을 한국어로 정확히 추출해 보호자가 이해하기 쉽게 정리하세요.`,
-        "문서에 실제로 적힌 내용만 사용하고, 불명확한 부분은 추측하지 마세요.",
+        `첨부된 ${input.documentType}에서 핵심 행과 컬럼의 원문 값만 추출하세요.`,
+        "문서에 실제로 적힌 내용만 사용하고, 불명확하거나 없는 값은 추측하지 마세요.",
         "진단서라면 diagnoses에 진단명과 KCD/ICD 코드를 각각 넣고, 코드가 없으면 빈 문자열을 넣으세요.",
         "처방전이라면 diagnoses는 빈 배열로 반환하세요.",
-        "처방전이라면 medications에 처방된 약을 한 항목씩 넣으세요. 진단서라면 medications는 빈 배열로 반환하세요.",
-        "처방전의 각 약에서 식약처 품목기준코드 또는 보험코드를 읽을 수 있으면 itemCode에 숫자만 넣고, 없거나 불명확하면 빈 문자열을 쓰세요.",
-        "각 약의 fieldEvidence에는 문서에서 직접 읽은 필드별 원문, 0~1 신뢰도, 1부터 시작하는 페이지와 페이지 기준 0~1 정규화 영역(x, y, width, height)을 넣으세요. 문서에 없는 필드는 근거를 만들지 마세요.",
+        "처방전이라면 표의 위쪽부터 약 한 행을 medications 한 항목으로 만들고 sourceRow를 1부터 순서대로 넣으세요. 진단서라면 medications는 빈 배열로 반환하세요.",
+        "약품명·제품명은 productName, 성분명은 ingredientName에 넣으세요.",
+        "품목기준코드 또는 ITEM_SEQ라고 명시된 값만 mfdsItemSeq에 넣으세요. [급여], 보험, EDI 옆의 코드는 insuranceCode에만 넣고 mfdsItemSeq는 빈 문자열로 두세요.",
+        "문서에 숫자 코드가 하나만 보이면 같은 값을 두 코드 필드에 복사하지 마세요. 두 코드를 서로 바꾸거나 하나로 합치지 마세요.",
+        "1회 투약량·복용량은 doseAmount, 1일 투여횟수는 frequency, 용법·복용방법은 timing에 원문대로 넣으세요.",
+        "행별 투약일수·총 투여일수가 있으면 supplyDays에 양의 정수로 넣으세요. 확인할 수 없으면 0으로 쓰세요.",
         "처방전의 발행일을 prescriptionDate에 YYYY-MM-DD로 넣고, 확인할 수 없으면 빈 문자열로 쓰세요.",
-        "처방전의 총 투약일수를 totalSupplyDays에 정수로 넣고, 확인할 수 없으면 0으로 쓰세요. 진단서는 prescriptionDate를 빈 문자열, totalSupplyDays를 0으로 쓰세요.",
+        "모든 약에 공통인 총 투약일수만 totalSupplyDays에 양의 정수로 넣으세요. 행별 기간이 다르거나 확인할 수 없으면 0으로 쓰세요. 진단서는 prescriptionDate를 빈 문자열, totalSupplyDays를 0으로 쓰세요.",
         "복용 시작일과 종료일은 YYYY-MM-DD로 쓰고, 문서에 종료일이 없으면 endDate를 빈 문자열로 쓰세요.",
-        "약 이름은 용량을 포함한 제품명, doseAmount는 1회 복용량, frequency는 '하루 2회' 같은 횟수, timing은 '아침·저녁 식사 후'처럼 적으세요.",
+        "문서에 없는 문자열 필드는 빈 문자열, 없는 숫자 필드는 0으로 반환하세요.",
+        ...(input.retryFocus?.length
+          ? [`이전 추출에서 다음 항목이 누락되었습니다. 해당 행과 컬럼만 다시 자세히 확인하세요: ${input.retryFocus.join(", ")}`]
+          : []),
         "개인식별정보는 결과에 포함하지 마세요.",
       ].join("\n"),
     },
@@ -330,55 +453,18 @@ export async function analyzeClinicalDocumentWithOpenAI(
       verbosity: "low",
       format: {
         type: "json_schema",
-        name: "clinical_document_analysis",
+        name: "clinical_document_extraction",
         strict: true,
-        schema: documentAnalysisSchema,
+        schema: documentExtractionSchema,
       },
     },
   });
 
-  const parsed = parseJson<Omit<DocumentAnalysis, "documentType" | "source">>(
+  const parsed = parseJson<CoreDocumentExtraction>(
     response.output_text,
     "문서 분석",
   );
-  return {
-    ...parsed,
-    ...(parsed.prescriptionDate?.trim()
-      ? { prescriptionDate: parsed.prescriptionDate.trim() }
-      : { prescriptionDate: undefined }),
-    ...(Number.isInteger(parsed.totalSupplyDays) && Number(parsed.totalSupplyDays) > 0
-      ? { totalSupplyDays: Number(parsed.totalSupplyDays) }
-      : { totalSupplyDays: undefined }),
-    diagnoses: parsed.diagnoses?.map((diagnosis) => ({
-      name: diagnosis.name.trim(),
-      ...(diagnosis.code?.trim() ? { code: diagnosis.code.trim() } : {}),
-    })),
-    medications: parsed.medications?.map((medication) => ({
-      ...medication,
-      productName: medication.productName.trim(),
-      ingredientName: medication.ingredientName.trim(),
-      ...(medication.itemCode?.trim() ? { itemCode: medication.itemCode.replace(/\D/g, "") } : { itemCode: undefined }),
-      startDate: medication.startDate.trim(),
-      ...(medication.endDate?.trim() ? { endDate: medication.endDate.trim() } : { endDate: undefined }),
-      fieldEvidence: medication.fieldEvidence?.flatMap((evidence) => {
-        if (!evidence.sourceText?.trim() || !Number.isFinite(evidence.confidence)) return [];
-        return [{
-          field: evidence.field,
-          sourceText: evidence.sourceText.trim(),
-          confidence: Math.max(0, Math.min(1, evidence.confidence)),
-          region: {
-            page: Math.max(1, Math.trunc((evidence as typeof evidence & { page?: number }).page ?? evidence.region?.page ?? 1)),
-            x: Math.max(0, Math.min(1, (evidence as typeof evidence & { x?: number }).x ?? evidence.region?.x ?? 0)),
-            y: Math.max(0, Math.min(1, (evidence as typeof evidence & { y?: number }).y ?? evidence.region?.y ?? 0)),
-            width: Math.max(0, Math.min(1, (evidence as typeof evidence & { width?: number }).width ?? evidence.region?.width ?? 0)),
-            height: Math.max(0, Math.min(1, (evidence as typeof evidence & { height?: number }).height ?? evidence.region?.height ?? 0)),
-          },
-        }];
-      }),
-    })),
-    documentType: input.documentType,
-    source: "openai",
-  };
+  return documentAnalysisFromExtraction(input.documentType, parsed);
 }
 
 function citationReferences(response: OpenAIResponse): DiseaseReference[] {

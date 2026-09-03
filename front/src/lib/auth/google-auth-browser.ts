@@ -14,7 +14,7 @@ import { googleAuthServerError } from "./google-error";
 
 import { firebaseEmulatorOrigin } from "./firebase-emulator-config";
 
-const FIREBASE_PRODUCTION_PROJECT_ID = "care-atlas-seoul-2026-v2";
+const FIREBASE_PRODUCTION_PROJECT_ID = "care-atlas-seoul-2026-v3";
 const FIREBASE_BROWSER_PROJECT_ID =
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? FIREBASE_PRODUCTION_PROJECT_ID;
 const FIREBASE_AUTH_EMULATOR_ORIGIN = firebaseEmulatorOrigin(
@@ -22,11 +22,11 @@ const FIREBASE_AUTH_EMULATOR_ORIGIN = firebaseEmulatorOrigin(
   process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
 );
 const FIREBASE_BASE_CONFIG = {
-  apiKey: "AIzaSyD6wyT0r7lg3Et1qMqgrYabJfHXoN7kcaI",
+  apiKey: "AIzaSyBGDXQc8huxt1MABnJgiG3ODgeXF3DPCN4",
   projectId: FIREBASE_BROWSER_PROJECT_ID,
-  storageBucket: "care-atlas-seoul-2026-v2.firebasestorage.app",
-  messagingSenderId: "419676584381",
-  appId: "1:419676584381:web:fe8f784da39fabd5aa7ad4",
+  storageBucket: "care-atlas-seoul-2026-v3.firebasestorage.app",
+  messagingSenderId: "727990708777",
+  appId: "1:727990708777:web:b5d8836d265a1264d20a38",
 } as const;
 
 export type AuthModule = typeof import("firebase/auth");
@@ -45,7 +45,7 @@ export async function loadFirebaseAuth(mode: GoogleAuthMode) {
     import("firebase/app"),
     import("firebase/auth"),
   ]);
-  const appName = `care-atlas-v2-${mode}`;
+  const appName = `care-atlas-v3-${mode}`;
   const app = getApps().some(({ name }) => name === appName)
     ? getApp(appName)
     : initializeApp(

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { isCareAccountActive } from "./account-lifecycle.ts";
 import { getAdminFirestore } from "./firebase-admin.ts";
-import type { FirestoreLike, TransactionLike } from "./firestore-rest.ts";
+import type { FirestoreLike, QuerySnapshotLike, TransactionLike } from "./firestore-rest.ts";
 import { buildMedicationReminderSchedules, type MedicationReminderSchedule } from "./medication-schedule.ts";
 import { isEphemeralDemoSessionId } from "./demo-session.ts";
 import type { MedicationPlan } from "./types.ts";
@@ -106,18 +106,24 @@ export async function syncMedicationReminderSchedulesInTransaction(input: {
   return normalized;
 }
 
-export async function reconcileMedicationReminders(input: { firestore?: FirestoreLike; now?: Date; limit?: number } = {}) {
+export async function reconcileMedicationReminders(input: { firestore?: FirestoreLike; now?: Date; limit?: number; auditActive?: boolean } = {}) {
   const firestore = input.firestore ?? await getAdminFirestore();
   const now = input.now ?? new Date();
   const limit = input.limit ?? 25;
   const pending = await firestore.collection(REMINDER_SYNC_COLLECTION).where("status", "==", "pending").where("nextAttemptAt", "<=", now.toISOString()).orderBy("nextAttemptAt").limit(limit).get();
-  // Round-robin audit also repairs pre-existing missing/corrupt schedules without a job.
+  // The regular dispatch path handles explicit pending work only. A periodic round-robin
+  // audit repairs pre-existing missing/corrupt schedules without rereading active users each minute.
+  const auditActive = input.auditActive === true;
   const cursorRef = firestore.collection("maintenanceCursors").doc("reminder-audit");
-  const cursorDoc = await cursorRef.get();
-  const cursor = (cursorDoc.data() as { subscriptionId?: string } | undefined)?.subscriptionId;
-  let query = firestore.collection("pushSubscriptions").where("active", "==", true).orderBy("id");
-  if (cursor) query = query.where("id", ">", cursor);
-  const active = await query.limit(limit).get();
+  let cursor: string | undefined;
+  let active: QuerySnapshotLike = { docs: [] };
+  if (auditActive) {
+    const cursorDoc = await cursorRef.get();
+    cursor = (cursorDoc.data() as { subscriptionId?: string } | undefined)?.subscriptionId;
+    let query = firestore.collection("pushSubscriptions").where("active", "==", true).orderBy("id");
+    if (cursor) query = query.where("id", ">", cursor);
+    active = await query.limit(limit).get();
+  }
   const recipients = new Set([
     ...pending.docs.map((doc) => doc.id),
     ...active.docs.map((doc) => (doc.data() as { recipientId: string }).recipientId),
@@ -149,7 +155,7 @@ export async function reconcileMedicationReminders(input: { firestore?: Firestor
     }
   }
   const lastId = active.docs.at(-1)?.id ?? "";
-  if (lastId || cursor) await cursorRef.set({ subscriptionId: active.docs.length === limit ? lastId : "", updatedAt: now.toISOString() });
+  if (auditActive && (lastId || cursor)) await cursorRef.set({ subscriptionId: active.docs.length === limit ? lastId : "", updatedAt: now.toISOString() });
   return { checked: recipients.size, processed, failed };
 }
 

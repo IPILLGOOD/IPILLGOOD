@@ -7,7 +7,7 @@ const FIREBASE_AUTH_CONNECT_SOURCES = [
 ] as const;
 
 const FIREBASE_AUTH_FRAME_SOURCES = [
-  "https://care-atlas-seoul-2026-v2.firebaseapp.com",
+  "https://care-atlas-seoul-2026-v3.firebaseapp.com",
   "https://accounts.google.com",
 ] as const;
 
