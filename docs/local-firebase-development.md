@@ -47,7 +47,7 @@ npm run verify:local-auth
 
 ```bash
 gcloud services enable firestore.googleapis.com identitytoolkit.googleapis.com \
-  --project=care-atlas-seoul-2026-v2
+  --project=care-atlas-seoul-2026-v3
 ```
 
 기본 로그인·프로필·돌봄 데이터 흐름과 사용자 ADC에 필요한 최소 사전 정의 역할은 다음과 같습니다.
@@ -63,13 +63,13 @@ gcloud services enable firestore.googleapis.com identitytoolkit.googleapis.com \
 관리자가 전용 개발 서비스 계정에 역할을 부여하는 예시는 다음과 같습니다. `<DEV_SERVICE_ACCOUNT>`와 승인할 주체는 조직 정책에 맞게 바꿉니다.
 
 ```bash
-gcloud projects add-iam-policy-binding care-atlas-seoul-2026-v2 \
+gcloud projects add-iam-policy-binding care-atlas-seoul-2026-v3 \
   --member="serviceAccount:<DEV_SERVICE_ACCOUNT>" \
   --role="roles/datastore.user"
-gcloud projects add-iam-policy-binding care-atlas-seoul-2026-v2 \
+gcloud projects add-iam-policy-binding care-atlas-seoul-2026-v3 \
   --member="serviceAccount:<DEV_SERVICE_ACCOUNT>" \
   --role="roles/firebaseauth.viewer"
-gcloud projects add-iam-policy-binding care-atlas-seoul-2026-v2 \
+gcloud projects add-iam-policy-binding care-atlas-seoul-2026-v3 \
   --member="serviceAccount:<DEV_SERVICE_ACCOUNT>" \
   --role="roles/serviceusage.serviceUsageConsumer"
 ```
@@ -78,7 +78,7 @@ gcloud projects add-iam-policy-binding care-atlas-seoul-2026-v2 \
 
 ```bash
 gcloud auth application-default login
-gcloud auth application-default set-quota-project care-atlas-seoul-2026-v2
+gcloud auth application-default set-quota-project care-atlas-seoul-2026-v3
 gcloud auth application-default print-access-token >/dev/null
 ```
 

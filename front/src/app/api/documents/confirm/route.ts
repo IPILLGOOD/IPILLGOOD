@@ -14,13 +14,18 @@ import { isSameOriginBrowserRequest } from "@/lib/request-origin";
 const candidateSchema = z.object({
   id: z.string().min(1).max(256),
   included: z.boolean(),
+  isManual: z.boolean().optional(),
+  confirmedAgainstOriginal: z.boolean().optional(),
   productName: z.string().max(120),
   ingredientName: z.string().max(180),
+  mfdsItemSeq: z.string().regex(/^\d{0,20}$/).optional(),
+  insuranceCode: z.string().regex(/^\d{0,20}$/).optional(),
   doseAmount: z.string().max(80),
   frequency: z.string().max(80),
   timing: z.string().max(120),
   startDate: z.string().max(10),
   endDate: z.string().max(10).optional(),
+  supplyDays: z.number().int().positive().max(3650).optional(),
 });
 
 const confirmSchema = z.object({

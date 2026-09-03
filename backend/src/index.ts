@@ -6,7 +6,9 @@ export {
   cancelMedicationPlanDraft,
   confirmMedicationPlanDraft,
   getCareRevision,
+  getCareRevisionForAuthorizedRequest,
   getMedicationPlanDraft,
+  getMedicationPlanDrafts,
   getCareSnapshot,
   getObservationHistory,
   rebuildCareReadModel,
@@ -19,6 +21,7 @@ export {
   saveDocumentImportReview,
   saveDailyCheckIn,
   saveWellbeingCheckIn,
+  updateDocumentDiagnoses,
   updateRecipientProfile,
   type CareDataScope,
   type DocumentImportReview,
@@ -27,6 +30,7 @@ export {
   type MedicationCandidateConfirmation,
   type MedicationPlanConfirmationResult,
   type RegisterDocumentInput,
+  type UpdateDocumentDiagnosesInput,
   CareConflictError,
   MedicationDuplicateResolutionRequiredError,
 } from "./care-repository";
@@ -108,7 +112,6 @@ export {
 export { buildPatientQuestionResponse } from "./ai/questions/apply-question-response";
 export {
   analyzeMedicationDocument,
-  DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
   type MedicationAnalyzerInput,
   type MedicationAnalyzerResult,

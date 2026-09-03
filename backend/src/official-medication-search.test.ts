@@ -174,6 +174,15 @@ test("OCR 품목코드를 정확 일치 조건으로 식약처 허가정보에�
   }
 });
 
+test("식약처 API가 필터를 무시해 다른 품목을 반환해도 코드 일치로 오인하지 않는다", async () => {
+  const result = await verifyOfficialMedicationCode("650201700", {
+    apiKey: "official-key",
+    fetcher: async () => officialResponse([productItem({ ITEM_SEQ: "195500005" })]),
+  });
+
+  assert.equal(result.status, "not_found");
+});
+
 test("품목코드가 없거나 API 키가 없으면 네트워크 없이 확인 필요 상태를 반환한다", async () => {
   let calls = 0;
   const fetcher = async () => {

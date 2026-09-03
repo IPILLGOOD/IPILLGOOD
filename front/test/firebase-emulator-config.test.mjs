@@ -8,8 +8,8 @@ import {
 
 test("브라우저 에뮬레이터는 demo 프로젝트의 loopback 주소만 허용한다", () => {
   assert.equal(firebaseEmulatorOrigin("demo-ipillgood-local", "127.0.0.1:9199"), "http://127.0.0.1:9199");
-  assert.equal(firebaseEmulatorOrigin("care-atlas-seoul-2026-v2", undefined), undefined);
-  assert.throws(() => firebaseEmulatorOrigin("care-atlas-seoul-2026-v2", "127.0.0.1:9199"));
+  assert.equal(firebaseEmulatorOrigin("care-atlas-seoul-2026-v3", undefined), undefined);
+  assert.throws(() => firebaseEmulatorOrigin("care-atlas-seoul-2026-v3", "127.0.0.1:9199"));
   assert.throws(() => firebaseEmulatorOrigin("demo-ipillgood-local", "auth.example.com:9199"));
 });
 

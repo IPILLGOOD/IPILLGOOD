@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
   analyzeMedicationDocument,
-  DocumentAnalysisIncompleteError,
   DocumentAnalysisNotConfiguredError,
 } from "./ai/medication-analyzer.ts";
 import type { DocumentAnalysis } from "./types.ts";
@@ -236,6 +235,65 @@ test("높은 OCR 신뢰도와 식약처 품목코드·제품명이 일치하면 
   assert.deepEqual(result.analysis.medications?.[0]?.verification?.warnings, []);
 });
 
+test("보험코드를 식약처 품목기준코드로 오인해 공식 조회하지 않는다", async (context) => {
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
+  const previousApiKey = process.env.AI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  delete process.env.AI_ANALYSIS_ENDPOINT;
+  delete process.env.AI_API_KEY;
+  context.after(() => {
+    if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAiKey;
+    if (previousEndpoint === undefined) delete process.env.AI_ANALYSIS_ENDPOINT;
+    else process.env.AI_ANALYSIS_ENDPOINT = previousEndpoint;
+    if (previousApiKey === undefined) delete process.env.AI_API_KEY;
+    else process.env.AI_API_KEY = previousApiKey;
+  });
+
+  let verificationCalls = 0;
+  const result = await analyzeMedicationDocument(
+    {
+      documentType: "처방전",
+      fileName: "prescription.png",
+      contentType: "image/png",
+      contentBase64: "aW1hZ2U=",
+    },
+    {
+      async analyzeClinicalDocumentWithOpenAI() {
+        return {
+          documentType: "처방전",
+          summary: "처방전 분석",
+          findings: [],
+          carePoints: [],
+          questionsForProfessional: [],
+          disclaimer: "원본 확인",
+          source: "openai",
+          medications: [{
+            productName: "노바스크정 5mg",
+            ingredientName: "암로디핀베실산염",
+            insuranceCode: "648900030",
+            doseAmount: "1정",
+            frequency: "하루 1회",
+            timing: "아침 식사 후",
+            startDate: "2026-08-12",
+            purposePlain: "혈압 관리",
+            precautions: [],
+          }],
+        };
+      },
+      async verifyOfficialMedicationCode() {
+        verificationCalls += 1;
+        return matchedOfficialMedication;
+      },
+    },
+  );
+
+  assert.equal(verificationCalls, 0);
+  assert.equal(result.analysis.medications?.[0]?.insuranceCode, "648900030");
+  assert.equal(result.analysis.medications?.[0]?.reviewStatus, "needs_review");
+});
+
 test("낮은 OCR 신뢰도나 식약처 제품명 불일치는 확인 전 복약 활성화를 막는다", async (context) => {
   const previousOpenAiKey = process.env.OPENAI_API_KEY;
   const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
@@ -296,7 +354,7 @@ test("낮은 OCR 신뢰도나 식약처 제품명 불일치는 확인 전 복약
   assert.ok(medication?.verification?.warnings.some((warning) => warning.includes("제품명")));
 });
 
-test("OpenAI 재시도 후에도 필수 정보가 없으면 불완전 결과를 저장하지 않는다", async (context) => {
+test("OpenAI 재시도 후에도 필수 정보가 없으면 누락 항목을 표시한 검토 초안을 반환한다", async (context) => {
   const previousOpenAiKey = process.env.OPENAI_API_KEY;
   const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
   const previousApiKey = process.env.AI_API_KEY;
@@ -313,31 +371,33 @@ test("OpenAI 재시도 후에도 필수 정보가 없으면 불완전 결과를 
   });
 
   let attempts = 0;
-  await assert.rejects(
-    analyzeMedicationDocument(
-      {
-        documentType: "처방전",
-        fileName: "prescription.png",
-        contentType: "image/png",
-        contentBase64: "aW1hZ2U=",
+  let retryFocus: string[] | undefined;
+  const result = await analyzeMedicationDocument(
+    {
+      documentType: "처방전",
+      fileName: "prescription.png",
+      contentType: "image/png",
+      contentBase64: "aW1hZ2U=",
+    },
+    {
+      async analyzeClinicalDocumentWithOpenAI(input) {
+        attempts += 1;
+        retryFocus = input.retryFocus;
+        return {
+          documentType: "처방전",
+          summary: "읽기 실패",
+          findings: [],
+          carePoints: [],
+          questionsForProfessional: [],
+          disclaimer: "의료진 확인이 필요합니다.",
+          source: "openai",
+          medications: [],
+        };
       },
-      {
-        async analyzeClinicalDocumentWithOpenAI() {
-          attempts += 1;
-          return {
-            documentType: "처방전",
-            summary: "읽기 실패",
-            findings: [],
-            carePoints: [],
-            questionsForProfessional: [],
-            disclaimer: "의료진 확인이 필요합니다.",
-            source: "openai",
-            medications: [],
-          };
-        },
-      },
-    ),
-    DocumentAnalysisIncompleteError,
+    },
   );
   assert.equal(attempts, 2);
+  assert.deepEqual(retryFocus, ["medications"]);
+  assert.equal(result.analysis.extraction?.status, "failed");
+  assert.deepEqual(result.analysis.extraction?.issues, ["medication_not_found"]);
 });

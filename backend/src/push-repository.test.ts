@@ -350,6 +350,18 @@ test("알림 미구독 사용자의 동기화와 빈 dispatch는 reminder write�
   assert.equal(firestore.writes, writes);
 });
 
+test("일반 dispatch reconciliation은 pending 작업만 읽고 활성 구독 전체 감사를 건너뛴다", async () => {
+  const firestore = new MemoryFirestore();
+  const reads: string[] = [];
+  firestore.beforeRead = async (path) => { reads.push(path); };
+
+  assert.deepEqual(await reconcileMedicationReminders({
+    firestore,
+    now: new Date("2026-08-23T22:00:00.000Z"),
+  }), { checked: 0, processed: 0, failed: 0 });
+  assert.deepEqual(reads, ["medicationReminderSync"]);
+});
+
 test("같은 계획 동기화는 쓰기를 반복하지 않고 오래된 입력으로 최신 계획을 복원하지 않는다", async () => {
   const { firestore, schedule } = await dueFixture();
   const beforeDue = new Date("2026-08-23T22:00:00.000Z");
@@ -365,7 +377,7 @@ test("같은 계획 동기화는 쓰기를 반복하지 않고 오래된 입력�
 test("reconciliation은 누락된 일정을 canonical 계획으로 복구한다", async () => {
   const { firestore, schedule } = await dueFixture();
   firestore.store.delete(`medicationReminderSchedules/${schedule.id}`);
-  const result = await reconcileMedicationReminders({ firestore, now: new Date("2026-08-23T22:00:00.000Z") });
+  const result = await reconcileMedicationReminders({ firestore, now: new Date("2026-08-23T22:00:00.000Z"), auditActive: true });
   assert.equal(result.failed, 0);
   assert.equal(firestore.store.has(`medicationReminderSchedules/${schedule.id}`), true);
 });
@@ -375,7 +387,7 @@ test("마지막 복약일의 도래한 회차를 reconciliation이 발송 전에
   const finalPlan = { ...medication, endDate: "2026-08-24" };
   await firestore.collection("careRecipients/recipient-1/medicationPlans").doc(medication.id).set(finalPlan);
   await firestore.collection("medicationReminderSchedules").doc(schedule.id).set({ ...schedule, endDate: finalPlan.endDate, planRevisionId: medicationPlanRevision(finalPlan) });
-  await reconcileMedicationReminders({ firestore, now });
+  await reconcileMedicationReminders({ firestore, now, auditActive: true });
   const result = await dispatchDueMedicationReminders({ firestore, now, vapid, sender: async () => accepted });
   assert.equal(result.delivered, 1);
   assert.equal((firestore.store.get(`medicationReminderSchedules/${schedule.id}`) as { status: string }).status, "ended");
@@ -398,7 +410,7 @@ test("동기화 장애는 backoff·격리 후 운영자 재시도로 복구한�
   firestore.store.delete(`medicationReminderSchedules/${schedule.id}`);
   firestore.beforeRead = async (path) => { if (path.endsWith("/medicationPlans")) throw new Error("INJECTED_PLAN_READ_FAILURE"); };
   for (let attempt = 1; attempt <= 5; attempt++) {
-    assert.equal((await reconcileMedicationReminders({ firestore, now })).failed, 1);
+    assert.equal((await reconcileMedicationReminders({ firestore, now, auditActive: true })).failed, 1);
     now = new Date(now.getTime() + 60_000 * 2 ** (attempt - 1));
   }
   const ref = firestore.collection("medicationReminderSync").doc("recipient-1");

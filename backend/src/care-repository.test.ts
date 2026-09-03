@@ -16,10 +16,13 @@ import {
   getMedicationPlanDraft,
   MedicationDuplicateResolutionRequiredError,
   medicationPlansFromPrescription,
+  getCareRevisionForAuthorizedRequest,
+  getMedicationPlanDrafts,
   getCareSnapshot,
   projectClinicianQuestions,
   registerDocument,
   saveDocumentImportReview,
+  updateDocumentDiagnoses,
   updateRecipientProfile,
   rebuildCareReadModel,
   deleteDocument,
@@ -47,6 +50,35 @@ test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복�
   assert.deepEqual(first.symptomEvents, []);
   assert.deepEqual(first.documents, []);
   assert.notEqual(first.recipient.id, second.recipient.id);
+});
+
+test("요청에서 인증된 revision 조회는 읽기 모델을 한 번만 읽는다", async () => {
+  const firestore = new MemoryFirestore();
+  const recipientId = "google-authorized-revision";
+  firestore.store.set(`careReadModels/${recipientId}`, { revision: 17 });
+  const reads: string[] = [];
+  firestore.beforeRead = async (path) => { reads.push(path); };
+
+  assert.equal(await getCareRevisionForAuthorizedRequest({ recipientId, firestore }), 17);
+  assert.deepEqual(reads, [`careReadModels/${recipientId}`]);
+});
+
+test("복약 초안 일괄 조회는 계정 상태와 동의를 한 번만 확인한다", async () => {
+  const firestore = new MemoryFirestore();
+  const recipientId = "google-batch-drafts";
+  firestore.store.set(`careRecipients/${recipientId}`, { consentConfirmed: true });
+  for (const id of ["draft-a", "draft-b"]) {
+    firestore.store.set(`careRecipients/${recipientId}/medicationPlanDrafts/${id}`, { id, state: "draft" });
+  }
+  const reads: string[] = [];
+  firestore.beforeRead = async (path) => { reads.push(path); };
+
+  const drafts = await getMedicationPlanDrafts({ recipientId, firestore }, ["draft-a", "draft-b", "draft-a"]);
+  assert.deepEqual([...drafts.keys()], ["draft-a", "draft-b"]);
+  assert.equal(reads.filter((path) => path === `accountDeletions/${recipientId}`).length, 1);
+  assert.equal(reads.filter((path) => path === `healthDataResets/${recipientId}`).length, 1);
+  assert.equal(reads.filter((path) => path === `careRecipients/${recipientId}`).length, 1);
+  assert.equal(reads.filter((path) => path.includes("/medicationPlanDrafts/")).length, 2);
 });
 
 test("실제 계정의 최신 질문 세트와 답변을 상담 질문 읽기 모델로 투영한다", async () => {
@@ -106,6 +138,18 @@ test("실제 계정의 최신 질문 세트와 답변을 상담 질문 읽기 �
   };
   await firestore.collection(`careRecipients/${scope.recipientId}/questionSets`).doc(questionSet.question_set_id).set(questionSet);
   await firestore.collection(`careRecipients/${scope.recipientId}/questionResponses`).doc(response.response_id).set(response);
+  await firestore.collection(`careRecipients/${scope.recipientId}/questionResponses`).doc("older-response").set({
+    ...response,
+    response_id: "older-response",
+    answered_at: "2026-08-31T00:30:00.000Z",
+    responses: [{ question_id: "q-dizziness", answer: null, skipped: true }],
+  });
+  await firestore.collection(`careRecipients/${scope.recipientId}/questionResponses`).doc("other-subject").set({
+    ...response,
+    response_id: "other-subject",
+    subject_ref: "google-other",
+    answered_at: "2026-08-31T02:00:00.000Z",
+  });
 
   const projected = projectClinicianQuestions(questionSet, response);
   assert.equal(projected[0]?.status, "answered");
@@ -408,6 +452,35 @@ test("처방일과 총 투약일수로 종료일을 계산해 경계 날짜에�
   assert.equal(createMedicationSchedule(medications, [], new Date("2026-08-20T15:01:00Z")).length, 0);
 });
 
+test("약별 투약일수가 공통 총 투약일수보다 우선한다", () => {
+  const medications = medicationPlansFromPrescription({
+    id: "doc-per-med-days",
+    documentType: "처방전",
+    uploadedAt: "2026-08-16T10:00:00+09:00",
+    analysis: {
+      documentType: "처방전",
+      prescriptionDate: "2026-08-16",
+      totalSupplyDays: 30,
+      summary: "약별 기간",
+      findings: [], carePoints: [], questionsForProfessional: [], disclaimer: "원본 확인", source: "openai",
+      medications: [{
+        productName: "단기처방정",
+        ingredientName: "성분",
+        doseAmount: "1정",
+        frequency: "하루 1회",
+        timing: "아침",
+        startDate: "",
+        supplyDays: 5,
+        purposePlain: "테스트",
+        precautions: [],
+        reviewStatus: "verified",
+      }],
+    },
+  }, "2026-08-16");
+
+  assert.equal(medications[0]?.endDate, "2026-08-20");
+});
+
 test("과거 처방은 종료 상태로 보존하고 오늘 복약 일정에는 포함하지 않는다", () => {
   const medications = medicationPlansFromPrescription({
     id: "doc-past-rx",
@@ -551,6 +624,46 @@ test("진단서 질환은 보호자 확정 뒤에만 저장되고 원본 문서 
   assert.deepEqual((await getCareSnapshot(scope)).recipient.confirmedConditions, []);
 });
 
+test("자동 추출한 진단명과 코드는 원본 대조 후 수정하고 별도로 확정한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-diagnosis-edit", firestore };
+  await consentedSnapshot(scope);
+  const document = await registerDocument(scope, {
+    fileName: "진단서.pdf",
+    contentHash: "diagnosis-edit",
+    documentType: "진단서",
+    size: 100,
+    isSample: false,
+    analysis: {
+      documentType: "진단서",
+      summary: "진단 정보 확인 필요",
+      findings: [],
+      carePoints: [],
+      questionsForProfessional: [],
+      disclaimer: "원본 확인",
+      source: "openai",
+      diagnoses: [],
+      extraction: { status: "failed", issues: ["diagnosis_not_found"], missingFields: ["diagnoses"] },
+    },
+  });
+  assert.equal(document.status, "needs_review");
+
+  const updated = await updateDocumentDiagnoses(scope, {
+    documentId: document.id,
+    expectedAnalysisRevision: 1,
+    diagnoses: [{ name: "본태성 고혈압", code: "i10" }],
+    updatedBy: "google:user-1",
+  });
+  assert.equal(updated.analysisRevision, 2);
+  assert.deepEqual(updated.analysis?.diagnoses, [{ name: "본태성 고혈압", code: "I10" }]);
+  assert.equal(updated.status, "needs_review");
+
+  await confirmDocumentDiagnoses(scope, document.id);
+  const confirmed = await getCareSnapshot(scope);
+  assert.equal(confirmed.documents[0]?.status, "confirmed");
+  assert.equal(confirmed.recipient.confirmedConditions?.[0]?.id, "condition-hypertension");
+});
+
 const prescriptionUpload = (id: string) => ({
   fileName: `${id}.png`,
   contentHash: id,
@@ -627,6 +740,60 @@ test("처방 분석은 복약 초안만 만들고 현재 약·복용 기록·알
   assert.equal(firestore.store.has(`medicationReminderSync/${scope.recipientId}`), false);
 });
 
+test("약을 찾지 못한 처방전도 빈 검토 초안으로 저장하고 원본에서 직접 추가할 수 있다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-empty-draft", firestore };
+  await consentedSnapshot(scope);
+  const document = await registerDocument(scope, {
+    fileName: "빈-추출.png",
+    contentHash: "empty-medication-draft",
+    documentType: "처방전",
+    size: 1234,
+    isSample: false,
+    analysis: {
+      documentType: "처방전",
+      summary: "약을 찾지 못함",
+      findings: [],
+      carePoints: [],
+      questionsForProfessional: [],
+      disclaimer: "원본 확인",
+      source: "openai",
+      medications: [],
+      extraction: { status: "failed", issues: ["medication_not_found"], missingFields: ["medications"] },
+    },
+  });
+  const draft = (await getMedicationPlanDraft(scope, document.medicationDraftId!))!;
+  assert.equal(document.status, "needs_review");
+  assert.deepEqual(draft.candidates, []);
+
+  const confirmed = await confirmMedicationPlanDraft(scope, {
+    draftId: draft.id,
+    revision: draft.revision,
+    idempotencyKey: "manual-confirm-request",
+    confirmedBy: "google:user-1",
+    candidates: [{
+      id: "manual-11111111-1111-4111-8111-111111111111",
+      included: true,
+      isManual: true,
+      confirmedAgainstOriginal: true,
+      productName: "원본에서 추가한 약",
+      ingredientName: "확인 성분",
+      mfdsItemSeq: "200001234",
+      insuranceCode: "648900030",
+      doseAmount: "1정",
+      frequency: "하루 1회",
+      timing: "아침 식후",
+      startDate: "2026-08-16",
+      endDate: "2026-08-22",
+      supplyDays: 7,
+    }],
+  });
+
+  assert.equal(confirmed.medications[0]?.productName, "원본에서 추가한 약");
+  assert.equal(confirmed.draft.candidates[0]?.reviewStatus, "human_confirmed");
+  assert.equal(confirmed.draft.candidates[0]?.humanConfirmation?.documentRevision, document.revision);
+});
+
 test("OCR 대조가 끝나지 않은 초안 후보는 확정 요청으로도 활성화할 수 없다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-draft-unverified", firestore };
@@ -654,7 +821,7 @@ test("OCR 대조가 끝나지 않은 초안 후보는 확정 요청으로도 활
     idempotencyKey: "unverified-confirm-request",
     confirmedBy: "google:user-1",
     candidates,
-  }), /식약처 정보 대조가 완료된 약만/);
+  }), /원본 처방전과 모든 필드/);
   assert.deepEqual((await getCareSnapshot(scope)).medications, []);
 });
 
@@ -665,7 +832,11 @@ test("사용자가 수정·선택해 확정한 약만 활성화하고 확인자�
   const document = await registerDocument(scope, prescriptionUpload("confirm"));
   const draft = (await getMedicationPlanDraft(scope, document.medicationDraftId!))!;
   const candidates = confirmationCandidates(draft);
-  candidates[0] = { ...candidates[0]!, productName: "수정한 첫째약 5mg" };
+  candidates[0] = {
+    ...candidates[0]!,
+    productName: "수정한 첫째약 5mg",
+    confirmedAgainstOriginal: true,
+  };
   candidates[1] = { ...candidates[1]!, included: false };
 
   const result = await confirmMedicationPlanDraft(scope, {

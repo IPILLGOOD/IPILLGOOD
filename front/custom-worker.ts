@@ -9,11 +9,28 @@ type WorkerEnvironment = Record<string, unknown> & {
   PUSH_CRON_SECRET?: string;
 };
 
+type ScheduledEvent = {
+  scheduledTime?: number;
+};
+
 type NextWorkerHandler = {
   fetch(request: Request, env: WorkerEnvironment, ctx: WorkerContext): Promise<Response>;
 };
 
 const handler = nextHandler as NextWorkerHandler;
+const ACCOUNT_CLEANUP_INTERVAL_MINUTES = 5;
+const SESSION_CLEANUP_INTERVAL_MINUTES = 15;
+const REMINDER_AUDIT_INTERVAL_MINUTES = 60;
+
+function scheduledPaths(scheduledTime: number) {
+  const minute = Math.floor(scheduledTime / 60_000);
+  const paths = minute % ACCOUNT_CLEANUP_INTERVAL_MINUTES === 0 ? ["/api/account/deletion/cleanup"] : [];
+  if (minute % SESSION_CLEANUP_INTERVAL_MINUTES === 0) {
+    paths.push("/api/demo/cleanup", "/api/auth/connection/cleanup");
+  }
+  paths.push(minute % REMINDER_AUDIT_INTERVAL_MINUTES === 0 ? "/api/push/dispatch?audit=1" : "/api/push/dispatch");
+  return paths;
+}
 
 async function callScheduledRoute(
   path: string,
@@ -37,12 +54,13 @@ async function callScheduledRoute(
 const worker = {
   fetch: handler.fetch,
 
-  async scheduled(_event: unknown, env: WorkerEnvironment, ctx: WorkerContext) {
+  async scheduled(event: ScheduledEvent, env: WorkerEnvironment, ctx: WorkerContext) {
     if (!env.PUSH_CRON_SECRET || env.PUSH_CRON_SECRET.length < 32) {
       throw new Error("PUSH_CRON_SECRET is not configured.");
     }
     const failures: unknown[] = [];
-    for (const path of ["/api/account/deletion/cleanup", "/api/demo/cleanup", "/api/auth/connection/cleanup", "/api/push/dispatch"]) {
+    const scheduledTime = Number.isFinite(event.scheduledTime) ? event.scheduledTime! : Date.now();
+    for (const path of scheduledPaths(scheduledTime)) {
       try {
         await callScheduledRoute(path, env, ctx);
       } catch (error) {

@@ -1,4 +1,4 @@
-const FIREBASE_AUTH_ORIGIN = "https://care-atlas-seoul-2026-v2.firebaseapp.com";
+const FIREBASE_AUTH_ORIGIN = "https://care-atlas-seoul-2026-v3.firebaseapp.com";
 
 type RouteContext = {
   params: Promise<{ path: string[] }>;

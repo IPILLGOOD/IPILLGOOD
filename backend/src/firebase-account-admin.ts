@@ -40,7 +40,7 @@ export function createFirebaseAccountAdmin(input: { projectId: string; accessTok
 let admin: Promise<FirebaseAccountAdmin> | undefined;
 export function getFirebaseAccountAdmin() {
   if (!admin) admin = (async () => {
-    const projectId = process.env.FIREBASE_PROJECT_ID ?? "care-atlas-seoul-2026-v2";
+    const projectId = process.env.FIREBASE_PROJECT_ID ?? "care-atlas-seoul-2026-v3";
     const emulatorHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
     const credentials = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
     let accessToken: () => Promise<string>;

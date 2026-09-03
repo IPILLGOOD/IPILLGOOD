@@ -8,6 +8,12 @@
     ] },
     { "collectionGroup": "pushSubscriptions", "queryScope": "COLLECTION", "fields": [
       { "fieldPath": "active", "order": "ASCENDING" }, { "fieldPath": "id", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "accountDeletions", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "nextAttemptAt", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "questionResponses", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "question_set_id", "order": "ASCENDING" }, { "fieldPath": "subject_ref", "order": "ASCENDING" }, { "fieldPath": "answered_at", "order": "DESCENDING" }
     ] }
   ],
   "fieldOverrides": []

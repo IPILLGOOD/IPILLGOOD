@@ -58,6 +58,7 @@ class MemoryQuery implements QueryLike {
       const actual = field.split(".").reduce<unknown>((current, key) => (current as Row | undefined)?.[key], value);
       if (actual === undefined) return false;
       if (op === "==") return actual === expected;
+      if (op === "in") return Array.isArray(expected) && expected.includes(actual);
       const comparison = typeof actual === "number" && typeof expected === "number" ? actual - expected : String(actual).localeCompare(String(expected));
       return op === "<=" ? comparison <= 0 : op === "<" ? comparison < 0 : op === ">=" ? comparison >= 0 : comparison > 0;
     }));
