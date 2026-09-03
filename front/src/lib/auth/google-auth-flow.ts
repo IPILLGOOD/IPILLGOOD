@@ -1,4 +1,4 @@
-export const FIREBASE_DEFAULT_AUTH_DOMAIN = "care-atlas-seoul-2026-v2.firebaseapp.com";
+export const FIREBASE_DEFAULT_AUTH_DOMAIN = "care-atlas-seoul-2026-v3.firebaseapp.com";
 export const GOOGLE_REDIRECT_MARKER = "google_redirect";
 export const GOOGLE_REDIRECT_PENDING_KEY = "ipillgood:google-redirect-pending";
 

@@ -4,7 +4,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { getFirebaseAccountAdmin, getAccountSessionState } from "@care-atlas/backend";
 
 const FIREBASE_PROJECT_ID =
-  process.env.FIREBASE_PROJECT_ID ?? "care-atlas-seoul-2026-v2";
+  process.env.FIREBASE_PROJECT_ID ?? "care-atlas-seoul-2026-v3";
 const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
 const FIREBASE_JWKS = createRemoteJWKSet(
   new URL(

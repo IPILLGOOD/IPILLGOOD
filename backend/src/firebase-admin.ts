@@ -5,7 +5,7 @@ import type { FirestoreLike } from "./firestore-rest.ts";
 const projectId =
   process.env.FIREBASE_PROJECT_ID ??
   process.env.GOOGLE_CLOUD_PROJECT ??
-  "care-atlas-seoul-2026-v2";
+  "care-atlas-seoul-2026-v3";
 
 let firestorePromise: Promise<FirestoreLike> | undefined;
 

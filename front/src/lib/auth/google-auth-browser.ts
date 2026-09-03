@@ -13,11 +13,11 @@ import {
 import { googleAuthServerError } from "./google-error";
 
 const FIREBASE_BASE_CONFIG = {
-  apiKey: "AIzaSyD6wyT0r7lg3Et1qMqgrYabJfHXoN7kcaI",
-  projectId: "care-atlas-seoul-2026-v2",
-  storageBucket: "care-atlas-seoul-2026-v2.firebasestorage.app",
-  messagingSenderId: "419676584381",
-  appId: "1:419676584381:web:fe8f784da39fabd5aa7ad4",
+  apiKey: "AIzaSyBGDXQc8huxt1MABnJgiG3ODgeXF3DPCN4",
+  projectId: "care-atlas-seoul-2026-v3",
+  storageBucket: "care-atlas-seoul-2026-v3.firebasestorage.app",
+  messagingSenderId: "727990708777",
+  appId: "1:727990708777:web:b5d8836d265a1264d20a38",
 } as const;
 
 export type AuthModule = typeof import("firebase/auth");
@@ -36,7 +36,7 @@ export async function loadFirebaseAuth(mode: GoogleAuthMode) {
     import("firebase/app"),
     import("firebase/auth"),
   ]);
-  const appName = `care-atlas-v2-${mode}`;
+  const appName = `care-atlas-v3-${mode}`;
   const app = getApps().some(({ name }) => name === appName)
     ? getApp(appName)
     : initializeApp(
