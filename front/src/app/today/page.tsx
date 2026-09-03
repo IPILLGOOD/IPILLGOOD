@@ -80,7 +80,7 @@ export default async function TodayPage() {
                 </div>
               </div>
               <Link className="button button--primary" href="/check-in">
-                {todayCheckIn ? "내용 수정" : "확인 시작"} <ArrowRight size={18} aria-hidden="true" />
+                {todayCheckIn ? "내용 수정" : "안부 확인 시작"} <ArrowRight size={18} aria-hidden="true" />
               </Link>
             </div>
           </Card>
@@ -107,8 +107,8 @@ export default async function TodayPage() {
                 <h2>오늘 해야 하는 일</h2>
                 <p>현재 복용약의 횟수와 주기를 반영한 일정이에요.</p>
               </div>
-              <Link className="button button--quiet" href="/medications">
-                복용약 보기 <ArrowRight size={17} aria-hidden="true" />
+              <Link className="button button--quiet" href="/dashboard">
+                복약 체크 <ArrowRight size={17} aria-hidden="true" />
               </Link>
             </div>
             {tasks.length > 0 ? (
@@ -122,13 +122,19 @@ export default async function TodayPage() {
             )}
           </Card>
 
-          <div className="today-quick-actions">
-            <Link className="today-action-card" href="/documents">
-              <FileText size={21} aria-hidden="true" />
-              <span><strong>내원 기록 추가하기</strong><small>처방전·진단서 내용을 쉬운 말로 확인</small></span>
-              <ArrowRight size={18} aria-hidden="true" />
+          <section className="visit-record-prompt" aria-labelledby="visit-record-title">
+            <div className="visit-record-prompt__visual" aria-hidden="true">
+              <span><FileText size={27} /></span>
+            </div>
+            <div className="visit-record-prompt__copy">
+              <span className="visit-record-prompt__eyebrow">AFTER YOUR VISIT</span>
+              <h2 id="visit-record-title">새로운 처방전이 생겼나요?</h2>
+              <p>사진이나 PDF를 올리면 어려운 처방 내용을 쉬운 복약 정보로 정리해드려요.</p>
+            </div>
+            <Link className="button button--primary visit-record-prompt__action" href="/documents">
+              내원 기록 추가 <ArrowRight size={17} aria-hidden="true" />
             </Link>
-          </div>
+          </section>
         </div>
       </div>
     </>

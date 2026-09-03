@@ -9,26 +9,16 @@ import { QuestionRecovery } from "./QuestionRecovery";
 import { DynamicQuestionFields } from "@/components/check-in/DynamicQuestionFields";
 import { FormMessage } from "@/components/ui/FormMessage";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import type { MedicationScheduleTask } from "@/lib/presentation";
 import type { DailyCheckIn, PatientQuestionResponse, PatientQuestionSet } from "@care-atlas/backend";
-const doseOptions = [
-  { value: "completed", label: "모두 먹었어요" },
-  { value: "partial", label: "일부만 먹었어요" },
-  { value: "not_yet", label: "아직 안 먹었어요" },
-  { value: "skipped", label: "먹지 못했어요" },
-  { value: "unconfirmed", label: "확인하지 못했어요" },
-];
 const symptoms = ["어지러움", "두통", "졸림", "속 불편함", "휘청거림"];
 
 export function CheckInForm({
-  tasks,
   questionSet: initialQuestions,
   initialCheckIn,
   initialQuestionResponse,
   revision,
   observationIdempotencyKey,
 }: {
-  tasks: MedicationScheduleTask[];
   questionSet: PatientQuestionSet | null;
   initialCheckIn: DailyCheckIn | null;
   initialQuestionResponse: PatientQuestionResponse | null;
@@ -86,9 +76,9 @@ export function CheckInForm({
   }
 
   return (
-    <form className="checkin-form" action={formAction} onReset={(event) => event.preventDefault()} aria-label="오늘의 복약과 안부 기록">
+    <form className="checkin-form" action={formAction} onReset={(event) => event.preventDefault()} aria-label="오늘의 안부 기록">
       <input type="hidden" name="expectedRevision" value={form.baselineRevision} />
-      <input type="hidden" name="checkInScope" value="full" />
+      <input type="hidden" name="checkInScope" value="guided_wellbeing" />
       <input type="hidden" name="observationIdempotencyKey" value={observationIdempotencyKey} />
       {!form.recoveryMessage && <FormMessage state={state} />}
       {state.conflict ? (
@@ -121,39 +111,8 @@ export function CheckInForm({
         </div>
       </fieldset>
 
-      {tasks.map((task, index) => (
-        <fieldset className="question-block dose-question" key={task.id}>
-          <legend>
-            {index + 2}. {task.slotLabel}의 {task.productName}은 챙기셨나요?
-          </legend>
-          <div className="dose-question__meta">
-            <span>{task.timeLabel}</span>
-            <span>{task.doseAmount}</span>
-            <span>{task.frequency}</span>
-          </div>
-          <div className="dose-choice-grid">
-            {doseOptions.map((option) => (
-              <label className="choice-card" key={option.value}>
-                <input
-                  name={`dose_${task.id}`}
-                  type="radio"
-                  value={option.value}
-                  {...form.check(
-                    `dose_${task.id}`,
-                    option.value,
-                    task.hasRecordedResponse && option.value === task.response,
-                  )}
-                  required
-                />
-                {option.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      ))}
-
       <fieldset className="question-block">
-        <legend>{tasks.length + 2}. 오늘 평소와 다른 몸 상태가 있었나요?</legend>
+        <legend>2. 오늘 평소와 다른 몸 상태가 있었나요?</legend>
         <p className="question-block__helper">없으면 선택하지 않아도 괜찮아요. 여러 증상은 각각 저장 시각의 관찰로 남아요.</p>
         <div className="choice-grid">
           {symptoms.map((symptom) => (

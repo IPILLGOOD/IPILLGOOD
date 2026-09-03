@@ -27,7 +27,7 @@ import { stableJson } from "./stable-json.ts";
 import { conditionFromDiagnosis } from "./nutrition.ts";
 import { DocumentAnalysisCancelledError } from "./document-analysis-jobs.ts";
 import { normalizeMedicationRecurrence } from "./medication-schedule.ts";
-import { projectDoseObservations, projectSymptomObservations } from "./observations.ts";
+import { applyDoseResponseObservation, projectDoseObservations, projectSymptomObservations, type DoseResponseObservationInput } from "./observations.ts";
 import {
   addCalendarDays,
   dateKeyInSeoul,
@@ -560,6 +560,19 @@ export async function saveWellbeingCheckIn(
     });
     await persistObservations(tx, ref, update.doseObservations, update.symptomObservations);
     tx.set(ref.collection("dailyCheckIns").doc(update.checkIn.id), update.checkIn);
+    return { snapshot: update.nextSnapshot, result: undefined };
+  }, { requiresConsent: true, expectedRevision });
+}
+
+export async function saveDoseResponse(
+  scope: CareDataScope,
+  input: DoseResponseObservationInput,
+  currentSnapshot?: CareSnapshot,
+  expectedRevision?: number,
+) {
+  await mutateCare(scope, currentSnapshot, async (_tx, snapshot, ref) => {
+    const update = applyDoseResponseObservation(snapshot, input);
+    await persistObservations(_tx, ref, update.doseObservations, []);
     return { snapshot: update.nextSnapshot, result: undefined };
   }, { requiresConsent: true, expectedRevision });
 }

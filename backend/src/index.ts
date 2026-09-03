@@ -18,6 +18,7 @@ export {
   registerDocument,
   saveDocumentImportReview,
   saveDailyCheckIn,
+  saveDoseResponse,
   saveWellbeingCheckIn,
   updateRecipientProfile,
   type CareDataScope,
@@ -192,6 +193,7 @@ export type {
   SupplementIntake,
 } from "./types";
 export {
+  applyDoseResponseObservation,
   applyObservationCheckIn,
   doseOccurrenceKey,
   projectDoseObservations,
@@ -199,6 +201,7 @@ export {
   symptomOccurrenceKey,
   type ObservationCheckInInput,
   type ObservationCheckInScope,
+  type DoseResponseObservationInput,
 } from "./observations";
 export {
   buildNutritionInsights,
