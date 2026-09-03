@@ -266,6 +266,23 @@ function digitsOnly(value: string): string | undefined {
   return normalized || undefined;
 }
 
+export function normalizeExtractedMedicationCodes(
+  mfdsValue: string,
+  insuranceValue: string,
+): { mfdsItemSeq?: string; insuranceCode?: string } {
+  const mfdsItemSeq = digitsOnly(mfdsValue);
+  const insuranceCode = digitsOnly(insuranceValue);
+  if (mfdsItemSeq && insuranceCode && mfdsItemSeq === insuranceCode) {
+    // A single visible billing code is sometimes copied into both model fields.
+    // Keep it only as an insurance code so it can never trigger a false MFDS match.
+    return { insuranceCode };
+  }
+  return {
+    ...(mfdsItemSeq ? { mfdsItemSeq } : {}),
+    ...(insuranceCode ? { insuranceCode } : {}),
+  };
+}
+
 function medicationEvidence(
   medication: CoreDocumentExtraction["medications"][number],
 ): NonNullable<DocumentAnalysis["medications"]>[number]["fieldEvidence"] {
@@ -304,8 +321,10 @@ function documentAnalysisFromExtraction(
     return [{ name, ...(code ? { code } : {}) }];
   });
   const medications = parsed.medications.map((medication, index) => {
-    const mfdsItemSeq = digitsOnly(medication.mfdsItemSeq);
-    const insuranceCode = digitsOnly(medication.insuranceCode);
+    const { mfdsItemSeq, insuranceCode } = normalizeExtractedMedicationCodes(
+      medication.mfdsItemSeq,
+      medication.insuranceCode,
+    );
     const productName = medication.productName.trim();
     const ingredientName = medication.ingredientName.trim();
     const doseAmount = medication.doseAmount.trim();
@@ -330,7 +349,11 @@ function documentAnalysisFromExtraction(
       sourceRow: positiveInteger(medication.sourceRow) ?? index + 1,
       purposePlain: "처방 목적은 원본 문서와 의료진에게 확인하세요.",
       precautions: [],
-      fieldEvidence: medicationEvidence(medication),
+      fieldEvidence: medicationEvidence({
+        ...medication,
+        mfdsItemSeq: mfdsItemSeq ?? "",
+        insuranceCode: insuranceCode ?? "",
+      }),
     };
   });
 
@@ -401,7 +424,8 @@ function documentContent(input: DocumentInput): ResponseInputContent[] {
         "처방전이라면 diagnoses는 빈 배열로 반환하세요.",
         "처방전이라면 표의 위쪽부터 약 한 행을 medications 한 항목으로 만들고 sourceRow를 1부터 순서대로 넣으세요. 진단서라면 medications는 빈 배열로 반환하세요.",
         "약품명·제품명은 productName, 성분명은 ingredientName에 넣으세요.",
-        "품목기준코드는 mfdsItemSeq, 보험코드는 insuranceCode에 숫자만 넣으세요. 두 코드를 서로 바꾸거나 하나로 합치지 마세요.",
+        "품목기준코드 또는 ITEM_SEQ라고 명시된 값만 mfdsItemSeq에 넣으세요. [급여], 보험, EDI 옆의 코드는 insuranceCode에만 넣고 mfdsItemSeq는 빈 문자열로 두세요.",
+        "문서에 숫자 코드가 하나만 보이면 같은 값을 두 코드 필드에 복사하지 마세요. 두 코드를 서로 바꾸거나 하나로 합치지 마세요.",
         "1회 투약량·복용량은 doseAmount, 1일 투여횟수는 frequency, 용법·복용방법은 timing에 원문대로 넣으세요.",
         "행별 투약일수·총 투여일수가 있으면 supplyDays에 양의 정수로 넣으세요. 확인할 수 없으면 0으로 쓰세요.",
         "처방전의 발행일을 prescriptionDate에 YYYY-MM-DD로 넣고, 확인할 수 없으면 빈 문자열로 쓰세요.",

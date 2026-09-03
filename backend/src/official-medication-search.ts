@@ -408,7 +408,7 @@ export async function verifyOfficialMedicationCode(
     const format = options.format ?? "json";
     const payload = await fetchOfficialPayload(endpoint, format, options.fetcher ?? fetch);
     const parsed = parseProductPermitResponse(payload, format, "product_name");
-    const item = parsed.items.find((candidate) => candidate.itemSeq === normalizedCode) ?? parsed.items[0];
+    const item = parsed.items.find((candidate) => candidate.itemSeq === normalizedCode);
     return item
       ? { status: "matched", item, sourceUrl: PRODUCT_SOURCE_URL }
       : { status: "not_found", sourceUrl: PRODUCT_SOURCE_URL };
