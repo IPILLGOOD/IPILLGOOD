@@ -138,6 +138,13 @@ export default async function DashboardPage() {
                       {question.priority === "today" ? "오늘 확인" : "다음 진료"}
                     </Badge>
                     <strong>{question.question}</strong>
+                    {question.status === "answered" ? (
+                      <p><strong>답변 완료:</strong> {question.answer}</p>
+                    ) : question.status === "resolved" ? (
+                      <p><strong>해결됨</strong></p>
+                    ) : question.status === "open" ? (
+                      <p><strong>아직 답하지 않음</strong></p>
+                    ) : null}
                     <p>{question.reason}</p>
                   </li>
                 ))}

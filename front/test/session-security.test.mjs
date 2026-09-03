@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  demoLoginAvailability,
   isDemoLoginAllowed,
   sessionSecretBytes,
 } from "../src/lib/auth/session-security.ts";
@@ -71,4 +72,15 @@ test("데모 로그인은 비운영 loopback 또는 격리 모드의 운영 허�
   ]) {
     assert.equal(isDemoLoginAllowed(environment), false);
   }
+});
+
+test("로컬 loopback에서 데모 모드가 빠지면 조치 가능한 원인을 반환한다", () => {
+  assert.deepEqual(
+    demoLoginAvailability({ hostname: "localhost", nodeEnv: "development" }),
+    { allowed: false, reason: "local_demo_mode_disabled" },
+  );
+  assert.deepEqual(
+    demoLoginAvailability({ hostname: "demo.example.com", nodeEnv: "production" }),
+    { allowed: false, reason: undefined },
+  );
 });

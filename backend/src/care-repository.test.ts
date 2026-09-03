@@ -17,6 +17,7 @@ import {
   MedicationDuplicateResolutionRequiredError,
   medicationPlansFromPrescription,
   getCareSnapshot,
+  projectClinicianQuestions,
   registerDocument,
   saveDocumentImportReview,
   updateRecipientProfile,
@@ -46,6 +47,72 @@ test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복�
   assert.deepEqual(first.symptomEvents, []);
   assert.deepEqual(first.documents, []);
   assert.notEqual(first.recipient.id, second.recipient.id);
+});
+
+test("실제 계정의 최신 질문 세트와 답변을 상담 질문 읽기 모델로 투영한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-question-read-model", firestore };
+  await consentedSnapshot(scope);
+  const questionSet = {
+    schema_version: "patient-question-set.v1" as const,
+    question_set_id: "question-set-google-question-read-model-20260831",
+    generated_at: "2026-08-31T00:00:00.000Z",
+    timezone: "Asia/Seoul" as const,
+    target_date: "2026-08-31",
+    subject_ref: scope.recipientId,
+    answerer: "caregiver" as const,
+    status: "ready" as const,
+    maximum_display_count: 3 as const,
+    questions: [{
+      question_id: "q-dizziness",
+      template_id: "recent-symptom-follow-up.v1",
+      category: "symptom_follow_up",
+      priority: "high" as const,
+      source_agents: ["care" as const],
+      trigger_refs: ["symptom-1"],
+      display: {
+        badge: "최근 기록",
+        caregiver_text: "오늘도 어지러움이 있었나요?",
+        recipient_text: "오늘 어지러웠나요?",
+        helper_text: "자가보고 기록을 확인하는 질문이에요.",
+      },
+      answer_type: "single_choice" as const,
+      options: [{ value: "present", label: "오늘도 있었어요" }],
+      options_source: null,
+      required: true,
+      allow_unknown: true,
+      follow_up_rules: [],
+      safety: { validation_status: "pass" as const, urgent_answer_values: [] },
+    }],
+    source_analysis_refs: ["analysis-1"],
+    safety_validation_ref: "patient-question-safety.v1",
+    input_revision: "revision-1",
+    prompt_version: "test",
+    generation_source: "safe_fallback" as const,
+    response_status: "answered" as const,
+    answered_at: "2026-08-31T01:00:00.000Z",
+  };
+  const response = {
+    schema_version: "patient-question-response.v1" as const,
+    response_id: "response-1",
+    question_set_id: questionSet.question_set_id,
+    subject_ref: scope.recipientId,
+    answered_by: "caregiver" as const,
+    answered_at: "2026-08-31T01:00:00.000Z",
+    timezone: "Asia/Seoul" as const,
+    responses: [{ question_id: "q-dizziness", answer: "present", skipped: false }],
+    triggered_by_response: [],
+    source_refs: [{ source_type: "patient_question_set" as const, source_id: questionSet.question_set_id }],
+  };
+  await firestore.collection(`careRecipients/${scope.recipientId}/questionSets`).doc(questionSet.question_set_id).set(questionSet);
+  await firestore.collection(`careRecipients/${scope.recipientId}/questionResponses`).doc(response.response_id).set(response);
+
+  const projected = projectClinicianQuestions(questionSet, response);
+  assert.equal(projected[0]?.status, "answered");
+  assert.equal(projected[0]?.answer, "오늘도 있었어요");
+  assert.equal(projected[0]?.evidenceLevel, "caregiver_reported");
+  assert.deepEqual(projected[0]?.triggerRefs, ["symptom-1"]);
+  assert.deepEqual((await getCareSnapshot(scope)).clinicianQuestions, projected);
 });
 
 test("오래된 revision으로 프로필을 저장하면 최신 변경을 덮어쓰지 않는다", async () => {
@@ -125,7 +192,7 @@ test("부분 commit 실패는 문서와 read model을 모두 보존하며 canoni
   assert.equal((await getCareSnapshot(scope)).documents[0]?.id, "kept");
 });
 
-test("당일 체크인은 read model에서 같은 날짜 기록을 교체하고 과거 기록을 보존한다", () => {
+test("당일 증상 정정은 기존 관찰을 삭제하지 않고 정정 연결과 과거 기록을 보존한다", () => {
   const update = applyDailyCheckInToSnapshot(
     snapshot,
     {
@@ -139,13 +206,21 @@ test("당일 체크인은 read model에서 같은 날짜 기록을 교체하고 
       symptoms: ["두통"],
       severity: 3,
       note: "오후에는 괜찮아졌어요.",
-      answeredBy: "caregiver",
+      actorId: "google:caregiver-1",
+      actorRole: "caregiver",
+      evidenceLevel: "caregiver_observed",
+      inputSource: "daily_check_in",
+      idempotencyKey: "checkin-20260816-first",
+      correctionReason: "어르신에게 다시 확인함",
+      scope: "full",
     },
     new Date("2026-08-16T06:30:00.000Z"),
   );
 
   assert.equal(update.checkIn.id, "2026-08-16");
-  assert.deepEqual(update.replacedSymptomEvents.map((event) => event.id), ["symptom-0816"]);
+  assert.deepEqual(update.replacedSymptomEvents, []);
+  assert.equal(update.symptomObservations.some((event) => event.inputSource === "legacy_import"), true);
+  assert.equal(update.symptomObservations.some((event) => event.status === "retracted" && event.supersedesObservationId), true);
   assert.equal(update.nextSnapshot.symptomEvents.some((event) => event.id === "symptom-0816"), false);
   assert.equal(update.nextSnapshot.symptomEvents.some((event) => event.id === "symptom-0815"), true);
   assert.equal(update.nextSnapshot.symptomEvents[0]?.symptomType, "두통");
@@ -164,7 +239,12 @@ test("같은 복약 체크인을 다시 저장해도 read model에 중복 이벤
     symptoms: [],
     severity: 0,
     note: "",
-    answeredBy: "recipient" as const,
+    actorId: "google:recipient-1",
+    actorRole: "recipient" as const,
+    evidenceLevel: "self_reported" as const,
+    inputSource: "daily_check_in" as const,
+    idempotencyKey: "checkin-20260816-retry",
+    scope: "full" as const,
   };
   const now = new Date("2026-08-16T07:00:00.000Z");
   const first = applyDailyCheckInToSnapshot(snapshot, input, now);
@@ -196,6 +276,63 @@ test("기존 문서 삭제와 새 문서 등록의 동시 요청에서 새 데�
   const stale = await getCareSnapshot(scope);
   await Promise.all([deleteDocument(scope, "old", stale), registerDocument(scope, upload("new"))]);
   assert.deepEqual((await getCareSnapshot(scope)).documents.map((item) => item.id), ["new"]);
+});
+
+test("문서 삭제는 연결된 질문·분석·Agent 흔적을 원자적으로 정리하고 체크인 사실만 보존한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-document-cascade", firestore };
+  await consentedSnapshot(scope);
+  await registerDocument(scope, upload("cascade"));
+  const recipient = `careRecipients/${scope.recipientId}`;
+  const rows: Array<[string, string, Record<string, unknown>]> = [
+    ["questionSets", "question-delete", { sourceDocumentIds: ["cascade"] }],
+    ["questionSets", "question-keep", { sourceDocumentIds: ["other"] }],
+    ["questionResponses", "response-delete", { question_set_id: "question-delete", answer: "민감 응답" }],
+    ["careAnalyses", "analysis-delete", { sourceDocumentIds: ["cascade"], summary: "민감 분석" }],
+    ["agentRuns", "run-delete", { sourceDocumentIds: ["cascade"], outputRef: "analysis-delete" }],
+    ["questionGenerations", "generation-delete", { sourceDocumentIds: ["cascade"] }],
+    ["questionGenerationAttempts", "attempt-delete", { generationId: "generation-delete" }],
+    ["documentAnalysisJobs", "job-delete", { contentHash: "cascade", fileName: "민감한-처방전.pdf" }],
+    ["documentImportRequests", "request-delete", { contentHash: "cascade", documentId: "cascade" }],
+    ["documentImportReviews", "review-delete", { contentHash: "cascade", analysis: { summary: "민감" } }],
+    ["medicationPlanDrafts", "draft-delete", { documentId: "cascade" }],
+    ["medicationDraftConfirmations", "confirmation-delete", { draftId: "draft-delete" }],
+    ["clinicianQuestions", "clinician-delete", { sourceQuestionSetId: "question-delete" }],
+    ["dailyCheckIns", "2026-08-31", {
+      id: "2026-08-31",
+      completedAt: "2026-08-31T01:00:00.000Z",
+      completedBy: "recipient",
+      medicationResponses: [],
+      symptoms: ["어지러움"],
+      note: "사실 기록",
+      questionSetId: "question-delete",
+      questionResponseId: "response-delete",
+    }],
+  ];
+  for (const [collection, id, value] of rows) {
+    await firestore.collection(`${recipient}/${collection}`).doc(id).set(value);
+  }
+  const before = await getCareSnapshot(scope);
+
+  firestore.failCommits = 1;
+  await assert.rejects(deleteDocument(scope, "cascade", before), /INJECTED_COMMIT_FAILURE/);
+  assert.equal(firestore.store.has(`${recipient}/clinicalDocuments/cascade`), true);
+  assert.equal(firestore.store.has(`${recipient}/questionSets/question-delete`), true);
+
+  await deleteDocument(scope, "cascade", before);
+  for (const [collection, id] of rows.filter(([collection, id]) =>
+    !(collection === "questionSets" && id === "question-keep") && collection !== "dailyCheckIns")) {
+    assert.equal(firestore.store.has(`${recipient}/${collection}/${id}`), false, `${collection}/${id}`);
+  }
+  assert.equal(firestore.store.has(`${recipient}/questionSets/question-keep`), true);
+  const retainedCheckIn = firestore.store.get(`${recipient}/dailyCheckIns/2026-08-31`) as Record<string, unknown>;
+  assert.deepEqual(retainedCheckIn.symptoms, ["어지러움"]);
+  assert.equal("questionSetId" in retainedCheckIn, false);
+  assert.equal("questionResponseId" in retainedCheckIn, false);
+  const receipt = firestore.store.get(`${recipient}/documentDeletionReceipts/cascade`) as Record<string, unknown>;
+  assert.equal(receipt.status, "completed");
+  assert.equal(JSON.stringify(receipt).includes("민감"), false);
+  assert.deepEqual((await getCareSnapshot(scope)).documents, []);
 });
 
 test("복약 확정과 알림 복구 작업은 같은 commit에 저장되고 실패 시 둘 다 남지 않는다", async () => {
@@ -259,6 +396,11 @@ test("처방일과 총 투약일수로 종료일을 계산해 경계 날짜에�
   assert.equal(medications[0]?.startDate, "2026-08-16");
   assert.equal(medications[0]?.endDate, "2026-08-20");
   assert.equal(medications[0]?.frequency, "하루 2회");
+  assert.deepEqual(medications[0]?.recurrence, {
+    kind: "daily",
+    count: 2,
+    source: "하루 2회",
+  });
   assert.equal(medications[0]?.sourceDocumentId, "doc-rx-1");
   assert.equal(medications[0]?.status, "active");
   assert.equal(createMedicationSchedule(medications, [], new Date("2026-08-15T23:00:00Z")).length, 2);

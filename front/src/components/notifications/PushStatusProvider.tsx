@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { disablePushNotifications, enablePushNotifications, type PushClientState } from "@/lib/push/client";
+import { PUSH_LOGOUT_EVENT } from "@/lib/push/browser-cleanup";
 import { createPushRefresher } from "@/lib/push/auto-reconnect";
 import { detectPushEnvironment, isStandalonePwa, shouldShowPushNotificationSection } from "@/lib/push/environment";
 import { observePushReentry } from "@/lib/push/refresh-lifecycle";
@@ -19,7 +20,7 @@ type PushStatus = {
 };
 const PushContext = createContext<PushStatus | null>(null);
 
-export function PushStatusProvider({ children, enabled }: { children: React.ReactNode; enabled: boolean }) {
+export function PushStatusProvider({ children, enabled, sessionKey }: { children: React.ReactNode; enabled: boolean; sessionKey: string }) {
   const pathname = usePathname();
   const [client, setClient] = useState<PushClientState | null>(null);
   const [error, setError] = useState("");
@@ -31,7 +32,7 @@ export function PushStatusProvider({ children, enabled }: { children: React.Reac
   const mutation = useRef(false);
   const mutationAbort = useRef<AbortController | null>(null);
   const refreshAbort = useRef<AbortController | null>(null);
-  const refreshClient = useRef(createPushRefresher());
+  const refreshClient = useRef(createPushRefresher(Date.now, sessionKey));
 
   const refresh = useCallback(async () => {
     if (!enabled || !alive.current || mutation.current || document.visibilityState !== "visible") return;
@@ -62,8 +63,10 @@ export function PushStatusProvider({ children, enabled }: { children: React.Reac
   useEffect(() => {
     generation.current++;
     alive.current = true;
+    const stopForLogout = () => { alive.current = false; generation.current++; refreshAbort.current?.abort(); mutationAbort.current?.abort(); };
+    window.addEventListener(PUSH_LOGOUT_EVENT, stopForLogout);
     const stop = observePushReentry(() => { queueMicrotask(() => { void refresh(); }); }, document, window, window.matchMedia("(display-mode: standalone)"));
-    return () => { alive.current = false; inFlight.current = null; refreshAbort.current?.abort(); mutationAbort.current?.abort(); stop(); };
+    return () => { window.removeEventListener(PUSH_LOGOUT_EVENT, stopForLogout); alive.current = false; inFlight.current = null; refreshAbort.current?.abort(); mutationAbort.current?.abort(); stop(); };
   }, [refresh]);
 
   useEffect(() => {
@@ -84,8 +87,8 @@ export function PushStatusProvider({ children, enabled }: { children: React.Reac
     await inFlight.current;
     try {
       controller.signal.throwIfAborted();
-      if (action === "enable") await enablePushNotifications(controller.signal);
-      else await disablePushNotifications(controller.signal);
+      if (action === "enable") await enablePushNotifications(controller.signal, sessionKey);
+      else await disablePushNotifications(controller.signal, sessionKey);
     } catch {
       if (alive.current) setError("알림 연결 변경을 완료하지 못했어요. 상태를 다시 확인한 뒤 재시도해 주세요.");
       return;

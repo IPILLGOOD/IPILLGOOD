@@ -39,6 +39,19 @@ async function reportDeliveryReceipt(deliveryId, receipt) {
   }
 }
 
+async function mayDisplayPush(data) {
+  if (!data?.subscriptionId || !data?.bindingId) return false;
+  try {
+    const response = await fetch("/api/push/authorize", {
+      method: "POST", credentials: "same-origin", cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ subscriptionId: data.subscriptionId, bindingId: data.bindingId }),
+    });
+    return response.status === 204;
+  } catch { return false; }
+}
+
 self.addEventListener("push", (event) => {
   let payload = {};
   try {
@@ -54,6 +67,7 @@ self.addEventListener("push", (event) => {
   };
   event.waitUntil(
     (async () => {
+      if (!await mayDisplayPush(data)) return;
       await self.registration.showNotification(title, {
         body: payload.body || "오늘의 돌봄 일정을 확인해 주세요.",
         icon: payload.icon || "/icons/pwa-192.png",
@@ -75,6 +89,7 @@ self.addEventListener("notificationclick", (event) => {
   const targetUrl = safeAppUrl(data.url);
   event.waitUntil(
     (async () => {
+      if (!await mayDisplayPush(data)) return;
       await reportDeliveryReceipt(data.deliveryId, "clicked");
       const windows = await self.clients.matchAll({
         type: "window",

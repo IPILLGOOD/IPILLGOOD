@@ -8,6 +8,7 @@ export {
   getCareRevision,
   getMedicationPlanDraft,
   getCareSnapshot,
+  getObservationHistory,
   rebuildCareReadModel,
   getPatientQuestionResponse,
   getPatientQuestionSet,
@@ -17,6 +18,7 @@ export {
   registerDocument,
   saveDocumentImportReview,
   saveDailyCheckIn,
+  saveWellbeingCheckIn,
   updateRecipientProfile,
   type CareDataScope,
   type DocumentImportReview,
@@ -28,6 +30,17 @@ export {
   CareConflictError,
   MedicationDuplicateResolutionRequiredError,
 } from "./care-repository";
+export {
+  advanceDocumentAnalysisJob,
+  assertDocumentAnalysisJobActive,
+  getDocumentAnalysisJob,
+  requestDocumentAnalysisJobCancellation,
+  startDocumentAnalysisJob,
+  DocumentAnalysisCancelledError,
+  type DocumentAnalysisJob,
+  type DocumentAnalysisJobResult,
+  type DocumentAnalysisJobState,
+} from "./document-analysis-jobs";
 export {
   DEMO_SESSION_DURATION_SECONDS,
   DEMO_SESSION_CLEANUP_GRACE_SECONDS,
@@ -54,14 +67,19 @@ export {
   createMedicationSchedule,
   dateKeyInTimeZone,
   isMedicationDueOnDate,
+  isScheduledMedicationRecurrence,
   medicationFrequencyRule,
   medicationTimingSlots,
   nextMedicationDueAt,
+  normalizeMedicationRecurrence,
   timeForMedicationSlot,
   type MedicationReminderSchedule,
   type MedicationScheduleTask,
+  type ScheduledMedicationRecurrence,
 } from "./medication-schedule";
 export {
+  activatePushSubscription,
+  authorizePushDisplay,
   deactivatePushSubscription,
   deactivatePushSubscriptionsForUser,
   dispatchDueMedicationReminders,
@@ -177,11 +195,14 @@ export type {
   DailyCheckIn,
   DocumentAnalysis,
   DoseEvent,
+  DoseObservation,
   DoseResponse,
   DiseaseInformation,
   DiseaseLookupStatus,
   DiseaseReference,
   MedicationPlan,
+  MedicationRecurrence,
+  MedicationWeekday,
   MedicationDraftState,
   MedicationDraftTransition,
   MedicationPlanCandidate,
@@ -198,8 +219,21 @@ export type {
   QuestionAnswerType,
   QuestionPriority,
   SymptomEvent,
+  SymptomObservation,
+  ObservationActorRole,
+  ObservationEvidence,
+  ObservationInputSource,
   SupplementIntake,
 } from "./types";
+export {
+  applyObservationCheckIn,
+  doseOccurrenceKey,
+  projectDoseObservations,
+  projectSymptomObservations,
+  symptomOccurrenceKey,
+  type ObservationCheckInInput,
+  type ObservationCheckInScope,
+} from "./observations";
 export {
   buildNutritionInsights,
   conditionFromDiagnosis,
@@ -239,3 +273,12 @@ export {
   isServiceHealthDataConsentConfirmed,
 } from "./health-data-consent";
 export { deleteRecipientHealthData, verifyRecipientHealthDataDeleted } from "./health-data-deletion";
+export {
+  getHealthDataReset,
+  processHealthDataReset,
+  publicHealthDataReset,
+  requestHealthDataReset,
+  type HealthDataReset,
+  type HealthDataResetStage,
+  type HealthDataResetStatus,
+} from "./health-data-reset";

@@ -4,7 +4,7 @@ export type CheckInActionState = ActionState & { recoverQuestions?: boolean };
 export type CheckInDraft = Record<string, string[]>;
 
 export function changeDraft(draft: CheckInDraft, name: string, value: string, checked?: boolean): CheckInDraft {
-  if (!/^(answeredBy|symptoms|severity|note|dose_[\w-]+|question_[\w-]+)$/.test(name)) return draft;
+  if (!/^(reportSource|symptoms|severity|note|correctionReason|dose_[\w-]+|question_[\w-]+)$/.test(name)) return draft;
   return { ...draft, [name]: checked === undefined ? [value] : checked
     ? [...new Set([...(draft[name] ?? []), value])]
     : (draft[name] ?? []).filter((entry) => entry !== value) };

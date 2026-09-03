@@ -1,5 +1,5 @@
 import { dateKeyInSeoul, seoulDateRange } from "@care-atlas/backend/dates";
-import type { DoseEvent, MedicationPlan, SymptomEvent } from "@care-atlas/backend";
+import type { DoseEvent, MedicationPlan, ObservationEvidence, SymptomEvent } from "@care-atlas/backend";
 
 type Records = {
   medications: MedicationPlan[];
@@ -39,6 +39,28 @@ export function uniqueSymptomDays(events: SymptomEvent[]) {
   return new Set(events.map((event) => dateKeyInSeoul(event.occurredAt))).size;
 }
 
+export function observationEvidenceLabel(evidence: ObservationEvidence | undefined, role?: "caregiver" | "recipient") {
+  const value = evidence ?? (role === "recipient" ? "self_reported" : "caregiver_observed");
+  return {
+    self_reported: "어르신 자가보고",
+    caregiver_observed: "보호자 직접 관찰",
+    relayed_confirmation: "보호자가 전달받아 확인",
+    unconfirmed: "확인 불가",
+  }[value];
+}
+
+export function observationEvidenceCounts(events: Array<DoseEvent | SymptomEvent>) {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    const role = "answeredBy" in event
+      ? event.answeredBy
+      : event.actorRole ?? (event.reporterType === "recipient_reported" ? "recipient" : "caregiver");
+    const label = observationEvidenceLabel(event.evidenceLevel, role);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts].map(([label, count]) => ({ label, count }));
+}
+
 export function careTimelineItems(medications: MedicationPlan[], symptoms: SymptomEvent[]) {
   const items = [
     ...medications.filter((medication) => medication.isNew).map((medication) => ({
@@ -51,7 +73,7 @@ export function careTimelineItems(medications: MedicationPlan[], symptoms: Sympt
       id: `symptom-${symptom.id}`,
       date: symptom.occurredAt,
       title: `${symptom.symptomType} ${symptom.severity}/10 기록`,
-      detail: symptom.dailyLifeImpact,
+      detail: `${observationEvidenceLabel(symptom.evidenceLevel, symptom.actorRole ?? (symptom.reporterType === "recipient_reported" ? "recipient" : "caregiver"))} · ${symptom.dailyLifeImpact}`,
     })),
   ];
   const timestamp = (value: string) => Date.parse(

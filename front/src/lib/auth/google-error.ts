@@ -16,6 +16,10 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   "auth/invalid-api-key": "Google 로그인 앱 설정이 올바르지 않아요. 관리자에게 알려주세요.",
   "server/google_login_failed":
     "Google 계정은 확인했지만 로그인 세션을 만들지 못했어요. 잠시 후 다시 시도해주세요.",
+  "server/firebase_local_emulator_unavailable":
+    "로컬 인증 서버에 연결하지 못했어요. 프로젝트 루트에서 npm run dev:local을 다시 실행해주세요.",
+  "server/firebase_server_permission":
+    "서버의 Firebase 접근 권한이 부족해요. 개발자는 로컬 Emulator 실행 또는 ADC 권한을 확인해주세요.",
   "server/session_timeout":
     "로그인 세션 생성이 늦어지고 있어요. 네트워크를 확인하고 다시 시도해주세요.",
 };

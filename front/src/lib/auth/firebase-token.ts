@@ -3,6 +3,12 @@ import "server-only";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { getFirebaseAccountAdmin, getAccountSessionState } from "@care-atlas/backend";
 
+import { localFirebaseAuthEmulator } from "./firebase-emulator-config.ts";
+import {
+  verifyFirebaseEmulatorGoogleIdToken,
+  type FirebaseGoogleClaims,
+} from "./firebase-emulator-token.ts";
+
 const FIREBASE_PROJECT_ID =
   process.env.FIREBASE_PROJECT_ID ?? "care-atlas-seoul-2026-v2";
 const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
@@ -12,24 +18,25 @@ const FIREBASE_JWKS = createRemoteJWKSet(
   ),
 );
 
-type FirebaseClaims = {
-  auth_time?: number;
-  email?: string;
-  email_verified?: boolean;
-  name?: string;
-  picture?: string;
-  firebase?: {
-    sign_in_provider?: string;
-  };
-};
-
 export async function verifyFirebaseGoogleIdToken(idToken: string, options: { recoverySignIn?: boolean } = {}) {
-  const { payload } = await jwtVerify(idToken, FIREBASE_JWKS, {
-    algorithms: ["RS256"],
-    audience: FIREBASE_PROJECT_ID,
-    issuer: FIREBASE_ISSUER,
+  const emulator = localFirebaseAuthEmulator({
+    authHost: process.env.FIREBASE_AUTH_EMULATOR_HOST,
+    firestoreHost: process.env.FIRESTORE_EMULATOR_HOST,
+    nodeEnv: process.env.NODE_ENV,
+    projectId: FIREBASE_PROJECT_ID,
   });
-  const claims = payload as typeof payload & FirebaseClaims;
+  const claims = emulator
+    ? await verifyFirebaseEmulatorGoogleIdToken(idToken, {
+        authHost: process.env.FIREBASE_AUTH_EMULATOR_HOST,
+        firestoreHost: process.env.FIRESTORE_EMULATOR_HOST,
+        nodeEnv: process.env.NODE_ENV,
+        projectId: FIREBASE_PROJECT_ID,
+      })
+    : (await jwtVerify(idToken, FIREBASE_JWKS, {
+        algorithms: ["RS256"],
+        audience: FIREBASE_PROJECT_ID,
+        issuer: FIREBASE_ISSUER,
+      })).payload as FirebaseGoogleClaims;
 
   if (
     !claims.sub ||

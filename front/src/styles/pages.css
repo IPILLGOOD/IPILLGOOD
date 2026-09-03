@@ -1814,6 +1814,25 @@
   font-size: 0.75rem;
 }
 
+.report-evidence-summary {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.report-evidence-summary p {
+  margin: 0;
+}
+
+.report-evidence-summary strong {
+  margin-right: var(--space-2);
+  color: var(--color-primary-900);
+}
+
 .safety-strip {
   border-left: 4px solid var(--color-warning);
   margin-top: var(--space-5);
@@ -2975,6 +2994,21 @@
 
 .account-deletion-entry {
   color: var(--color-danger);
+}
+.health-data-reset-card {
+  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
+}
+.health-data-reset-entry {
+  color: var(--color-danger);
+}
+.health-data-reset-account-option span {
+  display: grid;
+  gap: var(--space-1);
+}
+.health-data-reset-account-option small {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  line-height: 1.6;
 }
 .account-deletion-button {
   background: var(--color-danger);

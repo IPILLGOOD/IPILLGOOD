@@ -4,6 +4,7 @@ import { getAccountDeletion, isServiceCareProfileComplete } from "@care-atlas/ba
 import { cookies } from "next/headers";
 
 import { verifyFirebaseGoogleIdToken } from "@/lib/auth/firebase-token";
+import { googleLoginFailure } from "@/lib/auth/google-login-diagnostic";
 import { createSession, deleteSession } from "@/lib/auth/session";
 import { setAccountRecoverySession } from "@/lib/auth/account-recovery-session";
 import { DELETION_RECEIPT_COOKIE } from "@/lib/auth/account-deletion-receipt";
@@ -41,7 +42,12 @@ export async function POST(request: Request) {
     return NextResponse.json({
       redirectTo: profileComplete ? "/today" : "/profile?onboarding=1",
     });
-  } catch {
-    return NextResponse.json({ error: "google_login_failed" }, { status: 401 });
+  } catch (error) {
+    const failure = googleLoginFailure(error, {
+      authEmulatorHost: process.env.FIREBASE_AUTH_EMULATOR_HOST,
+      nodeEnv: process.env.NODE_ENV,
+    });
+    if (failure.logMessage) console.error(failure.logMessage);
+    return NextResponse.json({ error: failure.clientCode }, { status: failure.status });
   }
 }

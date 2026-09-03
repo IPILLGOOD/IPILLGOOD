@@ -8,7 +8,7 @@ import {
   advanceMedicationReminderSchedule,
   type MedicationReminderSchedule,
 } from "./medication-schedule.ts";
-import { medicationPlanRevision, syncMedicationReminderSchedules } from "./reminder-reconciliation.ts";
+import { medicationPlanRevision, syncMedicationReminderSchedules, syncMedicationReminderSchedulesInTransaction, REMINDER_SYNC_COLLECTION } from "./reminder-reconciliation.ts";
 export { syncMedicationReminderSchedules } from "./reminder-reconciliation.ts";
 import type { MedicationPlan } from "./types.ts";
 import { stableJson } from "./stable-json.ts";
@@ -38,6 +38,10 @@ export interface PushSubscriptionRecord {
   createdAt: string;
   updatedAt: string;
   lastSeenAt: string;
+  /** A prepared browser registration cannot send until its cookie is acknowledged. */
+  pendingActivation?: boolean;
+  bindingId?: string;
+  sessionKey?: string;
   lastDeliveryAt?: string;
   lastFailureAt?: string;
   lastHttpStatus?: number;
@@ -121,6 +125,9 @@ export async function registerPushSubscription(input: {
   subscription: BrowserPushSubscription;
   medications: MedicationPlan[];
   onlyIfActive?: boolean;
+  deferActivation?: boolean;
+  bindingId?: string;
+  sessionKey?: string;
   now?: Date;
   firestore?: FirestoreLike;
 }) {
@@ -129,39 +136,68 @@ export async function registerPushSubscription(input: {
   const nowIso = now.toISOString();
   const id = stableId(input.userId, input.deviceId);
   const ref = subscriptionRef(firestore, id);
-  const record = await firestore.runTransaction(async (tx) => {
+  return firestore.runTransaction(async (tx) => {
     await assertCareAccountActive(firestore, input.recipientId, tx);
-    const [existing, sameDevice] = await Promise.all([
+    const [existing, sameDevice, sameEndpoint, recipientSubscriptions] = await Promise.all([
       tx.get(ref), tx.get(firestore.collection(SUBSCRIPTIONS_COLLECTION).where("deviceId", "==", input.deviceId)),
+      tx.get(firestore.collection(SUBSCRIPTIONS_COLLECTION).where("subscription.endpoint", "==", input.subscription.endpoint)),
+      tx.get(firestore.collection(SUBSCRIPTIONS_COLLECTION).where("recipientId", "==", input.recipientId)),
     ]);
     const current = existing.data() as PushSubscriptionRecord | undefined;
-    // A background repair must not revive an opt-out that happened after the client checked.
-    if (input.onlyIfActive && (!current?.active || current.userId !== input.userId || current.recipientId !== input.recipientId)) return null;
-    for (const doc of sameDevice.docs) {
-      if (doc.id !== id && (doc.data() as PushSubscriptionRecord).active) tx.set(doc.ref, { active: false, updatedAt: nowIso }, { merge: true });
+    // Background repair may resume a prepared registration, but never an opt-out or another session.
+    if (input.onlyIfActive && (!(current?.active || current?.pendingActivation) || current.userId !== input.userId
+      || current.recipientId !== input.recipientId || (input.sessionKey && current.sessionKey !== input.sessionKey))) {
+      return { record: null, schedules: [], status: null };
     }
-    if (current?.active && current.recipientId === input.recipientId && stableJson(current.subscription) === stableJson(input.subscription)) {
-      if (now.getTime() - Date.parse(current.lastSeenAt) >= 6 * 60 * 60 * 1000) tx.set(ref, { lastSeenAt: nowIso }, { merge: true });
-      return current;
-    }
+    const replaced = new Map([...sameDevice.docs, ...sameEndpoint.docs].filter((doc) => doc.id !== id).map((doc) => [doc.id, doc]));
     const next: PushSubscriptionRecord = {
       id, userId: input.userId, recipientId: input.recipientId, deviceId: input.deviceId,
       platform: input.platform, browser: input.browser, userAgent: input.userAgent.slice(0, 512),
-      timeZone: input.timeZone, subscription: input.subscription, active: true,
+      timeZone: input.timeZone, subscription: input.subscription, active: !input.deferActivation,
+      pendingActivation: Boolean(input.deferActivation),
+      ...(input.bindingId ? { bindingId: input.bindingId } : {}),
+      ...(input.sessionKey ? { sessionKey: input.sessionKey } : {}),
       createdAt: current?.createdAt ?? nowIso, updatedAt: nowIso, lastSeenAt: nowIso,
     };
+    const activeCount = recipientSubscriptions.docs.filter((doc) => doc.id !== id && !replaced.has(doc.id)
+      && (doc.data() as PushSubscriptionRecord).active).length + Number(next.active);
+    // Preparing a replacement must not end the existing schedule and lose its final grace-window occurrence.
+    const schedules = input.deferActivation ? [] : await syncMedicationReminderSchedulesInTransaction({
+      recipientId: input.recipientId, firestore, now, tx, hasActiveSubscription: activeCount > 0,
+    });
+    for (const doc of replaced.values()) {
+      const previous = doc.data() as PushSubscriptionRecord;
+      if (previous.active || previous.pendingActivation) tx.set(doc.ref, { active: false, pendingActivation: false, updatedAt: nowIso }, { merge: true });
+    }
     tx.set(ref, next);
-    return next;
+    return { record: next, schedules, status: input.deferActivation ? null : scheduleStatus(activeCount, schedules) };
   });
+}
 
-  if (!record) return { record: null, schedules: [] };
-  const schedules = await syncMedicationReminderSchedules({
-    recipientId: input.recipientId,
-    medications: input.medications,
-    now,
-    firestore,
+function scheduleStatus(activeSubscriptionCount: number, schedules: MedicationReminderSchedule[]): NotificationScheduleStatus {
+  const active = schedules.filter((schedule) => schedule.status === "active").sort((a, b) => a.nextDueAt.localeCompare(b.nextDueAt));
+  return { activeSubscriptionCount, activeScheduleCount: active.length, nextReminderAt: active[0]?.nextDueAt ?? null };
+}
+
+export async function activatePushSubscription(input: {
+  userId: string; recipientId: string; deviceId: string; bindingId: string; sessionKey: string; firestore?: FirestoreLike; now?: Date;
+}) {
+  const firestore = input.firestore ?? await getAdminFirestore();
+  const now = input.now ?? new Date();
+  const ref = subscriptionRef(firestore, stableId(input.userId, input.deviceId));
+  return firestore.runTransaction(async (tx) => {
+    await assertCareAccountActive(firestore, input.recipientId, tx);
+    const [doc, subscriptions] = await Promise.all([
+      tx.get(ref), tx.get(firestore.collection(SUBSCRIPTIONS_COLLECTION).where("recipientId", "==", input.recipientId)),
+    ]);
+    const current = doc.data() as PushSubscriptionRecord | undefined;
+    if (!current || current.userId !== input.userId || current.recipientId !== input.recipientId
+      || current.bindingId !== input.bindingId || current.sessionKey !== input.sessionKey || (!current.active && !current.pendingActivation)) return null;
+    const count = subscriptions.docs.filter((row) => row.id !== ref.id && (row.data() as PushSubscriptionRecord).active).length + 1;
+    const schedules = await syncMedicationReminderSchedulesInTransaction({ recipientId: input.recipientId, firestore, now, tx, hasActiveSubscription: true });
+    tx.set(ref, { active: true, pendingActivation: false, updatedAt: now.toISOString() }, { merge: true });
+    return scheduleStatus(count, schedules);
   });
-  return { record, schedules };
 }
 
 async function deactivateSchedulesIfUnused(
@@ -175,6 +211,7 @@ async function deactivateSchedulesIfUnused(
 export async function deactivatePushSubscription(input: {
   userId: string;
   deviceId: string;
+  bindingId?: string;
   now?: Date;
   firestore?: FirestoreLike;
 }) {
@@ -186,12 +223,15 @@ export async function deactivatePushSubscription(input: {
     const existing = await tx.get(ref);
     if (!existing.exists) return null;
     const current = existing.data() as PushSubscriptionRecord;
-    if (!await isCareAccountActive(firestore, current.recipientId, tx)) return null;
-    tx.set(ref, { active: false, updatedAt: now.toISOString() }, { merge: true });
+    if (current.userId !== input.userId || (input.bindingId && current.bindingId !== (input.bindingId === "legacy" ? undefined : input.bindingId))) return null;
+    const accountActive = await isCareAccountActive(firestore, current.recipientId, tx);
+    tx.set(ref, { active: false, pendingActivation: false, updatedAt: now.toISOString() }, { merge: true });
+    if (accountActive) tx.set(firestore.collection(REMINDER_SYNC_COLLECTION).doc(current.recipientId), {
+      recipientId: current.recipientId, status: "pending", attempts: 0, queuedAt: now.toISOString(), nextAttemptAt: now.toISOString(),
+    }, { merge: true });
     return current;
   });
   if (!record) return false;
-  await deactivateSchedulesIfUnused(firestore, record.recipientId, now);
   return true;
 }
 
@@ -206,15 +246,15 @@ export async function deactivatePushSubscriptionsForUser(input: {
   const rows = await firestore.collection(SUBSCRIPTIONS_COLLECTION).where("userId", "==", input.userId).get();
   const targets = rows.docs.filter((doc) => {
     const value = doc.data() as PushSubscriptionRecord;
-    return value.recipientId === input.recipientId && value.active;
+    return value.recipientId === input.recipientId && (value.active || value.pendingActivation);
   });
   if (!targets.length) return 0;
   await firestore.runTransaction(async (tx) => {
     const current = await Promise.all(targets.map((doc) => tx.get(doc.ref)));
     for (const document of current) {
       const value = document.data() as PushSubscriptionRecord | undefined;
-      if (value?.userId === input.userId && value.recipientId === input.recipientId && value.active) {
-        tx.set(document.ref, { active: false, updatedAt: now.toISOString() }, { merge: true });
+      if (value?.userId === input.userId && value.recipientId === input.recipientId && (value.active || value.pendingActivation)) {
+        tx.set(document.ref, { active: false, pendingActivation: false, updatedAt: now.toISOString() }, { merge: true });
       }
     }
   });
@@ -251,7 +291,7 @@ async function updateSubscriptionAfterDelivery(
     const ref = subscriptionRef(firestore, subscription.id);
     const current = (await tx.get(ref)).data() as PushSubscriptionRecord | undefined;
     // A deleted or replaced subscription must not be recreated or disabled by an old send result.
-    if (!current || stableJson(current.subscription) !== stableJson(subscription.subscription)) return;
+    if (!current || current.bindingId !== subscription.bindingId || stableJson(current.subscription) !== stableJson(subscription.subscription)) return;
     tx.set(ref,
     result.ok
       ? {
@@ -282,7 +322,7 @@ export async function sendTestPushToDevice(input: {
   const snapshot = await subscriptionRef(firestore, id).get();
   if (!snapshot.exists) return null;
   const subscription = snapshot.data() as PushSubscriptionRecord;
-  if (!subscription.active) return null;
+  if (!subscription.active || subscription.userId !== input.userId || subscription.recipientId !== input.recipientId) return null;
   const now = input.now ?? new Date();
   const deliveryId = stableId("test", input.userId, input.deviceId, now.toISOString());
   const deliveryRef = firestore.collection(DELIVERIES_COLLECTION).doc(deliveryId);
@@ -313,6 +353,8 @@ export async function sendTestPushToDevice(input: {
         url: `/today?notification=test&delivery=${encodeURIComponent(deliveryId)}`,
         type: "test",
         deliveryId,
+        subscriptionId: subscription.id,
+        bindingId: subscription.bindingId ?? "",
       },
     },
     {
@@ -427,6 +469,7 @@ function reminderPayload(
   schedule: MedicationReminderSchedule,
   deliveryId: string,
   now: Date,
+  subscription: PushSubscriptionRecord,
 ): WebPushNotificationPayload {
   return {
     title: "복약 시간을 확인해 주세요",
@@ -440,6 +483,8 @@ function reminderPayload(
       url: `/today?reminder=${encodeURIComponent(deliveryId)}`,
       type: "medication-reminder",
       deliveryId,
+      subscriptionId: subscription.id,
+      bindingId: subscription.bindingId ?? "",
     },
   };
 }
@@ -494,7 +539,7 @@ export async function dispatchDueMedicationReminders(input: {
           result = { ok: false, status: 0, expired: false, responseBody: "" };
         } else {
           try {
-            result = await withCareAccountProcessing(schedule.recipientId, () => sender(allowed.subscription, reminderPayload(schedule, claim.id, now), {
+            result = await withCareAccountProcessing(schedule.recipientId, () => sender(allowed.subscription, reminderPayload(schedule, claim.id, now, allowed), {
               vapid: input.vapid, ttlSeconds: Math.max(1, Math.ceil((Date.parse(schedule.nextDueAt) + 30 * 60 * 1000 - sendNow.getTime()) / 1000)),
               urgency: "high", topic: stableId(schedule.id).slice(0, 32),
             }), firestore);
@@ -564,16 +609,28 @@ export async function getPushDeviceStatus(input: { userId: string; recipientId: 
   return (await getPushDeviceHealth(input)).subscribed;
 }
 
-export async function getPushDeviceHealth(input: { userId: string; recipientId: string; deviceId: string; firestore?: FirestoreLike }) {
+export async function getPushDeviceHealth(input: { userId: string; recipientId: string; deviceId: string; sessionKey?: string; bindingId?: string; firestore?: FirestoreLike }) {
   const firestore = input.firestore ?? await getAdminFirestore();
   const doc = await subscriptionRef(firestore, stableId(input.userId, input.deviceId)).get();
   const record = doc.data() as PushSubscriptionRecord | undefined;
-  if (!record?.active || record.userId !== input.userId || record.recipientId !== input.recipientId) {
+  if (!(record?.active || record?.pendingActivation) || record.userId !== input.userId || record.recipientId !== input.recipientId || (input.sessionKey && record.sessionKey !== input.sessionKey) || (input.bindingId && record.bindingId !== input.bindingId)) {
     return { subscribed: false, endpointHash: null, lastHttpStatus: null };
   }
   return {
-    subscribed: true,
+    subscribed: record.active,
+    ...(record.pendingActivation ? { pending: true } : {}),
     endpointHash: createHash("sha256").update(record.subscription.endpoint).digest("hex"),
     lastHttpStatus: record.lastHttpStatus ?? null,
   };
+}
+
+/** Called by the service worker before showing/clicking even an already queued push. */
+export async function authorizePushDisplay(input: {
+  userId: string; recipientId: string; deviceId: string; bindingId: string; sessionKey: string; subscriptionId: string; firestore?: FirestoreLike;
+}) {
+  if (stableId(input.userId, input.deviceId) !== input.subscriptionId) return false;
+  const firestore = input.firestore ?? await getAdminFirestore();
+  const record = (await subscriptionRef(firestore, input.subscriptionId).get()).data() as PushSubscriptionRecord | undefined;
+  return Boolean(record?.active && !record.pendingActivation && record.userId === input.userId && record.recipientId === input.recipientId
+    && record.bindingId === input.bindingId && record.sessionKey === input.sessionKey && await isCareAccountActive(firestore, input.recipientId));
 }

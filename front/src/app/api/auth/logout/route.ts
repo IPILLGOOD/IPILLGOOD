@@ -1,21 +1,25 @@
 import {
-  deactivatePushSubscription,
   deleteEphemeralDemoSession,
 } from "@care-atlas/backend";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { cleanupPushBinding, getPushSessionKey, readPushBinding, writePushBinding } from "@/lib/push/server-binding";
+import { isSameOriginRequest } from "@/lib/api-security";
 import { deleteSession, getSession } from "@/lib/auth/session";
 
-export async function POST() {
+export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) return Response.json({ error: "invalid_origin" }, { status: 403 });
   const [session, cookieStore] = await Promise.all([getSession(), cookies()]);
-  const pushDeviceId = cookieStore.get("ipillgood_push_device")?.value;
-  if (session && pushDeviceId) {
-    try {
-      await deactivatePushSubscription({ userId: session.id, deviceId: pushDeviceId });
-    } catch (error) {
-      console.error("Current device push deactivation failed during logout", error);
+  try {
+    const legacyDevice = cookieStore.get("ipillgood_push_device")?.value;
+    if (session && legacyDevice && !await readPushBinding()) {
+      await writePushBinding({ userId: session.id, deviceId: legacyDevice, bindingId: "legacy", sessionKey: await getPushSessionKey() });
     }
+    await cleanupPushBinding();
+  } catch {
+    // Preserve the signed, generation-scoped revocation capability after session deletion.
+    console.error("Push cleanup deferred until browser reentry");
   }
   if (session?.provider === "demo") {
     try {

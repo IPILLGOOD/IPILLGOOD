@@ -12,7 +12,7 @@ import {
   formatDate,
   uniqueSymptomDays,
 } from "@/lib/presentation";
-import { recentCareRecords } from "@/lib/recent-care-records";
+import { observationEvidenceCounts, recentCareRecords } from "@/lib/recent-care-records";
 import { requireCareScope } from "@/lib/auth/care-scope";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,8 @@ export default async function ReportPage() {
   const recent = recentCareRecords(snapshot);
   const adherence = adherenceSummary(recent.doseEvents);
   const symptomDays = uniqueSymptomDays(recent.symptomEvents);
+  const doseEvidence = observationEvidenceCounts(recent.doseEvents);
+  const symptomEvidence = observationEvidenceCounts(recent.symptomEvents);
 
   return (
     <>
@@ -52,6 +54,10 @@ export default async function ReportPage() {
               </div>
             </div>
             <p className="causal-note">복약 수치는 답한 기록만 집계하며, 실제 복용 여부나 무응답 회차를 나타내지 않아요.</p>
+            <div className="report-evidence-summary" aria-label="기록 근거별 건수">
+              <p><strong>복약 응답 근거</strong> {doseEvidence.length ? doseEvidence.map((item) => `${item.label} ${item.count}건`).join(" · ") : "기록 없음"}</p>
+              <p><strong>몸 상태 근거</strong> {symptomEvidence.length ? symptomEvidence.map((item) => `${item.label} ${item.count}건`).join(" · ") : "기록 없음"}</p>
+            </div>
           </Card>
 
           <Card>
@@ -103,6 +109,13 @@ export default async function ReportPage() {
                 {snapshot.clinicianQuestions.map((question) => (
                   <li key={question.id}>
                     <strong>{question.question}</strong>
+                    {question.status === "answered" ? (
+                      <p><strong>답변 완료:</strong> {question.answer}</p>
+                    ) : question.status === "resolved" ? (
+                      <p><strong>해결됨</strong></p>
+                    ) : question.status === "open" ? (
+                      <p><strong>아직 답하지 않음</strong></p>
+                    ) : null}
                     <p>{question.reason}</p>
                   </li>
                 ))}

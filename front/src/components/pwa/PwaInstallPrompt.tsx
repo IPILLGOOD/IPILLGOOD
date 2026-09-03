@@ -1,5 +1,7 @@
 "use client";
 
+import { observePushCleanup } from "@/lib/push/browser-cleanup";
+
 import { Download, HeartPulse, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -50,6 +52,7 @@ function isRunningStandalone() {
 
 export function PwaInstallPrompt() {
   const pathname = usePathname();
+  useEffect(() => observePushCleanup(), []);
   const [isVisible, setIsVisible] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [environment] = useState(() =>

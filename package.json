@@ -2,6 +2,9 @@
   "name": "care-atlas-monorepo",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "workspaces": [
     "front",
     "backend"
@@ -9,6 +12,9 @@
   "scripts": {
     "verify": "node scripts/verify.mjs",
     "dev": "npm run dev --workspace @care-atlas/front",
+    "dev:local": "node scripts/run-local-firebase.mjs dev",
+    "doctor:local": "node scripts/local-dev-doctor.mjs",
+    "verify:local-auth": "node scripts/run-local-firebase.mjs verify",
     "build": "npm run build --workspace @care-atlas/front",
     "start": "npm run start --workspace @care-atlas/front",
     "lint": "npm run lint --workspace @care-atlas/front",

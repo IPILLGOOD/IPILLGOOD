@@ -194,7 +194,15 @@ export async function getOrCreateQuestionSet(input: {
       if (!await isCareAccountActive(firestore, input.scope.recipientId, tx)) return;
       const consentConfirmed = await isHealthDataConsentConfirmed(firestore, input.scope.recipientId, tx);
       const generation = await tx.get(generationRef);
-      if ((generation.data() as Generation | undefined)?.owner !== owner) return;
+      const current = generation.data() as Generation | undefined;
+      if (current?.owner !== owner) return;
+      const sources = await Promise.all((current.sourceDocumentIds ?? []).map((documentId) =>
+        tx.get(recipient.collection("clinicalDocuments").doc(documentId))));
+      if (sources.some((source) => !source.exists)) {
+        tx.delete(generationRef);
+        tx.delete(attemptRef);
+        return;
+      }
       if (!consentConfirmed) {
         tx.delete(generationRef);
         tx.delete(attemptRef);

@@ -1,7 +1,12 @@
 import { SEOUL_TIME_ZONE, addCalendarDays, calendarDayDifference, dateKeyInSeoul, dateKeyInTimeZone, seoulTimeLabel } from "./dates.ts";
 import { createHash } from "node:crypto";
 
-import type { DoseEvent, MedicationPlan } from "./types.ts";
+import type {
+  DoseEvent,
+  MedicationPlan,
+  MedicationRecurrence,
+  MedicationWeekday,
+} from "./types.ts";
 
 export const MEDICATION_TIME_ZONE = SEOUL_TIME_ZONE;
 
@@ -27,7 +32,9 @@ export interface MedicationReminderSchedule {
   slotIndex: number;
   slotLabel: string;
   timeLabel: string;
-  intervalDays: number;
+  recurrence?: ScheduledMedicationRecurrence;
+  /** Compatibility for schedules written before structured recurrence. */
+  intervalDays?: number;
   startDate: string;
   endDate?: string;
   nextDueAt: string;
@@ -37,34 +44,125 @@ export interface MedicationReminderSchedule {
   planRevisionId?: string;
 }
 
+export type ScheduledMedicationRecurrence = Exclude<
+  MedicationRecurrence,
+  { kind: "as_needed" } | { kind: "unknown" }
+>;
+
+const KOREAN_WEEKDAYS: Record<string, MedicationWeekday> = {
+  월: "mon",
+  화: "tue",
+  수: "wed",
+  목: "thu",
+  금: "fri",
+  토: "sat",
+  일: "sun",
+};
+const WEEKDAY_ORDER: MedicationWeekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const DATE_WEEKDAYS: MedicationWeekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
 export function activeMedications(medications: MedicationPlan[]) {
   return medications.filter((medication) => medication.status === "active");
 }
 
-export function medicationFrequencyRule(frequency: string) {
-  const normalized = frequency.trim();
-  if (/(?:필요\s*시|필요할\s*때|증상\s*시|주\s*\d+회|매주|격주|요일)/.test(normalized)) return null;
+function parseWeekdays(value: string): MedicationWeekday[] | null {
+  const hasWeekdaySyntax = /요일/.test(value)
+    || /[월화수목금토일]\s*[·,/]|[·,/]\s*[월화수목금토일]/.test(value)
+    || /^(?:매주|주\s*\d+회)\s*\(?\s*[월화수목금토일]/.test(value);
+  if (!hasWeekdaySyntax) return null;
+
+  const weekdays = [...value.matchAll(/(?<!요)([월화수목금토일])(?:요일)?/g)]
+    .map((match) => KOREAN_WEEKDAYS[match[1]!])
+    .filter((weekday): weekday is MedicationWeekday => Boolean(weekday));
+  return [...new Set(weekdays)].sort(
+    (left, right) => WEEKDAY_ORDER.indexOf(left) - WEEKDAY_ORDER.indexOf(right),
+  );
+}
+
+export function normalizeMedicationRecurrence(frequency: string): MedicationRecurrence {
+  const source = frequency.trim();
+  const normalized = source.replace(/\s+/g, " ");
+  if (!normalized) return { kind: "unknown", reason: "empty", source };
+  if (/(?:필요\s*시|필요할\s*때|증상\s*시|통증(?:이)?\s*있을\s*때|PRN)/i.test(normalized)) {
+    return { kind: "as_needed", source };
+  }
 
   const dailyMatch = normalized.match(/^(?:하루|1일)\s*(\d+)회(?:\s*복용)?$/);
   if (dailyMatch) {
     const count = Number(dailyMatch[1]);
     return Number.isInteger(count) && count >= 1 && count <= 6
-      ? { count, intervalDays: 1 }
-      : null;
+      ? { kind: "daily", count, source }
+      : { kind: "unknown", reason: "unsupported", source };
   }
 
-  if (/^매일(?:\s*1회)?$/.test(normalized)) return { count: 1, intervalDays: 1 };
+  if (/^매일(?:\s*1회)?$/.test(normalized)) return { kind: "daily", count: 1, source };
 
   const intervalMatch = normalized.match(/^(\d+)일\s*1회(?:\s*복용)?$/);
   if (intervalMatch) {
     const intervalDays = Number(intervalMatch[1]);
     return Number.isInteger(intervalDays) && intervalDays >= 1 && intervalDays <= 365
-      ? { count: 1, intervalDays }
-      : null;
+      ? { kind: "interval_days", count: 1, intervalDays, source }
+      : { kind: "unknown", reason: "unsupported", source };
   }
 
-  // PRN, weekly and unknown text must never silently become a daily schedule.
-  return null;
+  const weekdays = parseWeekdays(normalized);
+  if (weekdays?.length) {
+    const declaredCount = normalized.match(/주\s*(\d+)회/)?.[1];
+    if (declaredCount && Number(declaredCount) !== weekdays.length) {
+      return { kind: "unknown", reason: "weekday_confirmation_required", source };
+    }
+    return { kind: "weekdays", weekdays, count: 1, source };
+  }
+
+  const weeklyMatch = normalized.match(/^(?:(\d+)주\s*1회|주\s*1회|매주(?:\s*1회)?|격주(?:\s*1회)?)$/);
+  if (weeklyMatch) {
+    const intervalWeeks = normalized.startsWith("격주") ? 2 : Number(weeklyMatch[1] ?? 1);
+    return Number.isInteger(intervalWeeks) && intervalWeeks >= 1 && intervalWeeks <= 52
+      ? { kind: "weekly", intervalWeeks, count: 1, source }
+      : { kind: "unknown", reason: "unsupported", source };
+  }
+
+  if (/^주\s*\d+회/.test(normalized)) {
+    return { kind: "unknown", reason: "weekday_confirmation_required", source };
+  }
+
+  return { kind: "unknown", reason: "unsupported", source };
+}
+
+export function isScheduledMedicationRecurrence(
+  recurrence: MedicationRecurrence,
+): recurrence is ScheduledMedicationRecurrence {
+  return recurrence.kind !== "as_needed" && recurrence.kind !== "unknown";
+}
+
+function recurrenceForMedication(medication: Pick<MedicationPlan, "frequency" | "recurrence">) {
+  const source = medication.frequency.trim();
+  return medication.recurrence?.source === source
+    ? medication.recurrence
+    : normalizeMedicationRecurrence(source);
+}
+
+function recurrenceCount(recurrence: ScheduledMedicationRecurrence) {
+  return recurrence.kind === "daily" ? recurrence.count : 1;
+}
+
+function legacyIntervalDays(recurrence: ScheduledMedicationRecurrence) {
+  if (recurrence.kind === "daily") return 1;
+  if (recurrence.kind === "interval_days") return recurrence.intervalDays;
+  if (recurrence.kind === "weekly") return recurrence.intervalWeeks * 7;
+  return undefined;
+}
+
+/** Compatibility wrapper for callers that still consume count/intervalDays. */
+export function medicationFrequencyRule(frequency: string) {
+  const recurrence = normalizeMedicationRecurrence(frequency);
+  if (!isScheduledMedicationRecurrence(recurrence)) return null;
+  const intervalDays = legacyIntervalDays(recurrence);
+  return {
+    count: recurrenceCount(recurrence),
+    recurrence,
+    ...(intervalDays !== undefined ? { intervalDays } : {}),
+  };
 }
 
 export { dateKeyInTimeZone } from "./dates.ts";
@@ -72,13 +170,24 @@ export { dateKeyInTimeZone } from "./dates.ts";
 export function isMedicationDueOnDate(
   medication: Pick<MedicationPlan, "startDate" | "endDate">,
   dateKey: string,
-  intervalDays: number,
+  recurrenceOrIntervalDays: MedicationRecurrence | number,
 ) {
   if (medication.startDate > dateKey) return false;
   if (medication.endDate && medication.endDate < dateKey) return false;
-  if (intervalDays === 1) return true;
+  const recurrence: MedicationRecurrence = typeof recurrenceOrIntervalDays === "number"
+    ? { kind: "interval_days", intervalDays: recurrenceOrIntervalDays, count: 1, source: "legacy" }
+    : recurrenceOrIntervalDays;
+  if (recurrence.kind === "as_needed" || recurrence.kind === "unknown") return false;
+  if (recurrence.kind === "daily") return true;
+  if (recurrence.kind === "weekdays") {
+    const weekday = DATE_WEEKDAYS[new Date(`${dateKey}T12:00:00Z`).getUTCDay()];
+    return weekday ? recurrence.weekdays.includes(weekday) : false;
+  }
 
   const elapsedDays = calendarDayDifference(medication.startDate, dateKey);
+  const intervalDays = recurrence.kind === "weekly"
+    ? recurrence.intervalWeeks * 7
+    : recurrence.intervalDays;
   return elapsedDays >= 0 && elapsedDays % intervalDays === 0;
 }
 
@@ -113,14 +222,14 @@ function isoAtSeoulTime(dateKey: string, timeLabel: string) {
 export function nextMedicationDueAt(
   medication: Pick<MedicationPlan, "startDate" | "endDate">,
   timeLabel: string,
-  intervalDays: number,
+  recurrence: ScheduledMedicationRecurrence | number,
   after: Date,
 ) {
   const firstDate = dateKeyInTimeZone(after);
   for (let offset = 0; offset <= 366; offset += 1) {
     const dateKey = addCalendarDays(firstDate, offset);
     if (medication.endDate && dateKey > medication.endDate) return null;
-    if (!isMedicationDueOnDate(medication, dateKey, intervalDays)) continue;
+    if (!isMedicationDueOnDate(medication, dateKey, recurrence)) continue;
     const candidate = new Date(isoAtSeoulTime(dateKey, timeLabel));
     if (candidate.getTime() > after.getTime()) return candidate.toISOString();
   }
@@ -136,11 +245,12 @@ export function createMedicationSchedule(
   const tasks: MedicationScheduleTask[] = [];
 
   for (const medication of activeMedications(medications)) {
-    const rule = medicationFrequencyRule(medication.frequency);
-    if (!rule) continue;
-    if (!isMedicationDueOnDate(medication, dateKey, rule.intervalDays)) continue;
+    const recurrence = recurrenceForMedication(medication);
+    if (!isScheduledMedicationRecurrence(recurrence)) continue;
+    if (!isMedicationDueOnDate(medication, dateKey, recurrence)) continue;
 
-    const slots = medicationTimingSlots(medication.timing, rule.count);
+    const count = recurrenceCount(recurrence);
+    const slots = medicationTimingSlots(medication.timing, count);
     const eventsForMedication = events
       .filter(
         (event) =>
@@ -153,7 +263,7 @@ export function createMedicationSchedule(
       );
 
     slots.forEach((slotLabel, slotIndex) => {
-      const timeLabel = timeForMedicationSlot(slotLabel, slotIndex, rule.count);
+      const timeLabel = timeForMedicationSlot(slotLabel, slotIndex, count);
       if (!timeLabel) return;
       const scheduledAt = isoAtSeoulTime(dateKey, timeLabel);
       const exactEvent = eventsForMedication.find(
@@ -194,14 +304,16 @@ export function buildMedicationReminderSchedules(
 ): MedicationReminderSchedule[] {
   const updatedAt = now.toISOString();
   return activeMedications(medications).flatMap((medication) => {
-    const rule = medicationFrequencyRule(medication.frequency);
-    if (!rule) return [];
-    const slots = medicationTimingSlots(medication.timing, rule.count);
+    const recurrence = recurrenceForMedication(medication);
+    if (!isScheduledMedicationRecurrence(recurrence)) return [];
+    const count = recurrenceCount(recurrence);
+    const slots = medicationTimingSlots(medication.timing, count);
     return slots.flatMap((slotLabel, slotIndex) => {
-      const timeLabel = timeForMedicationSlot(slotLabel, slotIndex, rule.count);
+      const timeLabel = timeForMedicationSlot(slotLabel, slotIndex, count);
       if (!timeLabel) return [];
-      const nextDueAt = nextMedicationDueAt(medication, timeLabel, rule.intervalDays, now);
+      const nextDueAt = nextMedicationDueAt(medication, timeLabel, recurrence, now);
       if (!nextDueAt) return [];
+      const intervalDays = legacyIntervalDays(recurrence);
       return [
         {
           id: reminderScheduleId(recipientId, medication.id, slotIndex),
@@ -210,7 +322,8 @@ export function buildMedicationReminderSchedules(
           slotIndex,
           slotLabel,
           timeLabel,
-          intervalDays: rule.intervalDays,
+          recurrence,
+          ...(intervalDays !== undefined ? { intervalDays } : {}),
           startDate: medication.startDate,
           ...(medication.endDate ? { endDate: medication.endDate } : {}),
           nextDueAt,
@@ -230,12 +343,17 @@ export function advanceMedicationReminderSchedule(
   const afterCurrentOccurrence = new Date(
     Math.max(new Date(schedule.nextDueAt).getTime(), now.getTime()) + 1_000,
   );
-  const nextDueAt = nextMedicationDueAt(
-    schedule,
-    schedule.timeLabel,
-    schedule.intervalDays,
-    afterCurrentOccurrence,
-  );
+  const recurrence = schedule.recurrence ?? (schedule.intervalDays !== undefined
+    ? {
+        kind: "interval_days" as const,
+        intervalDays: schedule.intervalDays,
+        count: 1 as const,
+        source: "legacy",
+      }
+    : null);
+  const nextDueAt = recurrence
+    ? nextMedicationDueAt(schedule, schedule.timeLabel, recurrence, afterCurrentOccurrence)
+    : null;
   return {
     ...schedule,
     nextDueAt: nextDueAt ?? schedule.nextDueAt,

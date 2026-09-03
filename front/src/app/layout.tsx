@@ -3,6 +3,7 @@ import { Noto_Sans_KR } from "next/font/google";
 
 import { AppShell } from "@/components/navigation/AppShell";
 import { PwaInstallPrompt } from "@/components/pwa/PwaInstallPrompt";
+import { getPushSessionKey } from "@/lib/push/server-binding";
 import { getSession } from "@/lib/auth/session";
 
 import "@/styles/tokens.css";
@@ -50,7 +51,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="ko" className={notoSans.variable}>
       <body suppressHydrationWarning>
-        <AppShell user={session}>{children}</AppShell>
+        <AppShell user={session} pushSessionKey={session ? await getPushSessionKey() : ""}>{children}</AppShell>
         <PwaInstallPrompt />
       </body>
     </html>

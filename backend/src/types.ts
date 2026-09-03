@@ -39,6 +39,27 @@ export interface SupplementIntake {
   lastConfirmedAt: string;
 }
 
+export type MedicationWeekday =
+  | "mon"
+  | "tue"
+  | "wed"
+  | "thu"
+  | "fri"
+  | "sat"
+  | "sun";
+
+export type MedicationRecurrence =
+  | { kind: "daily"; count: number; source: string }
+  | { kind: "interval_days"; intervalDays: number; count: 1; source: string }
+  | { kind: "weekly"; intervalWeeks: number; count: 1; source: string }
+  | { kind: "weekdays"; weekdays: MedicationWeekday[]; count: 1; source: string }
+  | { kind: "as_needed"; source: string }
+  | {
+      kind: "unknown";
+      reason: "empty" | "unsupported" | "weekday_confirmation_required";
+      source: string;
+    };
+
 export type NutritionInsightStatus =
   | "consider"
   | "caution"
@@ -108,6 +129,7 @@ export interface MedicationPlan {
   descriptionPlain: string;
   doseAmount: string;
   frequency: string;
+  recurrence?: MedicationRecurrence;
   timing: string;
   startDate: string;
   endDate?: string;
@@ -223,6 +245,15 @@ export interface DoseEvent {
   nonAdherenceReason?: string;
   answeredBy: "caregiver" | "recipient";
   answeredAt?: string;
+  /** Projection metadata from the immutable observation ledger. */
+  observationId?: string;
+  occurredAt?: string;
+  recordedAt?: string;
+  actorId?: string;
+  evidenceLevel?: ObservationEvidence;
+  inputSource?: ObservationInputSource;
+  supersedesObservationId?: string;
+  correctionReason?: string;
 }
 
 export interface SymptomEvent {
@@ -233,6 +264,57 @@ export interface SymptomEvent {
   dailyLifeImpact: string;
   reporterType: "caregiver_observed" | "recipient_reported";
   note?: string;
+  /** Projection metadata from the immutable observation ledger. */
+  observationId?: string;
+  recordedAt?: string;
+  actorId?: string;
+  actorRole?: ObservationActorRole;
+  evidenceLevel?: ObservationEvidence;
+  inputSource?: ObservationInputSource;
+  supersedesObservationId?: string;
+  correctionReason?: string;
+}
+
+export type ObservationActorRole = "caregiver" | "recipient";
+export type ObservationEvidence =
+  | "self_reported"
+  | "caregiver_observed"
+  | "relayed_confirmation"
+  | "unconfirmed";
+export type ObservationInputSource =
+  | "daily_check_in"
+  | "quick_wellbeing"
+  | "correction"
+  | "legacy_import";
+
+interface ObservationBase {
+  id: string;
+  occurredAt: string;
+  recordedAt: string;
+  actorId: string;
+  actorRole: ObservationActorRole;
+  evidenceLevel: ObservationEvidence;
+  inputSource: ObservationInputSource;
+  idempotencyKey: string;
+  supersedesObservationId?: string;
+  correctionReason?: string;
+}
+
+export interface DoseObservation extends ObservationBase {
+  kind: "dose";
+  medicationPlanId: string;
+  scheduledAt: string;
+  response: DoseResponse;
+  nonAdherenceReason?: string;
+}
+
+export interface SymptomObservation extends ObservationBase {
+  kind: "symptom";
+  symptomType: string;
+  severity: number;
+  dailyLifeImpact: string;
+  note?: string;
+  status: "observed" | "retracted";
 }
 
 export interface DailyCheckIn {
@@ -245,6 +327,14 @@ export interface DailyCheckIn {
   symptoms: string[];
   severity?: number;
   note: string;
+  evidenceLevel?: ObservationEvidence;
+  medicationRecordedAt?: string;
+  medicationRecordedBy?: ObservationActorRole;
+  medicationEvidenceLevel?: ObservationEvidence;
+  wellbeingRecordedAt?: string;
+  wellbeingRecordedBy?: ObservationActorRole;
+  wellbeingEvidenceLevel?: ObservationEvidence;
+  correctionReason?: string;
   questionSetId?: string;
   questionResponseId?: string;
 }
@@ -454,6 +544,14 @@ export interface ClinicianQuestion {
   priority: "today" | "next_visit";
   question: string;
   reason: string;
+  status?: "open" | "answered" | "resolved";
+  answer?: string;
+  answeredAt?: string;
+  resolvedAt?: string;
+  sourceQuestionSetId?: string;
+  sourceQuestionId?: string;
+  triggerRefs?: string[];
+  evidenceLevel?: "recipient_reported" | "caregiver_reported" | "unconfirmed";
 }
 
 export interface CareSnapshot {

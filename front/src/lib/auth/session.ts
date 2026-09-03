@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   CONNECTED_SESSION_DURATION_SECONDS,
@@ -26,6 +27,7 @@ export type SessionUser = {
   ownerUserId?: string;
   connectionId?: string;
   sessionVersion?: string;
+  sessionId?: string;
 };
 
 function getSessionSecret() {
@@ -35,7 +37,7 @@ function getSessionSecret() {
   });
 }
 
-async function signSession(user: SessionUser, durationSeconds: number) {
+async function signSession(user: SessionUser, durationSeconds: number, sessionId: string) {
   const state = user.provider === "google" ? await getAccountSessionState(user.id) : null;
   if (state && !state.active) throw new Error("ACCOUNT_NOT_ACTIVE");
   return new SignJWT({
@@ -51,6 +53,7 @@ async function signSession(user: SessionUser, durationSeconds: number) {
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
+    .setJti(sessionId)
     .setIssuedAt()
     .setExpirationTime(`${durationSeconds}s`)
     .sign(getSessionSecret());
@@ -58,10 +61,10 @@ async function signSession(user: SessionUser, durationSeconds: number) {
 
 export async function createSession(
   user: SessionUser,
-  options: { durationSeconds?: number } = {},
+  options: { durationSeconds?: number; preserveSessionId?: boolean } = {},
 ) {
   const durationSeconds = options.durationSeconds ?? SESSION_DURATION_SECONDS;
-  const token = await signSession(user, durationSeconds);
+  const token = await signSession(user, durationSeconds, options.preserveSessionId && user.sessionId ? user.sessionId : randomUUID());
   const cookieStore = await cookies();
   cookieStore.delete("ipillgood_account_deletion");
   cookieStore.delete("ipillgood_account_recovery");
@@ -96,6 +99,7 @@ async function readSession(allowDeleting = false): Promise<SessionUser | null> {
 
     const user = {
       id: payload.sub,
+      sessionId: typeof payload.jti === "string" ? payload.jti : createHash("sha256").update(token).digest("hex"),
       name: payload.name,
       email: typeof payload.email === "string" ? payload.email : undefined,
       picture: typeof payload.picture === "string" ? payload.picture : undefined,
@@ -140,7 +144,7 @@ export function getAccountDeletionSession() { return readSession(true); }
 
 export async function refreshConnectedSession(user: SessionUser) {
   if (user.provider !== "connected") throw new Error("CONNECTED_SESSION_REQUIRED");
-  await createSession(user, { durationSeconds: CONNECTED_SESSION_DURATION_SECONDS });
+  await createSession(user, { durationSeconds: CONNECTED_SESSION_DURATION_SECONDS, preserveSessionId: true });
 }
 
 export async function deleteSession() {

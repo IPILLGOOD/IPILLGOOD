@@ -9,6 +9,7 @@ import type {
   ClinicianQuestion,
   DailyCheckIn,
   DoseEvent,
+  DoseObservation,
   DocumentAnalysis,
   MedicationPlan,
   MedicationPlanCandidate,
@@ -17,6 +18,7 @@ import type {
   PatientQuestionResponse,
   PatientQuestionSet,
   SymptomEvent,
+  SymptomObservation,
 } from "./types.ts";
 
 import { getAdminFirestore } from "./firebase-admin.ts";
@@ -24,6 +26,9 @@ import { isEphemeralDemoSessionActive } from "./demo-session.ts";
 import type { FirestoreLike, TransactionLike, DocumentReferenceLike } from "./firestore-rest.ts";
 import { stableJson } from "./stable-json.ts";
 import { conditionFromDiagnosis } from "./nutrition.ts";
+import { DocumentAnalysisCancelledError } from "./document-analysis-jobs.ts";
+import { normalizeMedicationRecurrence } from "./medication-schedule.ts";
+import { projectDoseObservations, projectSymptomObservations } from "./observations.ts";
 import {
   addCalendarDays,
   dateKeyInSeoul,
@@ -56,7 +61,109 @@ type StoredCareReadModel = Omit<CareSnapshot, "dataSource" | "revision"> & {
   revision?: number;
 };
 
+type StoredRow = Record<string, unknown>;
+
+const DOCUMENT_DERIVED_COLLECTIONS = [
+  "questionSets",
+  "questionResponses",
+  "careAnalyses",
+  "agentRuns",
+  "questionGenerations",
+  "questionGenerationAttempts",
+  "documentAnalysisJobs",
+  "documentImportRequests",
+  "documentImportReviews",
+  "medicationPlanDrafts",
+  "medicationDraftConfirmations",
+  "dailyCheckIns",
+  "clinicianQuestions",
+] as const;
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function hasSourceDocument(row: StoredRow, documentId: string) {
+  return stringArray(row.sourceDocumentIds).includes(documentId);
+}
+
+function documentAnalysisJobMatches(row: StoredRow, documentId: string) {
+  const result = row.result as { document?: { id?: string } } | undefined;
+  return row.contentHash === documentId || result?.document?.id === documentId;
+}
+
 const seed = demoSeed as DemoSeed;
+
+function patientAnswerLabel(
+  question: PatientQuestionSet["questions"][number],
+  answer: PatientQuestionResponse["responses"][number]["answer"],
+) {
+  if (answer === null) return undefined;
+  const values = Array.isArray(answer) ? answer : [answer];
+  return values.map((value) => {
+    const text = String(value);
+    return question.options.find((option) => option.value === text)?.label ?? text;
+  }).join(", ");
+}
+
+export function projectClinicianQuestions(
+  questionSet: PatientQuestionSet,
+  response?: PatientQuestionResponse,
+): ClinicianQuestion[] {
+  const answers = new Map(
+    (response?.responses ?? []).map((item) => [item.question_id, item]),
+  );
+  return questionSet.questions.map((question) => {
+    const responseItem = answers.get(question.question_id);
+    const answer = responseItem && !responseItem.skipped
+      ? patientAnswerLabel(question, responseItem.answer)
+      : undefined;
+    const answered = answer !== undefined;
+    return {
+      id: `${questionSet.question_set_id}:${question.question_id}`,
+      priority: ["urgent", "blocking", "high"].includes(question.priority)
+        ? "today"
+        : "next_visit",
+      question: questionSet.answerer === "recipient"
+        ? question.display.recipient_text
+        : question.display.caregiver_text,
+      reason: question.display.helper_text,
+      status: answered ? "answered" : "open",
+      ...(answer ? { answer } : {}),
+      ...(answered && response ? { answeredAt: response.answered_at } : {}),
+      sourceQuestionSetId: questionSet.question_set_id,
+      sourceQuestionId: question.question_id,
+      triggerRefs: [...question.trigger_refs],
+      evidenceLevel: answered
+        ? response?.answered_by === "recipient"
+          ? "recipient_reported"
+          : "caregiver_reported"
+        : "unconfirmed",
+    } satisfies ClinicianQuestion;
+  });
+}
+
+async function clinicianQuestionsFromActualAccount(
+  firestore: FirestoreLike,
+  scope: CareDataScope,
+  fallback: ClinicianQuestion[],
+) {
+  const recipient = firestore.collection("careRecipients").doc(scope.recipientId);
+  const questionSets = await recipient.collection("questionSets")
+    .orderBy("generated_at", "desc")
+    .limit(1)
+    .get();
+  const questionSet = questionSets.docs[0]?.data() as PatientQuestionSet | undefined;
+  if (!questionSet || questionSet.subject_ref !== scope.recipientId) return fallback;
+  const responses = await recipient.collection("questionResponses")
+    .where("question_set_id", "==", questionSet.question_set_id)
+    .get();
+  const response = responses.docs
+    .map((document) => document.data() as PatientQuestionResponse)
+    .filter((item) => item.subject_ref === scope.recipientId)
+    .sort((left, right) => right.answered_at.localeCompare(left.answered_at))[0];
+  return projectClinicianQuestions(questionSet, response);
+}
 
 async function assertActiveDemoScope(
   scope: CareDataScope,
@@ -169,18 +276,20 @@ async function canonicalReadModel(
   scope: CareDataScope,
 ): Promise<StoredCareReadModel> {
   const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
-  const [recipient, medications, doses, symptoms, documents, questions, checkIn] = await Promise.all([
+  const [recipient, medications, doses, symptoms, doseObservations, symptomObservations, documents, questions, checkIn] = await Promise.all([
     tx.get(recipientRef),
     tx.get(recipientRef.collection("medicationPlans")),
     tx.get(recipientRef.collection("doseEvents")),
     tx.get(recipientRef.collection("symptomEvents")),
+    tx.get(recipientRef.collection("doseObservations")),
+    tx.get(recipientRef.collection("symptomObservations")),
     tx.get(recipientRef.collection("clinicalDocuments")),
     tx.get(recipientRef.collection("clinicianQuestions")),
     tx.get(recipientRef.collection("dailyCheckIns").doc(dateKeyInSeoul(new Date()))),
   ]);
   if (!recipient.exists) {
     // Never replace an orphaned account with an apparently empty account.
-    if ([medications, doses, symptoms, documents, questions].some((rows) => rows.docs.length)) {
+    if ([medications, doses, symptoms, doseObservations, symptomObservations, documents, questions].some((rows) => rows.docs.length)) {
       throw new Error("돌봄 데이터 원본 복구가 필요합니다.");
     }
     if (scope.useDemoData) throw new Error("데모 세션 데이터가 만료되었습니다.");
@@ -189,8 +298,14 @@ async function canonicalReadModel(
   return toStoredReadModel({
     recipient: recipient.data() as CareRecipient,
     medications: medications.docs.map((doc) => doc.data() as MedicationPlan),
-    doseEvents: doses.docs.map((doc) => doc.data() as DoseEvent),
-    symptomEvents: symptoms.docs.map((doc) => doc.data() as SymptomEvent),
+    doseEvents: projectDoseObservations(
+      doseObservations.docs.map((doc) => doc.data() as DoseObservation),
+      doses.docs.map((doc) => doc.data() as DoseEvent),
+    ),
+    symptomEvents: projectSymptomObservations(
+      symptomObservations.docs.map((doc) => doc.data() as SymptomObservation),
+      symptoms.docs.map((doc) => doc.data() as SymptomEvent),
+    ),
     documents: documents.docs.map((doc) => doc.data() as ClinicalDocument),
     clinicianQuestions: questions.docs.map((doc) => doc.data() as ClinicianQuestion),
     todayCheckIn: checkIn.exists ? checkIn.data() as DailyCheckIn : null,
@@ -243,7 +358,15 @@ export async function getCareSnapshot(scope: CareDataScope): Promise<CareSnapsho
   assertValidScope(scope);
   const firestore = scope.firestore ?? await getAdminFirestore();
   // Storage failures are failures, never authoritative empty snapshots.
-  return fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  const snapshot = fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  return {
+    ...snapshot,
+    clinicianQuestions: await clinicianQuestionsFromActualAccount(
+      firestore,
+      scope,
+      snapshot.clinicianQuestions,
+    ),
+  };
 }
 
 export async function getCareRevision(scope: CareDataScope): Promise<number> {
@@ -414,15 +537,70 @@ export async function saveDailyCheckIn(
     const question = await tx.get(questionRef);
     if (!question.exists) throw new Error("질문을 다시 불러온 후 저장해 주세요.");
     const update = applyDailyCheckInToSnapshot(snapshot, input);
-    for (const event of update.doseEvents) tx.set(ref.collection("doseEvents").doc(event.id), event);
-    for (const event of update.replacedSymptomEvents) tx.delete(ref.collection("symptomEvents").doc(event.id));
-    for (const event of update.symptomEvents) tx.set(ref.collection("symptomEvents").doc(event.id), event);
+    await persistObservations(tx, ref, update.doseObservations, update.symptomObservations);
     const checkIn: DailyCheckIn = { ...update.checkIn, questionSetId: input.questionResponse.question_set_id, questionResponseId: input.questionResponse.response_id };
     tx.set(ref.collection("dailyCheckIns").doc(checkIn.id), checkIn);
     tx.set(ref.collection("questionResponses").doc(input.questionResponse.response_id), input.questionResponse);
     tx.set(questionRef, { response_status: "answered", answered_at: input.questionResponse.answered_at }, { merge: true });
     return { snapshot: { ...update.nextSnapshot, todayCheckIn: checkIn }, result: undefined };
   }, { requiresConsent: true, expectedRevision });
+}
+
+export async function saveWellbeingCheckIn(
+  scope: CareDataScope,
+  input: Omit<DailyCheckInInput, "doseResponses" | "scope" | "inputSource">,
+  currentSnapshot?: CareSnapshot,
+  expectedRevision?: number,
+) {
+  await mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
+    const update = applyDailyCheckInToSnapshot(snapshot, {
+      ...input,
+      doseResponses: [],
+      scope: "wellbeing",
+      inputSource: "quick_wellbeing",
+    });
+    await persistObservations(tx, ref, update.doseObservations, update.symptomObservations);
+    tx.set(ref.collection("dailyCheckIns").doc(update.checkIn.id), update.checkIn);
+    return { snapshot: update.nextSnapshot, result: undefined };
+  }, { requiresConsent: true, expectedRevision });
+}
+
+async function persistObservations(
+  tx: TransactionLike,
+  recipientRef: DocumentReferenceLike,
+  doses: DoseObservation[],
+  symptoms: SymptomObservation[],
+) {
+  const rows = [
+    ...doses.map((observation) => ({ collection: "doseObservations", observation })),
+    ...symptoms.map((observation) => ({ collection: "symptomObservations", observation })),
+  ];
+  const writes: typeof rows = [];
+  for (const row of rows) {
+    const document = await tx.get(recipientRef.collection(row.collection).doc(row.observation.id));
+    if (!document.exists) writes.push(row);
+    else if (stableJson(document.data()) !== stableJson(row.observation)) {
+      throw new Error("OBSERVATION_IDEMPOTENCY_CONFLICT");
+    }
+  }
+  for (const row of writes) tx.create(recipientRef.collection(row.collection).doc(row.observation.id), row.observation);
+}
+
+export async function getObservationHistory(scope: CareDataScope) {
+  assertValidScope(scope);
+  const firestore = scope.firestore ?? await getAdminFirestore();
+  await assertActiveDemoScope(scope, firestore);
+  const ref = firestore.collection("careRecipients").doc(scope.recipientId);
+  const [doses, symptoms] = await Promise.all([
+    ref.collection("doseObservations").get(),
+    ref.collection("symptomObservations").get(),
+  ]);
+  const byRecordedAt = <T extends { id: string; recordedAt: string }>(left: T, right: T) =>
+    right.recordedAt.localeCompare(left.recordedAt) || right.id.localeCompare(left.id);
+  return {
+    doseObservations: doses.docs.map((document) => document.data() as DoseObservation).sort(byRecordedAt),
+    symptomObservations: symptoms.docs.map((document) => document.data() as SymptomObservation).sort(byRecordedAt),
+  };
 }
 
 export interface RegisterDocumentInput {
@@ -434,6 +612,7 @@ export interface RegisterDocumentInput {
   analysis: ClinicalDocument["analysis"];
   requestIdempotencyKey?: string;
   duplicateAction?: "merge" | "separate";
+  analysisJobId?: string;
 }
 
 export interface MedicationDuplicateCandidate {
@@ -571,8 +750,19 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
     const documentRef = ref.collection("clinicalDocuments").doc(input.contentHash);
     const requestRef = ref.collection("documentImportRequests").doc(requestIdempotencyKey);
     const reviewRef = ref.collection("documentImportReviews").doc(requestIdempotencyKey);
-    const requestRecord = await tx.get(requestRef);
-    const review = await tx.get(reviewRef);
+    const analysisJobRef = input.analysisJobId
+      ? ref.collection("documentAnalysisJobs").doc(input.analysisJobId)
+      : null;
+    const [requestRecord, review, analysisJob] = await Promise.all([
+      tx.get(requestRef),
+      tx.get(reviewRef),
+      analysisJobRef ? tx.get(analysisJobRef) : null,
+    ]);
+    if (analysisJobRef && (!analysisJob?.exists || ["cancellation_requested", "cancelled"].includes(
+      (analysisJob.data() as { state?: string } | undefined)?.state ?? "",
+    ))) {
+      throw new DocumentAnalysisCancelledError();
+    }
     if (requestRecord.exists) {
       const recorded = requestRecord.data() as { contentHash?: string };
       if (recorded.contentHash !== input.contentHash) {
@@ -668,7 +858,10 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
 
 export async function saveDocumentImportReview(
   scope: CareDataScope,
-  input: Omit<DocumentImportReview, "id" | "status" | "createdAt" | "expiresAt"> & { idempotencyKey: string },
+  input: Omit<DocumentImportReview, "id" | "status" | "createdAt" | "expiresAt"> & {
+    idempotencyKey: string;
+    analysisJobId?: string;
+  },
 ) {
   assertValidScope(scope);
   if (!/^[^/]{1,256}$/.test(input.idempotencyKey)) throw new Error("올바르지 않은 요청 식별자입니다.");
@@ -680,7 +873,19 @@ export async function saveDocumentImportReview(
     await assertTransactionScope(tx, firestore, scope);
     const ref = firestore.collection("careRecipients").doc(scope.recipientId)
       .collection("documentImportReviews").doc(input.idempotencyKey);
-    const existing = await tx.get(ref);
+    const analysisJobRef = input.analysisJobId
+      ? firestore.collection("careRecipients").doc(scope.recipientId)
+        .collection("documentAnalysisJobs").doc(input.analysisJobId)
+      : null;
+    const [existing, analysisJob] = await Promise.all([
+      tx.get(ref),
+      analysisJobRef ? tx.get(analysisJobRef) : null,
+    ]);
+    if (analysisJobRef && (!analysisJob?.exists || ["cancellation_requested", "cancelled"].includes(
+      (analysisJob.data() as { state?: string } | undefined)?.state ?? "",
+    ))) {
+      throw new DocumentAnalysisCancelledError();
+    }
     if (existing.exists) {
       const review = existing.data() as DocumentImportReview;
       if (review.contentHash !== input.contentHash) throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
@@ -815,6 +1020,7 @@ function confirmedMedicationPlan(
     descriptionPlain: "처방전 분석 초안을 보호자가 검토하고 확정한 복용약이에요.",
     doseAmount: input.doseAmount.trim(),
     frequency: input.frequency.trim(),
+    recurrence: normalizeMedicationRecurrence(input.frequency),
     timing: input.timing.trim(),
     startDate,
     endDate,
@@ -1027,6 +1233,7 @@ export function medicationPlansFromPrescription(
         descriptionPlain: "처방전에서 확인한 복용약이에요. 약 봉투와 원본 처방전을 함께 확인해주세요.",
         doseAmount: medication.doseAmount.trim() || "1회 복용량 확인 필요",
         frequency: medication.frequency.trim(),
+        recurrence: normalizeMedicationRecurrence(medication.frequency),
         timing: medication.timing.trim() || "복용 시간 확인 필요",
         startDate,
         endDate,
@@ -1041,9 +1248,64 @@ export function medicationPlansFromPrescription(
 
 export async function deleteDocument(scope: CareDataScope, documentId: string, currentSnapshot?: CareSnapshot) {
   if (!/^[^/]{1,256}$/.test(documentId)) throw new Error("올바르지 않은 문서 식별자입니다.");
+  const deletedAt = new Date().toISOString();
   return mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
-    const document = await tx.get(ref.collection("clinicalDocuments").doc(documentId));
-    if (!document.exists) return { snapshot, result: snapshot, unchanged: true };
+    const receiptRef = ref.collection("documentDeletionReceipts").doc(documentId);
+    const [document, receipt, ...collections] = await Promise.all([
+      tx.get(ref.collection("clinicalDocuments").doc(documentId)),
+      tx.get(receiptRef),
+      ...DOCUMENT_DERIVED_COLLECTIONS.map((name) => tx.get(ref.collection(name))),
+    ]);
+    const rows = new Map(
+      DOCUMENT_DERIVED_COLLECTIONS.map((name, index) => [name, collections[index]!.docs]),
+    );
+
+    const questionSets = rows.get("questionSets")!.filter((item) =>
+      hasSourceDocument(item.data() as StoredRow, documentId));
+    const questionSetIds = new Set(questionSets.map((item) => item.id));
+    const questionResponses = rows.get("questionResponses")!.filter((item) =>
+      questionSetIds.has(String((item.data() as StoredRow).question_set_id ?? "")));
+    const questionResponseIds = new Set(questionResponses.map((item) => item.id));
+    const generations = rows.get("questionGenerations")!.filter((item) =>
+      hasSourceDocument(item.data() as StoredRow, documentId));
+    const generationIds = new Set(generations.map((item) => item.id));
+    const drafts = rows.get("medicationPlanDrafts")!.filter((item) =>
+      (item.data() as StoredRow).documentId === documentId);
+    const draftIds = new Set(drafts.map((item) => item.id));
+
+    const deletedRows = {
+      questionSets,
+      questionResponses,
+      careAnalyses: rows.get("careAnalyses")!.filter((item) => hasSourceDocument(item.data() as StoredRow, documentId)),
+      agentRuns: rows.get("agentRuns")!.filter((item) => hasSourceDocument(item.data() as StoredRow, documentId)),
+      questionGenerations: generations,
+      questionGenerationAttempts: rows.get("questionGenerationAttempts")!.filter((item) =>
+        generationIds.has(String((item.data() as StoredRow).generationId ?? ""))),
+      documentAnalysisJobs: rows.get("documentAnalysisJobs")!.filter((item) =>
+        documentAnalysisJobMatches(item.data() as StoredRow, documentId)),
+      documentImportRequests: rows.get("documentImportRequests")!.filter((item) => {
+        const row = item.data() as StoredRow;
+        return row.contentHash === documentId || row.documentId === documentId;
+      }),
+      documentImportReviews: rows.get("documentImportReviews")!.filter((item) =>
+        (item.data() as StoredRow).contentHash === documentId),
+      medicationPlanDrafts: drafts,
+      medicationDraftConfirmations: rows.get("medicationDraftConfirmations")!.filter((item) =>
+        draftIds.has(String((item.data() as StoredRow).draftId ?? ""))),
+      clinicianQuestions: rows.get("clinicianQuestions")!.filter((item) =>
+        questionSetIds.has(String((item.data() as StoredRow).sourceQuestionSetId ?? ""))),
+    };
+    const dailyCheckIns = rows.get("dailyCheckIns")!.flatMap((item) => {
+      const row = item.data() as DailyCheckIn;
+      if (!questionSetIds.has(row.questionSetId ?? "") && !questionResponseIds.has(row.questionResponseId ?? "")) return [];
+      const { questionSetId: _questionSetId, questionResponseId: _questionResponseId, ...retained } = row;
+      return [{ ref: item.ref, value: retained }];
+    });
+    const derivedTargets = Object.values(deletedRows).flat();
+    if (!document.exists && receipt.exists && derivedTargets.length === 0 && dailyCheckIns.length === 0) {
+      return { snapshot, result: snapshot, unchanged: true };
+    }
+
     const confirmedConditions = (snapshot.recipient.confirmedConditions ?? []).filter(
       (condition) => condition.sourceDocumentId !== documentId,
     );
@@ -1055,16 +1317,40 @@ export async function deleteDocument(scope: CareDataScope, documentId: string, c
       recipient,
       medications: snapshot.medications.filter((item) => item.sourceDocumentId !== documentId),
       documents: snapshot.documents.filter((item) => item.id !== documentId),
+      clinicianQuestions: snapshot.clinicianQuestions.filter((item) =>
+        !questionSetIds.has(item.sourceQuestionSetId ?? "")),
+      todayCheckIn: snapshot.todayCheckIn && (
+        questionSetIds.has(snapshot.todayCheckIn.questionSetId ?? "") ||
+        questionResponseIds.has(snapshot.todayCheckIn.questionResponseId ?? "")
+      )
+        ? (() => {
+            const {
+              questionSetId: _questionSetId,
+              questionResponseId: _questionResponseId,
+              ...retained
+            } = snapshot.todayCheckIn!;
+            return retained;
+          })()
+        : snapshot.todayCheckIn,
     };
-    tx.delete(document.ref);
+    if (document.exists) tx.delete(document.ref);
     if (recipient !== snapshot.recipient) tx.set(ref, recipient);
-    const storedDocument = document.data() as ClinicalDocument;
-    if (storedDocument.medicationDraftId) {
-      tx.delete(ref.collection("medicationPlanDrafts").doc(storedDocument.medicationDraftId));
-    }
     for (const medication of snapshot.medications) {
       if (medication.sourceDocumentId === documentId) tx.delete(ref.collection("medicationPlans").doc(medication.id));
     }
+    for (const target of derivedTargets) tx.delete(target.ref);
+    for (const checkIn of dailyCheckIns) tx.set(checkIn.ref, checkIn.value);
+    tx.set(receiptRef, {
+      schemaVersion: "document-deletion-receipt.v1",
+      status: "completed",
+      deletedAt,
+      deletedDocument: document.exists,
+      deletedCounts: Object.fromEntries(
+        Object.entries(deletedRows).map(([collection, targets]) => [collection, targets.length]),
+      ),
+      retainedCheckIns: dailyCheckIns.length,
+      retainedFields: ["medicationResponses", "symptoms", "severity", "note", "completedAt", "completedBy"],
+    });
     return { snapshot: nextSnapshot, result: nextSnapshot };
   }, { affectsMedications: true });
 }
