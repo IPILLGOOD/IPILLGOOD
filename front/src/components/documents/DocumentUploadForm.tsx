@@ -29,6 +29,8 @@ interface AnalysisResponse {
 }
 
 const activeJobStorageKey = "ipillgood:document-analysis-job";
+const ANALYSIS_JOB_POLL_INTERVAL_MS = 2_000;
+const ANALYSIS_JOB_DISCOVERY_RETRY_MS = 3_000;
 
 function jobStateMessage(job: DocumentAnalysisJob) {
   if (job.state === "queued") return "분석 작업을 준비하고 있어요.";
@@ -107,14 +109,17 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   useEffect(() => {
     if (!activeJobId) return;
     let stopped = false;
+    let inFlight = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
+      if (stopped || inFlight || document.visibilityState !== "visible" || !navigator.onLine) return;
+      inFlight = true;
       try {
         const response = await fetch(`/api/documents/analyze/jobs/${encodeURIComponent(activeJobId)}`, {
           cache: "no-store",
         });
         if (response.status === 404) {
-          if (!stopped) timer = setTimeout(poll, 600);
+          if (!stopped) timer = setTimeout(poll, ANALYSIS_JOB_DISCOVERY_RETRY_MS);
           return;
         }
         const body = (await response.json()) as { job?: DocumentAnalysisJob; message?: string };
@@ -123,7 +128,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         if (["queued", "uploading", "extracting", "analyzing", "saving_draft", "cancellation_requested"].includes(job.state)) {
           setStatus("pending");
           setMessage(jobStateMessage(job));
-          if (!stopped) timer = setTimeout(poll, 750);
+          if (!stopped) timer = setTimeout(poll, ANALYSIS_JOB_POLL_INTERVAL_MS);
           return;
         }
         if (job.state === "completed" && job.result) {
@@ -154,12 +159,24 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         setStatus("error");
         setMessage(error instanceof Error ? error.message : "분석 상태를 확인하지 못했어요.");
         setRetryable(retryFormData.current !== null);
+      } finally {
+        inFlight = false;
       }
     };
+    const wake = () => {
+      if (document.visibilityState !== "visible" || !navigator.onLine) return;
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      void poll();
+    };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
     void poll();
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", wake);
     };
   }, [activeJobId, applyCompletedResponse]);
 

@@ -11,7 +11,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const reconciliation = await reconcileMedicationReminders();
+    const auditActive = new URL(request.url).searchParams.get("audit") === "1";
+    const reconciliation = await reconcileMedicationReminders({ auditActive });
     const vapid = getVapidConfiguration();
     if (!vapid) {
       return Response.json({ error: "push_not_configured" }, { status: 503 });

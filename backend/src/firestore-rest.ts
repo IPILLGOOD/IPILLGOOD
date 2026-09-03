@@ -11,7 +11,7 @@ export interface SetOptionsLike {
   merge?: boolean;
 }
 
-export type QueryOperator = "==" | "<" | "<=" | ">" | ">=";
+export type QueryOperator = "==" | "in" | "<" | "<=" | ">" | ">=";
 export type QueryDirection = "asc" | "desc";
 
 export interface DocumentSnapshotLike {
@@ -178,6 +178,7 @@ type QueryOrder = {
 function firestoreOperator(operator: QueryOperator) {
   return {
     "==": "EQUAL",
+    "in": "IN",
     "<": "LESS_THAN",
     "<=": "LESS_THAN_OR_EQUAL",
     ">": "GREATER_THAN",

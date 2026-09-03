@@ -156,11 +156,11 @@ async function clinicianQuestionsFromActualAccount(
   if (!questionSet || questionSet.subject_ref !== scope.recipientId) return fallback;
   const responses = await recipient.collection("questionResponses")
     .where("question_set_id", "==", questionSet.question_set_id)
+    .where("subject_ref", "==", scope.recipientId)
+    .orderBy("answered_at", "desc")
+    .limit(1)
     .get();
-  const response = responses.docs
-    .map((document) => document.data() as PatientQuestionResponse)
-    .filter((item) => item.subject_ref === scope.recipientId)
-    .sort((left, right) => right.answered_at.localeCompare(left.answered_at))[0];
+  const response = responses.docs[0]?.data() as PatientQuestionResponse | undefined;
   return projectClinicianQuestions(questionSet, response);
 }
 
@@ -372,6 +372,19 @@ export async function getCareRevision(scope: CareDataScope): Promise<number> {
   assertValidScope(scope);
   const firestore = scope.firestore ?? await getAdminFirestore();
   return (await getOrCreateReadModel(firestore, scope)).revision ?? 0;
+}
+
+/**
+ * Reads only the revision after the caller has completed authoritative session and
+ * recipient authorization in the same request. Missing models fall back to the
+ * fully validating creation path; this must never be used as cross-request auth cache.
+ */
+export async function getCareRevisionForAuthorizedRequest(scope: CareDataScope): Promise<number> {
+  assertValidScope(scope);
+  const firestore = scope.firestore ?? await getAdminFirestore();
+  const model = await readModelRef(firestore, scope.recipientId).get();
+  if (!model.exists) return getCareRevision({ ...scope, firestore });
+  return (model.data() as StoredCareReadModel).revision ?? 0;
 }
 
 export class CareConflictError extends Error {
@@ -1019,14 +1032,25 @@ export async function getMedicationPlanDraft(
   scope: CareDataScope,
   draftId: string,
 ): Promise<MedicationPlanDraft | null> {
+  return (await getMedicationPlanDrafts(scope, [draftId])).get(draftId) ?? null;
+}
+
+export async function getMedicationPlanDrafts(
+  scope: CareDataScope,
+  draftIds: string[],
+): Promise<Map<string, MedicationPlanDraft>> {
   assertValidScope(scope);
-  if (!/^[^/]{1,256}$/.test(draftId)) throw new Error("올바르지 않은 복약 초안 ID입니다.");
+  const ids = [...new Set(draftIds)];
+  if (ids.length > MAX_DOCUMENTS || ids.some((draftId) => !/^[^/]{1,256}$/.test(draftId))) {
+    throw new Error("올바르지 않은 복약 초안 ID입니다.");
+  }
+  if (!ids.length) return new Map();
   const firestore = scope.firestore ?? await getAdminFirestore();
   await assertActiveDemoScope(scope, firestore);
   await assertHealthDataConsentConfirmed(firestore, scope.recipientId);
-  const draft = await firestore.collection("careRecipients").doc(scope.recipientId)
-    .collection("medicationPlanDrafts").doc(draftId).get();
-  return draft.exists ? draft.data() as MedicationPlanDraft : null;
+  const collection = firestore.collection("careRecipients").doc(scope.recipientId).collection("medicationPlanDrafts");
+  const drafts = await Promise.all(ids.map((draftId) => collection.doc(draftId).get()));
+  return new Map(drafts.filter((draft) => draft.exists).map((draft) => [draft.id, draft.data() as MedicationPlanDraft]));
 }
 
 export interface MedicationCandidateConfirmation {

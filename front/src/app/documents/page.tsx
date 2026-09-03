@@ -7,7 +7,7 @@ import { DeleteDocumentButton } from "@/components/documents/DeleteDocumentButto
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCareSnapshot, getMedicationPlanDraft } from "@care-atlas/backend";
+import { getCareSnapshot, getMedicationPlanDrafts } from "@care-atlas/backend";
 import { formatDate } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
 import { confirmDiagnosesAction } from "@/app/actions";
@@ -19,13 +19,14 @@ export const dynamic = "force-dynamic";
 export default async function DocumentsPage() {
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
-  const drafts = new Map((await Promise.all(snapshot.documents.map(async (document) => {
-    if (!document.medicationDraftId || document.status !== "needs_review") return null;
-    const draft = await getMedicationPlanDraft(scope, document.medicationDraftId);
+  const reviewDocuments = snapshot.documents.filter((document) => document.medicationDraftId && document.status === "needs_review");
+  const draftsById = await getMedicationPlanDrafts(scope, reviewDocuments.map((document) => document.medicationDraftId!));
+  const drafts = new Map(reviewDocuments.map((document) => {
+    const draft = draftsById.get(document.medicationDraftId!);
     return draft && (draft.state === "draft" || draft.state === "needs_review")
       ? [document.id, draft] as const
       : null;
-  }))).filter((entry) => entry !== null));
+  }).filter((entry) => entry !== null));
   return (
     <>
       <PageHeader

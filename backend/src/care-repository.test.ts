@@ -16,6 +16,8 @@ import {
   getMedicationPlanDraft,
   MedicationDuplicateResolutionRequiredError,
   medicationPlansFromPrescription,
+  getCareRevisionForAuthorizedRequest,
+  getMedicationPlanDrafts,
   getCareSnapshot,
   projectClinicianQuestions,
   registerDocument,
@@ -48,6 +50,35 @@ test("신규 계정은 계정별 ID를 사용하고 데모 돌봄 기록을 복�
   assert.deepEqual(first.symptomEvents, []);
   assert.deepEqual(first.documents, []);
   assert.notEqual(first.recipient.id, second.recipient.id);
+});
+
+test("요청에서 인증된 revision 조회는 읽기 모델을 한 번만 읽는다", async () => {
+  const firestore = new MemoryFirestore();
+  const recipientId = "google-authorized-revision";
+  firestore.store.set(`careReadModels/${recipientId}`, { revision: 17 });
+  const reads: string[] = [];
+  firestore.beforeRead = async (path) => { reads.push(path); };
+
+  assert.equal(await getCareRevisionForAuthorizedRequest({ recipientId, firestore }), 17);
+  assert.deepEqual(reads, [`careReadModels/${recipientId}`]);
+});
+
+test("복약 초안 일괄 조회는 계정 상태와 동의를 한 번만 확인한다", async () => {
+  const firestore = new MemoryFirestore();
+  const recipientId = "google-batch-drafts";
+  firestore.store.set(`careRecipients/${recipientId}`, { consentConfirmed: true });
+  for (const id of ["draft-a", "draft-b"]) {
+    firestore.store.set(`careRecipients/${recipientId}/medicationPlanDrafts/${id}`, { id, state: "draft" });
+  }
+  const reads: string[] = [];
+  firestore.beforeRead = async (path) => { reads.push(path); };
+
+  const drafts = await getMedicationPlanDrafts({ recipientId, firestore }, ["draft-a", "draft-b", "draft-a"]);
+  assert.deepEqual([...drafts.keys()], ["draft-a", "draft-b"]);
+  assert.equal(reads.filter((path) => path === `accountDeletions/${recipientId}`).length, 1);
+  assert.equal(reads.filter((path) => path === `healthDataResets/${recipientId}`).length, 1);
+  assert.equal(reads.filter((path) => path === `careRecipients/${recipientId}`).length, 1);
+  assert.equal(reads.filter((path) => path.includes("/medicationPlanDrafts/")).length, 2);
 });
 
 test("실제 계정의 최신 질문 세트와 답변을 상담 질문 읽기 모델로 투영한다", async () => {
@@ -107,6 +138,18 @@ test("실제 계정의 최신 질문 세트와 답변을 상담 질문 읽기 �
   };
   await firestore.collection(`careRecipients/${scope.recipientId}/questionSets`).doc(questionSet.question_set_id).set(questionSet);
   await firestore.collection(`careRecipients/${scope.recipientId}/questionResponses`).doc(response.response_id).set(response);
+  await firestore.collection(`careRecipients/${scope.recipientId}/questionResponses`).doc("older-response").set({
+    ...response,
+    response_id: "older-response",
+    answered_at: "2026-08-31T00:30:00.000Z",
+    responses: [{ question_id: "q-dizziness", answer: null, skipped: true }],
+  });
+  await firestore.collection(`careRecipients/${scope.recipientId}/questionResponses`).doc("other-subject").set({
+    ...response,
+    response_id: "other-subject",
+    subject_ref: "google-other",
+    answered_at: "2026-08-31T02:00:00.000Z",
+  });
 
   const projected = projectClinicianQuestions(questionSet, response);
   assert.equal(projected[0]?.status, "answered");

@@ -164,6 +164,20 @@ test("hard deletion adds no extra retention after three months and verified comp
   assert.equal(await getAccountDeletion(f.uid, f.firestore), null);
 });
 
+test("retry scans only due deletion jobs instead of every retained soft-deleted account", async () => {
+  const f = fixture();
+  await requestAccountDeletion(f.input, f.dependencies);
+  await processAccountDeletion(f.uid, f.dependencies);
+  const revokeCalls = f.revokeCalls();
+  const reads: string[] = [];
+  f.firestore.beforeRead = async (path) => { reads.push(path); };
+
+  assert.deepEqual(await retryAccountDeletions(f.dependencies), { processed: 0, failed: 0 });
+  assert.deepEqual(reads, ["accountDeletions", "accountDeletions"]);
+  assert.equal(f.revokeCalls(), revokeCalls);
+  assert.equal((await getAccountDeletion(f.uid, f.firestore))?.status, "soft_deleted");
+});
+
 test("#55 common health reset can retain the profile without retaining health descendants", async () => {
   const f = fixture();
   f.firestore.store.set(`careRecipients/${f.recipientId}`, { id: f.recipientId });

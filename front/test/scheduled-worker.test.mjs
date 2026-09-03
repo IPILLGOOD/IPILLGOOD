@@ -36,6 +36,7 @@ try {
 const paths = ["/api/account/deletion/cleanup", "/api/demo/cleanup", "/api/auth/connection/cleanup", "/api/push/dispatch"];
 const environment = { PUSH_CRON_SECRET: "synthetic-scheduled-worker-secret-20260828" };
 const context = { waitUntil() {} };
+const topOfHour = { scheduledTime: Date.parse("2026-09-03T00:00:00.000Z") };
 beforeEach(() => {
   fixture.calls.length = 0;
   fixture.outcomes.length = 0;
@@ -49,8 +50,9 @@ test("scheduled worker rejects absent or short credentials before any cleanup", 
 });
 
 test("scheduled worker invokes withdrawal cleanup first and authenticates all routes", async () => {
-  await worker.scheduled({}, environment, context);
+  await worker.scheduled(topOfHour, environment, context);
   assert.deepEqual(fixture.calls.map(({ request }) => new URL(request.url).pathname), paths);
+  assert.equal(new URL(fixture.calls.at(-1).request.url).searchParams.get("audit"), "1");
   for (const call of fixture.calls) {
     assert.equal(new URL(call.request.url).origin, "https://ipillgood.internal");
     assert.equal(call.request.method, "POST");
@@ -60,13 +62,43 @@ test("scheduled worker invokes withdrawal cleanup first and authenticates all ro
   }
 });
 
+test("scheduled worker limits routine maintenance and full reminder audits to their cadence", async () => {
+  await worker.scheduled({ scheduledTime: Date.parse("2026-09-03T00:01:00.000Z") }, environment, context);
+  assert.deepEqual(fixture.calls.map(({ request }) => new URL(request.url).pathname), ["/api/push/dispatch"]);
+  assert.equal(new URL(fixture.calls[0].request.url).search, "");
+
+  fixture.calls.length = 0;
+  await worker.scheduled({ scheduledTime: Date.parse("2026-09-03T00:05:00.000Z") }, environment, context);
+  assert.deepEqual(fixture.calls.map(({ request }) => new URL(request.url).pathname), ["/api/account/deletion/cleanup", "/api/push/dispatch"]);
+  assert.equal(new URL(fixture.calls.at(-1).request.url).search, "");
+
+  fixture.calls.length = 0;
+  await worker.scheduled({ scheduledTime: Date.parse("2026-09-03T00:15:00.000Z") }, environment, context);
+  assert.deepEqual(fixture.calls.map(({ request }) => new URL(request.url).pathname), paths);
+  assert.equal(new URL(fixture.calls.at(-1).request.url).search, "");
+});
+
+test("a synthetic day keeps scheduled route calls within the fixed read budget", async () => {
+  const start = Date.parse("2026-09-03T00:00:00.000Z");
+  for (let minute = 0; minute < 24 * 60; minute++) {
+    await worker.scheduled({ scheduledTime: start + minute * 60_000 }, environment, context);
+  }
+  const urls = fixture.calls.map(({ request }) => new URL(request.url));
+  const count = (path) => urls.filter((url) => url.pathname === path).length;
+  assert.equal(count("/api/account/deletion/cleanup"), 288);
+  assert.equal(count("/api/demo/cleanup"), 96);
+  assert.equal(count("/api/auth/connection/cleanup"), 96);
+  assert.equal(count("/api/push/dispatch"), 1_440);
+  assert.equal(urls.filter((url) => url.pathname === "/api/push/dispatch" && url.searchParams.get("audit") === "1").length, 24);
+});
+
 test("one failed cleanup does not skip other scheduled routes and fails the invocation", async () => {
   fixture.outcomes.push(503, 200, 200, 500);
-  await assert.rejects(worker.scheduled({}, environment, context), (error) => {
+  await assert.rejects(worker.scheduled(topOfHour, environment, context), (error) => {
     assert.ok(error instanceof AggregateError);
     assert.equal(error.errors.length, 2);
     assert.match(error.errors[0].message, /account\/deletion\/cleanup failed: HTTP 503/);
-    assert.match(error.errors[1].message, /push\/dispatch failed: HTTP 500/);
+    assert.match(error.errors[1].message, /push\/dispatch\?audit=1 failed: HTTP 500/);
     return true;
   });
   assert.equal(fixture.calls.length, 4);
@@ -74,8 +106,8 @@ test("one failed cleanup does not skip other scheduled routes and fails the invo
 
 test("a transient scheduled exception is retried by the next invocation", async () => {
   fixture.outcomes.push(new Error("synthetic transient failure"), 200, 200, 200);
-  await assert.rejects(worker.scheduled({}, environment, context), AggregateError);
-  await worker.scheduled({}, environment, context);
+  await assert.rejects(worker.scheduled(topOfHour, environment, context), AggregateError);
+  await worker.scheduled(topOfHour, environment, context);
   assert.deepEqual(fixture.calls.map(({ request }) => new URL(request.url).pathname), [...paths, ...paths]);
 });
 
