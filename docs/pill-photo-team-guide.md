@@ -31,6 +31,7 @@ backend/test-support/
     baseline.json              최초 6건의 기록된 결과
     manifest.json              버전·크기·해시
     README.md / SOURCES.md     실행·출처·이용범위·검수 한계
+  pill-photo-phone-evaluation/ 휴대폰 평가의 비민감 해시·버전·점수 기록
 verification-artifacts/        Git 제외 유지
   pill-photo/run-*/            각자 새로 생성한 보고서와 미리보기
   ...                         전체 다운로드·과거 실행 로그 등
@@ -57,6 +58,8 @@ verification-artifacts/        Git 제외 유지
 별도로 고정한 validation 4쌍은 2026-09-02에 Luna Vision + Sol OCR로 실제 재측정해 `recall@1·5·20` 4/4, 강한 오답 0건, 재촬영 대상 후보 노출 0건을 통과했다. 네 건 모두 후보 1위였지만 `needs_review`였으며 자동 확정 결과는 아니다. 이 수치는 캡처 수준 반복 재현 결과이고 최초 개발 세트 0/4를 덮어쓰거나 운영 정확도를 주장하지 않는다.
 
 이후 같은 규칙을 `4e798ae`로 동결해 holdout 4쌍을 최종 1회 평가한 결과는 `recall@1` 2/4, `recall@5·20` 3/4로 필수 게이트 실패다. 강한 오답과 재촬영 후보 노출은 0건이었지만, 한 사례에서 `HM`을 `I-M / IM / 1-M`로 오독해 정답이 상위 20개에 들지 않았다. 결과를 본 뒤 규칙은 바꾸지 않았다. 이 holdout을 다시 최종 평가로 쓰지 말고, 후속 개선에는 새 평가 버전과 미사용 holdout을 준비한다.
+
+실제 휴대폰 사진은 v4 validation 6제품·12사진과 v5 holdout 6제품·12사진으로 분리했다. validation 두 설정은 `recall@5` 6/6과 5/6이었고, 최종 holdout은 `recall@1·5·20` 모두 2/6으로 실패했다. 원본 사진과 API 원문은 Git에서 제외하지만, [`pill-photo-phone-evaluation/results-2026-09-02.json`](../backend/test-support/pill-photo-phone-evaluation/results-2026-09-02.json)에 이미지 해시·익명화 품목/공식 레코드 지문·실행 버전·점수를 고정했다. 원본이 없는 깨끗한 체크아웃은 `metadata-only`, 비공개 원본이 있는 환경은 전체 해시 대조로 명시적으로 구분되며 두 상태 모두 건너뜀 없이 테스트된다. 전체 재현 절차는 [스마트폰 사진 평가 기록](../backend/test-support/pill-photo-phone-evaluation/README.md)에 있다.
 
 현재 필수 회귀 게이트는 다음 여섯 가지다.
 

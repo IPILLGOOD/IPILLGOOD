@@ -229,6 +229,16 @@ node --experimental-strip-types --test backend/test-support/pill-photo-local.tes
 - 요약은 `backend/test-support/pill-photo-unseen-evaluation/holdout-result-2026-09-02.json`에 보존한다. 다음 실험은 새 validation/holdout 분할과 실제 휴대폰 촬영 조건을 준비해야 한다.
 - 최종 검증은 백엔드 322개·프론트 89개, 총 411개 테스트와 타입 검사, ESLint, 프로덕션 빌드, `pill:regression` 6/6, `git diff --check`를 통과했다.
 
+## 2026-09-02 스마트폰 v4 validation / v5 holdout 평가
+
+- 집에서 직접 촬영한 서로 다른 약 12제품을 validation 6제품·12사진과 holdout 6제품·12사진으로 분리했다. 원본 사진·로컬 manifest·원본 AI 응답은 개인정보와 용량 경계를 위해 `verification-artifacts/`에 두고 Git에는 포함하지 않는다.
+- validation 첫 설정(`pill-phone-centered-detail-contrast-v1`)은 `recall@1` 3/6, `recall@5·20` 6/6이었다. 전처리를 v2로 바꾼 두 번째 설정은 `recall@1` 3/6, `recall@5` 5/6, `recall@20` 6/6이었다. 전처리 버전이 다르므로 두 결과를 동일 조건 반복 실행의 안정성 수치로 해석하지 않는다.
+- 새 제품으로 봉인했던 v5 holdout의 최종 1회 결과는 `recall@1·5·20` 모두 2/6이었다. 강한 오답과 재촬영 대상 후보 노출은 0건이지만, 상위 20개에도 정답이 없는 4건이 있어 사용자 기능이나 운영 준비 상태가 아니다.
+- Git의 [`pill-photo-phone-evaluation/results-2026-09-02.json`](../backend/test-support/pill-photo-phone-evaluation/results-2026-09-02.json)은 fixture 버전, 24개 이미지 SHA-256, 익명화 품목/공식 레코드 지문, 제품·사례·사진 수, 모델·프롬프트·전처리·검색·카탈로그 버전과 비민감 점수를 고정한다.
+- 깨끗한 체크아웃은 `metadata-only` 상태로 위 기록의 스키마·개수·split 비중복을 검증한다. 팀의 비공개 원본이 같은 로컬 경로에 있으면 `pill:verify`가 manifest와 사진을 기록된 해시까지 추가 대조한다. 자세한 절차는 [`pill-photo-phone-evaluation/README.md`](../backend/test-support/pill-photo-phone-evaluation/README.md)에 있다.
+- 리뷰 반영 후 스마트폰 평가 계약은 validation/holdout 각각 정확히 6제품·6사례·12사진을 요구한다. 이전 모든 평가 세트와 이미지 해시가 겹치거나 split 간 품목코드·공식 레코드 지문이 겹치면 로드 전에 실패하고, 최소 6사례 미만이면 점수가 완전 일치해도 `passed`가 될 수 없다.
+- 스마트폰 사진·평가 계약 전용 `pill:verify`는 47/47, 건너뜀 0개로 통과했고 전체 프로젝트 strict 타입 검사도 통과했다.
+
 ## 검증과 다음 작업
 
 최초 사진 연결 단계에는 기본 14개 + 로컬 공개 자료 테스트 4개를 추가했다. 팀 공통 자료 단계에서 고정 카탈로그·기록 결과·오프라인 재생·만료 경계 검증 5개를 더했다. 리뷰 반영 단계에서는 복수 각인 계약·각인 우선 재정렬·마스크 품질·회귀 diff 테스트를 보강했고, 최종 감사에서 부분 판독의 `strong` 승격을 막는 회귀 1개를 추가했다. 현재 전체 단위 테스트는 **프론트 89 + 백엔드 314 = 403개**, 실패·건너뜀 0개다. `pill:regression` 필수 게이트 6/6, 프로젝트 타입 검사, 변경 백엔드 파일 strict 타입 검사, ESLint, 프로덕션 빌드, `git diff --check`도 통과했다. 모든 사진 재생·회귀 검사는 외부 `fetch`를 차단하거나 요청 0회를 확인한다.

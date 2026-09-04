@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,9 +9,7 @@ import { loadFrozenPillPhotoFixture } from "./pill-photo-fixture.ts";
 import { officialPillRecordDigest } from "./pill-photo-label-audit.ts";
 import {
   loadPillPhotoPhoneFixtureForTest,
-  loadPillPhotoPhoneValidationFixture,
   PILL_PHOTO_PHONE_HOLDOUT_VERSION,
-  PILL_PHOTO_PHONE_VALIDATION_DIRECTORY,
   PILL_PHOTO_PHONE_VALIDATION_VERSION,
   type PillPhotoFixtureIdentitySet,
 } from "./pill-photo-phone-validation.ts";
@@ -222,14 +220,4 @@ test("스마트폰 평가는 이전 평가 세트의 이미지 해시를 재사�
     }),
     /phone_validation_fixture_overlaps_previous_images/,
   );
-});
-
-test("현재 로컬 v4 intake가 존재하면 전체 관계·공식 라벨·JPEG 무결성을 검증한다", {
-  skip: await access(join(PILL_PHOTO_PHONE_VALIDATION_DIRECTORY, "manifest.local.json")).then(() => false, () => true),
-}, async () => {
-  const loaded = await loadPillPhotoPhoneValidationFixture();
-  assert.equal(loaded.manifest.products.length, 6);
-  assert.equal(loaded.manifest.images.length, 12);
-  assert.equal(loaded.inferenceInputs.length, 6);
-  assert.equal(loaded.manifest.products.filter((product) => product.appearanceHistory).length, 1);
 });
