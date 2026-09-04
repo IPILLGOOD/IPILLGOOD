@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "pill-photo-validation-result.v1",
+  "fixtureVersion": "pill-photo-unseen-product-eval-2026-09-02-v3",
+  "scorePolicyVersion": "capture-candidate-recall-v1",
+  "scope": "unseen_product_generalization_pilot",
+  "productionReadinessClaim": false,
+  "frozenCommit": "f9a3d87",
+  "pipeline": {
+    "preprocessingVersion": "pill-photo-alpha-pca-detail-contrast-v1",
+    "visionVersion": "pill-photo-observation-v3-multiview",
+    "visionModel": "gpt-5.6-sol",
+    "ocrVersion": "pill-photo-imprint-ocr-per-side-dual-view-v2",
+    "ocrModel": "gpt-5.6-sol",
+    "fusionVersion": "pill-photo-vision-ocr-consensus-v1",
+    "searchVersion": "pill-structured-v8-anchored-partial-imprint"
+  },
+  "requests": 12,
+  "cases": [
+    { "id": "unseen-v-01", "expectedRank": 1, "searchStatus": "needs_review" },
+    { "id": "unseen-v-02", "expectedRank": 1, "searchStatus": "candidates_found" },
+    { "id": "unseen-v-03", "expectedRank": 1, "searchStatus": "needs_review" },
+    { "id": "unseen-v-04", "expectedRank": 1, "searchStatus": "candidates_found" }
+  ],
+  "metrics": {
+    "evaluatedCases": 4,
+    "recallAt1": "4/4",
+    "recallAt5": "4/4",
+    "recallAt20": "4/4",
+    "strongCandidates": 0,
+    "strongWrongCandidates": 0,
+    "retakeCandidateExposureCases": 0
+  },
+  "gates": {
+    "allCasesEvaluated": true,
+    "recallAt5": true,
+    "noStrongWrongCandidates": true,
+    "noRetakeCandidateExposure": true
+  },
+  "passed": true,
+  "holdoutOpened": false
+}

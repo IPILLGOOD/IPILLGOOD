@@ -357,6 +357,7 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 
 ## 문서
 
+- [알약 식별 팀원 시작 안내](docs/pill-photo-team-guide.md) — Git에 포함한 공개 최소 자료로 API 키 없이 `pill:verify` / `pill:replay` / `pill:regression` 실행 (로컬 평가용, 사용자 기능 아님)
 - [저장·알림 안정성, 로컬·CI 전체 검증 및 운영 복구](docs/backend-reliability.md) — 깨끗한 checkout에서 `npm ci`, `npx playwright install --with-deps chromium` 후 `npm run verify -- --account-full-cycle` (PR·main CI와 동일)
 - [제품 기획안](md/IPILLGOOD_제품_기획안.md)
 - [문제 정의 및 필요성 근거 자료](md/IPILLGOOD_근거자료.md)

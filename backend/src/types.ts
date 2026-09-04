@@ -120,6 +120,8 @@ export interface NutritionKnowledgeRule {
 
 export interface MedicationPlan {
   id: string;
+  /** MFDS item code verified against the unchanged prescription identity; absent on legacy/demo plans. */
+  itemSeq?: string;
   productName: string;
   ingredientName: string;
   categoryPlain: string;

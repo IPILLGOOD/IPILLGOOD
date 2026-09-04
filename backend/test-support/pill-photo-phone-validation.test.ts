@@ -1,0 +1,223 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import sharp from "sharp";
+import { loadFrozenPillPhotoFixture } from "./pill-photo-fixture.ts";
+import { officialPillRecordDigest } from "./pill-photo-label-audit.ts";
+import {
+  loadPillPhotoPhoneFixtureForTest,
+  PILL_PHOTO_PHONE_HOLDOUT_VERSION,
+  PILL_PHOTO_PHONE_VALIDATION_VERSION,
+  type PillPhotoFixtureIdentitySet,
+} from "./pill-photo-phone-validation.ts";
+
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+const EMPTY_PREVIOUS_FIXTURES: PillPhotoFixtureIdentitySet = {
+  imageSha256: new Set(),
+  expectedItemSeq: new Set(),
+  officialRecordSha256: new Set(),
+};
+
+async function createFixture(directory: string, options: {
+  split?: "validation" | "holdout";
+  productCount?: number;
+  itemOffset?: number;
+} = {}) {
+  const split = options.split ?? "validation";
+  const productCount = options.productCount ?? 6;
+  const itemOffset = options.itemOffset ?? (split === "validation" ? 0 : 6);
+  const frozen = await loadFrozenPillPhotoFixture();
+  const eligibleItems = frozen.snapshot.items.filter((item, index, all) =>
+    (item.form === "tablet" || item.form === "capsule") && item.colors.length > 0
+      && all.findIndex((other) => other.itemSeq === item.itemSeq) === index);
+  const items = eligibleItems.slice(itemOffset, itemOffset + productCount);
+  assert.equal(items.length, productCount);
+  const products = [];
+  const images = [];
+  const cases = [];
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]!;
+    const sequence = String(index + 1).padStart(2, "0");
+    const id = `v4-${split === "validation" ? "v" : "h"}${sequence}`;
+    products.push({
+      id,
+      providedName: `fixture-${sequence}`,
+      expectedItemSeq: item.itemSeq,
+      officialProductName: item.productName,
+      manufacturer: item.manufacturer,
+      expectedOfficialRecordSha256: officialPillRecordDigest(item),
+      expectedObservation: {
+        form: item.form,
+        formName: item.formName,
+        shape: item.shape,
+        colors: item.colors,
+        front: { rawImprint: item.front.rawImprint, imprint: item.front.imprint, scoreLine: item.front.scoreLine, mark: item.front.mark },
+        back: { rawImprint: item.back.rawImprint, imprint: item.back.imprint, scoreLine: item.back.scoreLine, mark: item.back.mark },
+      },
+      sideMapping: { "side-a": "front", "side-b": "back" },
+    });
+    const photos = [];
+    for (const [sideIndex, captureSide] of ["side-a", "side-b"].entries()) {
+      const name = `${id}-${captureSide}.jpg`;
+      const bytes = await sharp({
+        create: {
+          width: 96,
+          height: 72,
+          channels: 3,
+          background: {
+            r: 20 + index * 30 + (split === "holdout" ? 50 : 0),
+            g: 30 + sideIndex * 120,
+            b: 40 + index * 5,
+          },
+        },
+      }).jpeg({ quality: 90 }).toBuffer();
+      await writeFile(join(directory, name), bytes);
+      images.push({
+        path: name,
+        productId: id,
+        captureSide,
+        officialSide: sideIndex === 0 ? "front" : "back",
+        bytes: bytes.length,
+        width: 96,
+        height: 72,
+        sha256: sha256(bytes),
+      });
+      photos.push(name);
+    }
+    cases.push({ id, split, expectedItemSeq: item.itemSeq, photos });
+  }
+  const manifest = {
+    schemaVersion: 1,
+    fixtureVersion: split === "validation" ? PILL_PHOTO_PHONE_VALIDATION_VERSION : PILL_PHOTO_PHONE_HOLDOUT_VERSION,
+    purpose: "smartphone_photo_feature_extraction_and_candidate_recall_validation",
+    catalogFixtureVersion: frozen.manifest.fixtureVersion,
+    reviewedAt: "2026-09-02",
+    scope: {
+      split,
+      claim: split === "validation" ? "smartphone_validation_tuning_only" : "smartphone_final_holdout_only",
+      productCount,
+      caseCount: productCount,
+      imageCount: productCount * 2,
+      historicalAppearanceCaseCount: 0,
+      labelsMayBeUsedForTuning: split === "validation",
+      labelsMayBeSentToModel: false,
+      gitTracking: split === "validation" ? "ignored_local_intake" : "ignored_local_holdout",
+    },
+    products,
+    images,
+    cases,
+  };
+  await writeFile(join(directory, "manifest.local.json"), JSON.stringify(manifest));
+  return manifest;
+}
+
+function fixtureIdentities(manifest: Awaited<ReturnType<typeof createFixture>>): PillPhotoFixtureIdentitySet {
+  return {
+    imageSha256: new Set(manifest.images.map((image) => image.sha256)),
+    expectedItemSeq: new Set(manifest.products.map((product) => product.expectedItemSeq)),
+    officialRecordSha256: new Set(manifest.products.map((product) => product.expectedOfficialRecordSha256)),
+  };
+}
+
+test("스마트폰 validation 로더는 해시 고정 사진만 읽고 라벨 없는 추론 입력을 반환한다", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), `pill-phone-validation-${process.pid}-`));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const manifest = await createFixture(directory);
+  const loaded = await loadPillPhotoPhoneFixtureForTest({
+    split: "validation", directory, previousFixtureIdentities: EMPTY_PREVIOUS_FIXTURES,
+  });
+  assert.equal(loaded.manifest.fixtureVersion, PILL_PHOTO_PHONE_VALIDATION_VERSION);
+  assert.equal(loaded.inferenceInputs.length, 6);
+  const serialized = JSON.stringify(loaded.inferenceInputs);
+  assert.doesNotMatch(serialized, /expectedItemSeq|officialProductName|manufacturer|expectedObservation|officialSide/);
+  assert.ok(manifest.products.every((product) => !serialized.includes(product.expectedItemSeq)));
+
+  const first = loaded.manifest.images[0]!;
+  const altered = Buffer.from(await readFile(join(directory, first.path)));
+  altered[altered.length - 1] ^= 1;
+  await writeFile(join(directory, first.path), altered);
+  await assert.rejects(
+    loadPillPhotoPhoneFixtureForTest({
+      split: "validation", directory, previousFixtureIdentities: EMPTY_PREVIOUS_FIXTURES,
+    }),
+    /phone_validation_fixture_image_hash_mismatch/,
+  );
+});
+
+test("스마트폰 holdout 로더는 별도 ID·버전·비튜닝 범위만 허용한다", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), `pill-phone-holdout-${process.pid}-`));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  await createFixture(directory, { split: "holdout" });
+  const loaded = await loadPillPhotoPhoneFixtureForTest({
+    split: "holdout", directory, previousFixtureIdentities: EMPTY_PREVIOUS_FIXTURES,
+  });
+  assert.equal(loaded.manifest.fixtureVersion, PILL_PHOTO_PHONE_HOLDOUT_VERSION);
+  assert.equal(loaded.manifest.scope.labelsMayBeUsedForTuning, false);
+  assert.equal(loaded.inferenceInputs.every((input) => input.split === "holdout" && input.id.startsWith("v4-h")), true);
+});
+
+test("스마트폰 평가는 정확히 6제품·6사례·12사진이 아니면 거부한다", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), `pill-phone-too-small-${process.pid}-`));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  await createFixture(directory, { productCount: 1 });
+  await assert.rejects(
+    loadPillPhotoPhoneFixtureForTest({
+      split: "validation", directory, previousFixtureIdentities: EMPTY_PREVIOUS_FIXTURES,
+    }),
+    /phone_validation_fixture_manifest_invalid/,
+  );
+});
+
+test("스마트폰 holdout은 validation 품목과 공식 레코드를 재사용할 수 없다", async (context) => {
+  const validationDirectory = await mkdtemp(join(tmpdir(), `pill-phone-prior-validation-${process.pid}-`));
+  const holdoutDirectory = await mkdtemp(join(tmpdir(), `pill-phone-reused-holdout-${process.pid}-`));
+  context.after(() => Promise.all([
+    rm(validationDirectory, { recursive: true, force: true }),
+    rm(holdoutDirectory, { recursive: true, force: true }),
+  ]));
+  const validation = await createFixture(validationDirectory);
+  await createFixture(holdoutDirectory, { split: "holdout", itemOffset: 0 });
+  await assert.rejects(
+    loadPillPhotoPhoneFixtureForTest({
+      split: "holdout", directory: holdoutDirectory, previousFixtureIdentities: fixtureIdentities(validation),
+    }),
+    /phone_validation_fixture_overlaps_previous_products/,
+  );
+
+  const distinctHoldout = await createFixture(holdoutDirectory, { split: "holdout", itemOffset: 6 });
+  distinctHoldout.products[0]!.expectedOfficialRecordSha256 = validation.products[0]!.expectedOfficialRecordSha256;
+  await writeFile(join(holdoutDirectory, "manifest.local.json"), JSON.stringify(distinctHoldout));
+  await assert.rejects(
+    loadPillPhotoPhoneFixtureForTest({
+      split: "holdout",
+      directory: holdoutDirectory,
+      previousFixtureIdentities: {
+        imageSha256: new Set(),
+        expectedItemSeq: new Set(validation.products.map((product) => product.expectedItemSeq)),
+        officialRecordSha256: new Set(validation.products.map((product) => product.expectedOfficialRecordSha256)),
+      },
+    }),
+    /phone_validation_fixture_overlaps_previous_official_records/,
+  );
+});
+
+test("스마트폰 평가는 이전 평가 세트의 이미지 해시를 재사용할 수 없다", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), `pill-phone-reused-image-${process.pid}-`));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const manifest = await createFixture(directory);
+  await assert.rejects(
+    loadPillPhotoPhoneFixtureForTest({
+      split: "validation",
+      directory,
+      previousFixtureIdentities: {
+        imageSha256: new Set([manifest.images[0]!.sha256]),
+        expectedItemSeq: new Set(),
+        officialRecordSha256: new Set(),
+      },
+    }),
+    /phone_validation_fixture_overlaps_previous_images/,
+  );
+});

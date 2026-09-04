@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "pill-photo-shared-2026-08-31-v1",
+  "purpose": "historical_offline_replay_only",
+  "reviewedAt": "2026-08-31",
+  "photoReviewVersion": "healthkr-pilot-2026-08-31-v1",
+  "catalog": {
+    "file": "catalog.json.gz",
+    "bytes": 1469545,
+    "sha256": "b885d930ab5ef8a0e7478ca0c6d9252729bfcd452cf522496552ac1b28d48033",
+    "uncompressedBytes": 17086238,
+    "uncompressedSha256": "ccc6e54a51a130cda1356e636350ed8dc403fc98ed351efc63c3f8875a34cf29",
+    "version": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119",
+    "verifiedAt": "2026-08-31T06:36:18.138Z",
+    "records": 25387,
+    "sourceUrl": "https://www.data.go.kr/data/15057639/openapi.do"
+  },
+  "baseline": {
+    "file": "baseline.json",
+    "bytes": 23838,
+    "sha256": "bd0126848326610435e60512df68f3fb72b4cf80e7afcad88464fddf30babe76",
+    "createdAt": "2026-08-31T11:43:00.459Z",
+    "model": "gpt-5.6-luna",
+    "historicalRequests": 6,
+    "versions": {
+      "review": "healthkr-pilot-2026-08-31-v1",
+      "preprocessing": "public-rgba-alpha-bounds-white-1024-v1",
+      "prompt": "pill-photo-observation-v1"
+    }
+  },
+  "images": [
+    {
+      "path": "images/29002/IMG_20201202_163857.png",
+      "sha256": "d44bb3a9e1ddf0ff7ac821e5ee6c74d31d310b7d6f1c9ba979eea0c127f14c85",
+      "bytes": 568690
+    },
+    {
+      "path": "images/29002/IMG_20201202_163933.png",
+      "sha256": "877d2339b191d5ebaf2f1758cc1a0208651967bc3f9e493691079f07238f4dd0",
+      "bytes": 522771
+    },
+    {
+      "path": "images/40792/IMG_20201201_202814.png",
+      "sha256": "47c629f098958972e6004a913edf5edcdf29cdc1bc19a2e4d22c44f4c245eedf",
+      "bytes": 744249
+    },
+    {
+      "path": "images/40792/IMG_20201201_202849.png",
+      "sha256": "3c154c4168030d4ce686143ed265c784ee5a08108d544856eead9ff85af419a5",
+      "bytes": 707947
+    },
+    {
+      "path": "images/41107/IMG_20201117_204859.png",
+      "sha256": "94c6f62ea8a3c6b34248438dab8c19d7ebea36811d56fd62a87eb41dbebb8b76",
+      "bytes": 538051
+    },
+    {
+      "path": "images/41107/IMG_20201117_204943.png",
+      "sha256": "52c49dde25291b364405e9d42aa97dc6ffdfe1814e02a0422a734fd27eeb94c9",
+      "bytes": 520175
+    },
+    {
+      "path": "images/41344/IMG_20201120_002134.png",
+      "sha256": "1739ee7aab67343790a27c145432e3027b21dddbadc0b332c31328fe376a0be2",
+      "bytes": 406121
+    },
+    {
+      "path": "images/41344/IMG_20201120_002100.png",
+      "sha256": "a9efdd71382105a974cb0b3d953f617c010149f207f678bb6f94f2df092e6651",
+      "bytes": 413440
+    },
+    {
+      "path": "images/41107/IMG_20201117_204901.png",
+      "sha256": "6a44711f907dd00ad9105bccdb64cc769587090ea814533f3724a0318de86080",
+      "bytes": 404082
+    }
+  ],
+  "rights": {
+    "checkedAt": "2026-08-31",
+    "statedScope": "이용허락범위 제한 없음",
+    "imageMetadataUrl": "https://www.data.go.kr/data/15112582/fileData.do",
+    "imageDownloadNotice": "https://health.kr/notice/notice_view.asp?show_idx=1001",
+    "catalogMetadataUrl": "https://www.data.go.kr/data/15057639/openapi.do"
+  }
+}

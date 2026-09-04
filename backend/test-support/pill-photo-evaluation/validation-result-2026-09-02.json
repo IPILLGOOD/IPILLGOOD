@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "pill-photo-validation-result.v1",
+  "fixtureVersion": "pill-photo-capture-eval-2026-09-02-v2",
+  "scorePolicyVersion": "capture-candidate-recall-v1",
+  "scope": "capture_level_repeatability_only",
+  "productionReadinessClaim": false,
+  "pipeline": {
+    "preprocessingVersion": "pill-photo-alpha-pca-detail-contrast-v1",
+    "visionVersion": "pill-photo-observation-v3-multiview",
+    "visionModel": "gpt-5.6-luna",
+    "ocrVersion": "pill-photo-imprint-ocr-per-side-dual-view-v2",
+    "ocrModel": "gpt-5.6-sol",
+    "fusionVersion": "pill-photo-vision-ocr-consensus-v1",
+    "searchVersion": "pill-structured-v6-partial-image-review"
+  },
+  "requests": 12,
+  "cases": [
+    { "id": "capture-v-01", "expectedRank": 1, "searchStatus": "needs_review" },
+    { "id": "capture-v-02", "expectedRank": 1, "searchStatus": "needs_review" },
+    { "id": "capture-v-03", "expectedRank": 1, "searchStatus": "needs_review" },
+    { "id": "capture-v-04", "expectedRank": 1, "searchStatus": "needs_review" }
+  ],
+  "metrics": {
+    "evaluatedCases": 4,
+    "recallAt1": "4/4",
+    "recallAt5": "4/4",
+    "recallAt20": "4/4",
+    "strongCandidates": 0,
+    "strongWrongCandidates": 0,
+    "retakeCandidateExposureCases": 0
+  },
+  "passed": true,
+  "holdoutOpened": false
+}

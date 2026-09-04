@@ -1,1 +1,7 @@
 데모[[:space:]]영상.mov filter=lfs diff=lfs merge=lfs -text
+# Shared fixture hashes must be identical on Windows and Linux.
+backend/test-support/pill-photo-fixtures/*.json text eol=lf
+backend/test-support/pill-photo-fixtures/*.gz binary
+backend/test-support/pill-photo-fixtures/images/**/*.png binary
+backend/test-support/pill-photo-evaluation/*.json text eol=lf
+backend/test-support/pill-photo-evaluation/images/*.png binary

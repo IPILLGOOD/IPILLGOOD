@@ -1,0 +1,758 @@
+{
+  "mode": "evaluate",
+  "createdAt": "2026-08-31T11:43:00.459Z",
+  "versions": {
+    "review": "healthkr-pilot-2026-08-31-v1",
+    "preprocessing": "public-rgba-alpha-bounds-white-1024-v1",
+    "prompt": "pill-photo-observation-v1"
+  },
+  "model": "gpt-5.6-luna",
+  "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119",
+  "catalogRecords": 25387,
+  "catalogVerifiedAt": "2026-08-31T06:36:18.138Z",
+  "maxAgeHours": 24,
+  "requests": 6,
+  "sourceUrl": "https://health.kr/notice/notice_view.asp?show_idx=1001",
+  "rows": [
+    {
+      "id": "soft-capsule",
+      "kind": "candidate",
+      "expectedItemSeq": "201505259",
+      "expectedProduct": "오피큐탄연질캡슐(이소트레티노인)",
+      "evidenceUrl": "https://www.pharm.or.kr/search/drugidfy/show.asp?idx=36176",
+      "photos": [
+        "0",
+        "1"
+      ],
+      "extraction": {
+        "ok": true,
+        "features": {
+          "observation": {
+            "form": "tablet",
+            "integrity": "intact",
+            "count": 1,
+            "overlapping": false,
+            "quality": "blurred",
+            "shape": "타원형",
+            "colors": [
+              "주황"
+            ],
+            "front": {
+              "imprint": "OPC",
+              "scoreLine": "none"
+            },
+            "back": {
+              "imprint": "",
+              "scoreLine": "unknown"
+            }
+          },
+          "pairConsistency": "consistent",
+          "bothSidesVisible": true,
+          "imageArtifact": "none"
+        },
+        "usage": {
+          "inputTokens": 2207,
+          "outputTokens": 295
+        }
+      },
+      "comparison": {
+        "status": "searched",
+        "reason": "features_compared",
+        "observation": {
+          "form": "tablet",
+          "integrity": "intact",
+          "count": 1,
+          "overlapping": false,
+          "quality": "blurred",
+          "shape": "타원형",
+          "colors": [
+            "주황"
+          ],
+          "front": {
+            "imprint": "OPC",
+            "scoreLine": "none"
+          },
+          "back": {
+            "imprint": "",
+            "scoreLine": "unknown"
+          },
+          "source": "image_features"
+        },
+        "search": {
+          "status": "needs_retake",
+          "reason": "unclear_observation",
+          "message": "밝은 곳에서 단색 배경에 약 한 개를 놓고 가까이 초점을 맞춰 앞뒤를 확인해주세요.",
+          "notice": "공식 데이터와 외형을 비교한 후보이며 약의 확정이나 복용 가능 여부를 뜻하지 않아요. 원본 약 봉투·처방전·약사 안내와 함께 확인해주세요.",
+          "candidates": [],
+          "heldCandidates": [],
+          "metrics": {
+            "catalogRecords": 0,
+            "stages": [],
+            "candidateCount": 0,
+            "returnedCount": 0,
+            "heldCandidateCount": 0,
+            "heldReturnedCount": 0,
+            "matchedItemCount": 0,
+            "unsupportedCatalogRecords": 0
+          },
+          "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119",
+          "truncated": false,
+          "heldTruncated": false,
+          "searchRulesVersion": "pill-structured-v3-evidence-gate",
+          "formPolicyVersion": "pill-form-policy-v1"
+        }
+      },
+      "evaluation": {
+        "outcome": "expected_candidate_missing",
+        "expectedRank": null,
+        "expectedHeld": false,
+        "expectedGateObserved": null
+      },
+      "expectedReference": [
+        {
+          "formName": "연질캡슐제, 현탁상",
+          "shape": "타원형",
+          "colors": [
+            "분홍"
+          ],
+          "frontImprint": "OPQ",
+          "backImprint": null,
+          "imageUrl": "https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/1Or0DP1d0J8"
+        }
+      ]
+    },
+    {
+      "id": "two-color-capsule",
+      "kind": "candidate",
+      "expectedItemSeq": "201800300",
+      "expectedProduct": "디아셀캡슐50밀리그램(디아세레인)",
+      "evidenceUrl": "https://pharm.or.kr/search/drugidfy/show.asp?idx=48009",
+      "photos": [
+        "2",
+        "3"
+      ],
+      "extraction": {
+        "ok": true,
+        "features": {
+          "observation": {
+            "form": "capsule",
+            "integrity": "intact",
+            "count": 1,
+            "overlapping": false,
+            "quality": "clear",
+            "shape": "장방형",
+            "colors": [
+              "노랑",
+              "주황"
+            ],
+            "front": {
+              "imprint": "DE / CP",
+              "scoreLine": "none"
+            },
+            "back": {
+              "imprint": "",
+              "scoreLine": "none"
+            }
+          },
+          "pairConsistency": "consistent",
+          "bothSidesVisible": true,
+          "imageArtifact": "none"
+        },
+        "usage": {
+          "inputTokens": 2602,
+          "outputTokens": 495
+        }
+      },
+      "comparison": {
+        "status": "searched",
+        "reason": "features_compared",
+        "observation": {
+          "form": "capsule",
+          "integrity": "intact",
+          "count": 1,
+          "overlapping": false,
+          "quality": "clear",
+          "shape": "장방형",
+          "colors": [
+            "노랑",
+            "주황"
+          ],
+          "front": {
+            "imprint": "DE / CP",
+            "scoreLine": "none"
+          },
+          "back": {
+            "imprint": "",
+            "scoreLine": "none"
+          },
+          "source": "image_features"
+        },
+        "search": {
+          "status": "needs_review",
+          "reason": "insufficient_official_evidence",
+          "message": "공식 각인·제형 정보가 부족해 후보 제시를 보류했어요. 약을 찾았다는 뜻이 아니며 약 봉투와 약사 안내로 확인해주세요.",
+          "notice": "공식 데이터와 외형을 비교한 후보이며 약의 확정이나 복용 가능 여부를 뜻하지 않아요. 원본 약 봉투·처방전·약사 안내와 함께 확인해주세요.",
+          "candidates": [],
+          "heldCandidates": [
+            {
+              "itemSeq": "200404255",
+              "matchType": "incomplete",
+              "variants": [
+                {
+                  "item": {
+                    "itemSeq": "200404255",
+                    "productName": "아세렌캡슐(디아세레인)",
+                    "manufacturer": "대화제약(주)",
+                    "form": "capsule",
+                    "formName": "경질캡슐제, 산제",
+                    "shape": "장방형",
+                    "colors": [
+                      "노랑",
+                      "주황"
+                    ],
+                    "front": {
+                      "rawImprint": "마크 마크",
+                      "imprint": null,
+                      "imprintHasDescription": true,
+                      "scoreLine": "unknown",
+                      "mark": "dHP,d-P,d P,dP"
+                    },
+                    "back": {
+                      "rawImprint": null,
+                      "imprint": null,
+                      "imprintHasDescription": false,
+                      "scoreLine": "unknown",
+                      "mark": null
+                    },
+                    "imageUrl": "https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/1Mxwka5v1A3",
+                    "source": {
+                      "url": "https://www.data.go.kr/data/15057639/openapi.do",
+                      "fetchedAt": "2026-08-31T06:31:05.099Z",
+                      "changedAt": "2022-07-11",
+                      "imageRegisteredAt": "2007-07-31"
+                    }
+                  },
+                  "orientation": "direct",
+                  "matchType": "incomplete",
+                  "evidence": [
+                    {
+                      "field": "form",
+                      "observed": "capsule",
+                      "official": "capsule",
+                      "match": "exact"
+                    },
+                    {
+                      "field": "colors",
+                      "observed": "노랑/주황",
+                      "official": "노랑/주황",
+                      "match": "exact"
+                    },
+                    {
+                      "field": "shape",
+                      "observed": "장방형",
+                      "official": "장방형",
+                      "match": "exact"
+                    },
+                    {
+                      "field": "front.imprint",
+                      "observed": "DE / CP",
+                      "official": null,
+                      "match": "unknown"
+                    },
+                    {
+                      "field": "front.imprintDescription",
+                      "observed": "not_compared",
+                      "official": "마크 마크",
+                      "match": "unknown"
+                    },
+                    {
+                      "field": "front.mark",
+                      "observed": "not_compared",
+                      "official": "dHP,d-P,d P,dP",
+                      "match": "unknown"
+                    },
+                    {
+                      "field": "front.scoreLine",
+                      "observed": "none",
+                      "official": "unknown",
+                      "match": "unknown"
+                    },
+                    {
+                      "field": "back.imprint",
+                      "observed": "",
+                      "official": null,
+                      "match": "unknown"
+                    },
+                    {
+                      "field": "back.scoreLine",
+                      "observed": "none",
+                      "official": "unknown",
+                      "match": "unknown"
+                    }
+                  ],
+                  "formAssessment": {
+                    "status": "supported",
+                    "form": "capsule",
+                    "reason": "listed_capsule"
+                  },
+                  "reviewReasons": [
+                    "no_imprint_evidence"
+                  ]
+                }
+              ]
+            }
+          ],
+          "metrics": {
+            "catalogRecords": 25387,
+            "stages": [
+              {
+                "stage": "form",
+                "remaining": 5151
+              },
+              {
+                "stage": "color",
+                "remaining": 58
+              },
+              {
+                "stage": "shape",
+                "remaining": 58
+              },
+              {
+                "stage": "imprint",
+                "remaining": 1
+              },
+              {
+                "stage": "score_line",
+                "remaining": 1
+              }
+            ],
+            "candidateCount": 0,
+            "returnedCount": 0,
+            "heldCandidateCount": 1,
+            "heldReturnedCount": 1,
+            "matchedItemCount": 1,
+            "unsupportedCatalogRecords": 93
+          },
+          "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119",
+          "truncated": false,
+          "heldTruncated": false,
+          "searchRulesVersion": "pill-structured-v3-evidence-gate",
+          "formPolicyVersion": "pill-form-policy-v1"
+        }
+      },
+      "evaluation": {
+        "outcome": "expected_candidate_missing",
+        "expectedRank": null,
+        "expectedHeld": false,
+        "expectedGateObserved": null
+      },
+      "expectedReference": [
+        {
+          "formName": "경질캡슐제, 산제",
+          "shape": "장방형",
+          "colors": [
+            "노랑",
+            "주황"
+          ],
+          "frontImprint": "CLP DE1",
+          "backImprint": null,
+          "imageUrl": "https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/1MyJO_nSztZ"
+        }
+      ]
+    },
+    {
+      "id": "printed-band-capsule",
+      "kind": "candidate",
+      "expectedItemSeq": "201906970",
+      "expectedProduct": "아나콕스캡슐100밀리그램(세레콕시브)",
+      "evidenceUrl": "https://www.pharm.or.kr/search/drugidfy/show.asp?idx=48324",
+      "photos": [
+        "4",
+        "5"
+      ],
+      "extraction": {
+        "ok": true,
+        "features": {
+          "observation": {
+            "form": "capsule",
+            "integrity": "intact",
+            "count": 1,
+            "overlapping": false,
+            "quality": "blurred",
+            "shape": "장방형",
+            "colors": [
+              "하양",
+              "파랑"
+            ],
+            "front": {
+              "imprint": null,
+              "scoreLine": "none"
+            },
+            "back": {
+              "imprint": "",
+              "scoreLine": "none"
+            }
+          },
+          "pairConsistency": "consistent",
+          "bothSidesVisible": true,
+          "imageArtifact": "none"
+        },
+        "usage": {
+          "inputTokens": 2124,
+          "outputTokens": 349
+        }
+      },
+      "comparison": {
+        "status": "searched",
+        "reason": "features_compared",
+        "observation": {
+          "form": "capsule",
+          "integrity": "intact",
+          "count": 1,
+          "overlapping": false,
+          "quality": "blurred",
+          "shape": "장방형",
+          "colors": [
+            "하양",
+            "파랑"
+          ],
+          "front": {
+            "imprint": null,
+            "scoreLine": "none"
+          },
+          "back": {
+            "imprint": "",
+            "scoreLine": "none"
+          },
+          "source": "image_features"
+        },
+        "search": {
+          "status": "needs_retake",
+          "reason": "unclear_observation",
+          "message": "밝은 곳에서 단색 배경에 약 한 개를 놓고 가까이 초점을 맞춰 앞뒤를 확인해주세요.",
+          "notice": "공식 데이터와 외형을 비교한 후보이며 약의 확정이나 복용 가능 여부를 뜻하지 않아요. 원본 약 봉투·처방전·약사 안내와 함께 확인해주세요.",
+          "candidates": [],
+          "heldCandidates": [],
+          "metrics": {
+            "catalogRecords": 0,
+            "stages": [],
+            "candidateCount": 0,
+            "returnedCount": 0,
+            "heldCandidateCount": 0,
+            "heldReturnedCount": 0,
+            "matchedItemCount": 0,
+            "unsupportedCatalogRecords": 0
+          },
+          "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119",
+          "truncated": false,
+          "heldTruncated": false,
+          "searchRulesVersion": "pill-structured-v3-evidence-gate",
+          "formPolicyVersion": "pill-form-policy-v1"
+        }
+      },
+      "evaluation": {
+        "outcome": "expected_candidate_missing",
+        "expectedRank": null,
+        "expectedHeld": false,
+        "expectedGateObserved": null
+      },
+      "expectedReference": [
+        {
+          "formName": "경질캡슐제, 산제",
+          "shape": "장방형",
+          "colors": [
+            "하양"
+          ],
+          "frontImprint": "AJU100",
+          "backImprint": null,
+          "imageUrl": "https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/1N0L6J0YI3w"
+        }
+      ]
+    },
+    {
+      "id": "oval-tablet",
+      "kind": "candidate",
+      "expectedItemSeq": "200801352",
+      "expectedProduct": "토바스트정10밀리그램(아토르바스타틴칼슘삼수화물)",
+      "evidenceUrl": "https://pharm.or.kr/search/drugidfy/show.asp?idx=48561",
+      "photos": [
+        "6",
+        "7"
+      ],
+      "extraction": {
+        "ok": true,
+        "features": {
+          "observation": {
+            "form": "tablet",
+            "integrity": "intact",
+            "count": 1,
+            "overlapping": false,
+            "quality": "blurred",
+            "shape": "장방형",
+            "colors": [
+              "노랑"
+            ],
+            "front": {
+              "imprint": null,
+              "scoreLine": "none"
+            },
+            "back": {
+              "imprint": "10",
+              "scoreLine": "none"
+            }
+          },
+          "pairConsistency": "consistent",
+          "bothSidesVisible": true,
+          "imageArtifact": "none"
+        },
+        "usage": {
+          "inputTokens": 1789,
+          "outputTokens": 324
+        }
+      },
+      "comparison": {
+        "status": "searched",
+        "reason": "features_compared",
+        "observation": {
+          "form": "tablet",
+          "integrity": "intact",
+          "count": 1,
+          "overlapping": false,
+          "quality": "blurred",
+          "shape": "장방형",
+          "colors": [
+            "노랑"
+          ],
+          "front": {
+            "imprint": null,
+            "scoreLine": "none"
+          },
+          "back": {
+            "imprint": "10",
+            "scoreLine": "none"
+          },
+          "source": "image_features"
+        },
+        "search": {
+          "status": "needs_retake",
+          "reason": "unclear_observation",
+          "message": "밝은 곳에서 단색 배경에 약 한 개를 놓고 가까이 초점을 맞춰 앞뒤를 확인해주세요.",
+          "notice": "공식 데이터와 외형을 비교한 후보이며 약의 확정이나 복용 가능 여부를 뜻하지 않아요. 원본 약 봉투·처방전·약사 안내와 함께 확인해주세요.",
+          "candidates": [],
+          "heldCandidates": [],
+          "metrics": {
+            "catalogRecords": 0,
+            "stages": [],
+            "candidateCount": 0,
+            "returnedCount": 0,
+            "heldCandidateCount": 0,
+            "heldReturnedCount": 0,
+            "matchedItemCount": 0,
+            "unsupportedCatalogRecords": 0
+          },
+          "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119",
+          "truncated": false,
+          "heldTruncated": false,
+          "searchRulesVersion": "pill-structured-v3-evidence-gate",
+          "formPolicyVersion": "pill-form-policy-v1"
+        }
+      },
+      "evaluation": {
+        "outcome": "expected_candidate_missing",
+        "expectedRank": null,
+        "expectedHeld": false,
+        "expectedGateObserved": null
+      },
+      "expectedReference": [
+        {
+          "formName": "필름코팅정",
+          "shape": "타원형",
+          "colors": [
+            "노랑"
+          ],
+          "frontImprint": "HM",
+          "backImprint": "10",
+          "imageUrl": "https://nedrug.mfds.go.kr/pbp/cmn/itemImageDownload/1N2HVJIccvM"
+        }
+      ]
+    },
+    {
+      "id": "image-cutout",
+      "kind": "reject",
+      "expectedItemSeq": null,
+      "expectedProduct": null,
+      "evidenceUrl": "https://www.pharm.or.kr/search/drugidfy/show.asp?idx=48324",
+      "photos": [
+        "8",
+        "5"
+      ],
+      "extraction": {
+        "ok": true,
+        "features": {
+          "observation": {
+            "form": "capsule",
+            "integrity": "intact",
+            "count": 1,
+            "overlapping": false,
+            "quality": "clear",
+            "shape": "장방형",
+            "colors": [
+              "하양",
+              "파랑"
+            ],
+            "front": {
+              "imprint": null,
+              "scoreLine": "none"
+            },
+            "back": {
+              "imprint": "",
+              "scoreLine": "none"
+            }
+          },
+          "pairConsistency": "consistent",
+          "bothSidesVisible": true,
+          "imageArtifact": "none"
+        },
+        "usage": {
+          "inputTokens": 1983,
+          "outputTokens": 452
+        }
+      },
+      "comparison": {
+        "status": "searched",
+        "reason": "features_compared",
+        "observation": {
+          "form": "capsule",
+          "integrity": "intact",
+          "count": 1,
+          "overlapping": false,
+          "quality": "clear",
+          "shape": "장방형",
+          "colors": [
+            "하양",
+            "파랑"
+          ],
+          "front": {
+            "imprint": null,
+            "scoreLine": "none"
+          },
+          "back": {
+            "imprint": "",
+            "scoreLine": "none"
+          },
+          "source": "image_features"
+        },
+        "search": {
+          "status": "needs_retake",
+          "reason": "missing_surface",
+          "message": "같은 약의 앞면과 뒷면 각인을 모두 확인해주세요. 글자가 없는 면도 직접 확인이 필요해요.",
+          "notice": "공식 데이터와 외형을 비교한 후보이며 약의 확정이나 복용 가능 여부를 뜻하지 않아요. 원본 약 봉투·처방전·약사 안내와 함께 확인해주세요.",
+          "candidates": [],
+          "heldCandidates": [],
+          "metrics": {
+            "catalogRecords": 0,
+            "stages": [],
+            "candidateCount": 0,
+            "returnedCount": 0,
+            "heldCandidateCount": 0,
+            "heldReturnedCount": 0,
+            "matchedItemCount": 0,
+            "unsupportedCatalogRecords": 0
+          },
+          "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119",
+          "truncated": false,
+          "heldTruncated": false,
+          "searchRulesVersion": "pill-structured-v3-evidence-gate",
+          "formPolicyVersion": "pill-form-policy-v1"
+        }
+      },
+      "evaluation": {
+        "outcome": "rejected",
+        "expectedRank": null,
+        "expectedHeld": false,
+        "expectedGateObserved": false
+      },
+      "expectedReference": []
+    },
+    {
+      "id": "different-pills",
+      "kind": "reject",
+      "expectedItemSeq": null,
+      "expectedProduct": null,
+      "evidenceUrl": null,
+      "photos": [
+        "0",
+        "7"
+      ],
+      "extraction": {
+        "ok": true,
+        "features": {
+          "observation": {
+            "form": "tablet",
+            "integrity": "intact",
+            "count": 1,
+            "overlapping": false,
+            "quality": "blurred",
+            "shape": "장방형",
+            "colors": [
+              "갈색",
+              "노랑"
+            ],
+            "front": {
+              "imprint": "OPQ",
+              "scoreLine": "none"
+            },
+            "back": {
+              "imprint": "10",
+              "scoreLine": "none"
+            }
+          },
+          "pairConsistency": "uncertain",
+          "bothSidesVisible": true,
+          "imageArtifact": "none"
+        },
+        "usage": {
+          "inputTokens": 2025,
+          "outputTokens": 435
+        }
+      },
+      "comparison": {
+        "status": "needs_retake",
+        "reason": "unverified_photo_pair",
+        "observation": {
+          "form": "tablet",
+          "integrity": "intact",
+          "count": 1,
+          "overlapping": false,
+          "quality": "blurred",
+          "shape": "장방형",
+          "colors": [
+            "갈색",
+            "노랑"
+          ],
+          "front": {
+            "imprint": "OPQ",
+            "scoreLine": "none"
+          },
+          "back": {
+            "imprint": "10",
+            "scoreLine": "none"
+          },
+          "source": "image_features"
+        },
+        "search": null
+      },
+      "evaluation": {
+        "outcome": "rejected",
+        "expectedRank": null,
+        "expectedHeld": false,
+        "expectedGateObserved": true
+      },
+      "expectedReference": []
+    }
+  ],
+  "offlineAnnotation": {
+    "original": "report.json",
+    "note": "Added expected rejection cause and official reference display only. No new inference, no features or search results modified."
+  }
+}

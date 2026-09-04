@@ -1,0 +1,174 @@
+{
+  "schemaVersion": "pill-photo-phone-evaluation-record.v1",
+  "productionReadinessClaim": false,
+  "currentMinimumCasesForPass": 6,
+  "rawInputs": {
+    "gitTracked": false,
+    "cleanCheckoutMode": "metadata_only_without_private_photos_or_raw_model_outputs",
+    "fullReplayRequirement": "team_private_fixture_plus_openai_api_key"
+  },
+  "fixtures": [
+    {
+      "split": "validation",
+      "fixtureVersion": "pill-photo-phone-validation-local-2026-09-02-v4",
+      "manifestSchemaVersion": 1,
+      "catalogFixtureVersion": "pill-photo-shared-2026-08-31-v1",
+      "reviewedAt": "2026-09-02",
+      "counts": { "products": 6, "cases": 6, "images": 12 },
+      "imageSha256": [
+        "a4536dc9c339975e639ca72dc03afae75366faef3351a46052f4f51d62d8ba6d",
+        "7db57ac9c288de776c57d841f192a577efff477785f673a16acc15266633b4f6",
+        "952487ba8a53bd3538045eef5543d968e3d808584d0d75227dae14a2da518847",
+        "11d149089b9de9213fffef237e85b9d3035775c40d80b261339deace75898e28",
+        "73156af2a7e70e2db3b3a192813721879f7a967995563e7650b6c52c684c2d75",
+        "2675942f24ab183ddb5c8f5c99780aad6c42a8c72ef78e4e6880974cff277f7a",
+        "8887560a127915b50544ed8ff8f35a23c8ce0e609b6608df5221cb533c9a375d",
+        "70035d1064f489df51d67c32705ef94e1f9e326e9114ba383175826fb46bc9b6",
+        "f1f7b757ccbf48d02bee27af449a80084ec63a93e497641f0fc132f1736bf183",
+        "1f5a7548d3fbd176c8ccdbed5612e0573bdcc0ead9a83b4df779a58f030c4182",
+        "57c838b7a0e055007804e485dd945689fa2e982c0c0d29cd7dcda73a9dc4f99c",
+        "23d2dd806fd21259be0e35019bb7d43108b848c11a2d9190e0c1509089bd2b68"
+      ],
+      "productIdentitySha256": [
+        "50ed0e0e91655213f826a78c6e30883a4795c0e31df14c98b172f3cf936e86f7",
+        "c0b402b054a6414de3b7e3bb25869400d9ba81589245177ec6e37facdb6f6160",
+        "dbd225e1e29961ededcbbfcc138cbf34232a5a7ac9ecc8ff86fbf90d85f504ef",
+        "7aa8a949462e11f40a0d55673037bde8cce9b7ae0116006c3962e436fc72c063",
+        "918654344e3e04b2bd97919a6fe41bdece17fc7ab39c72dc62d1ba7a96d82eb1",
+        "304e6f9da2281494718a42446f5aad80e3993f0e4eb920c919ed092766c9e98e"
+      ],
+      "officialRecordSha256": [
+        "76cf78ed05396959eab3ff1e02118368bccfbf3bb00e1995cae3ed6d63912b5c",
+        "fa06a901a441e8f31f0905775a7be8e1bf4291a4940b5ac21b0fa21cc07d86b1",
+        "856bb527da8ab3ed791840e342908678775458c475d4a77fc59d27eafd2a2e72",
+        "6daefc8d4afe4067793af528b437a367e69155d2d40a33b34bbec64af996df4d",
+        "e106c90a3dcff8a84815f689ff7f8355c9327b7aa17f2f07485e661153610896",
+        "59b8fa59afd260c1f3d39f29b4a1adf23223728f11a02e14d9e4fec43ba36e21"
+      ]
+    },
+    {
+      "split": "holdout",
+      "fixtureVersion": "pill-photo-phone-holdout-local-2026-09-02-v5",
+      "manifestSchemaVersion": 1,
+      "catalogFixtureVersion": "pill-photo-shared-2026-08-31-v1",
+      "reviewedAt": "2026-09-02",
+      "counts": { "products": 6, "cases": 6, "images": 12 },
+      "imageSha256": [
+        "c83fcf7624506120c7557bddcb2ec2029f8caef984bb3ebb016990210d125d58",
+        "27fe47e8a824f6c79b578e146ce74ccb079c16cfcfcf203c8cf23851559c56c5",
+        "41e1f4aba25d86c33a697591a328412ed80952d0e20daddf5e1e98f2f317d905",
+        "f9ca6c2b1dc5f124e02c7807705776a0a915fd3edea489d834a896627d85e277",
+        "4bfc0fbaf3e2fac78ebdf805af30b37717cabe7dea63f7de3b349199ab09e123",
+        "fe699680e44e07f3e879034896db8fb31bc4493b8cb556a7ef6ef45a81a8856f",
+        "f451f029b0a32572249158c2199ccfc1e95bdf3bbbd7918bb3c684133dda809a",
+        "587c66c28f072a3387bf7ff09664038967014020ef9a64f60965643cec81aef5",
+        "26d77b1af65bf4100ff492fd3ce1eb27c64f1a6ae1d433321f6a7ee09a865bb7",
+        "51488fd754add878dda6628aa86fa3a1760b73c8e2c8c66eadd24ae552d64346",
+        "fc8b1f5c77373b1851e0f727841f1fedd650216ddde0ee5b5a5e34da57714d61",
+        "ba1dfc3a8439d7b92164baee45c8a10453db6d84278af8aefd2cc7a483956a6a"
+      ],
+      "productIdentitySha256": [
+        "9877139acdbb307f4c90718aa38977acd4f3ae0995ca370cd24d5778612264da",
+        "2e7dd93e88982b0c4369d365fca306247ba9ccd7958f763f73c15aa6891b94a5",
+        "192062cc2feef94fd5ebe04594414e2afe88633a632df58ede6c8aed872370b0",
+        "520ad4263e3b5afbf2c8b8b3a9293970a94d956f9e3637e44451db3ec2198e78",
+        "230f28f9781148068d3814d76c1f544d27212b056874a09cac2605f043433331",
+        "1e3378fe16351ee3d33f648dbf6224c1fc56e9605ecf189fa7b0b64f96db2b56"
+      ],
+      "officialRecordSha256": [
+        "ee1442838cdf73a7e1bc2e082c2149e11c859ee55a822299573c6b7fa93480da",
+        "21d43474fdd2703434a8d902de4f05ce02b398211d3a438ccb0f7153c1db2cd5",
+        "583f94b6f6f36cb41779d5114f5ebbf1369d9e707f1b40ed68319b785a8c70a0",
+        "44d080f95b0c44b31f7fb9f0e031efede79409c45af9308dafdc56af22e4d144",
+        "c56be11d9252d4d1e24e90327fd3f316af7365b46af0f9af0f78ac42c26c56ca",
+        "cf00f231a3aa82d94954fc245ae5d98b9fc55a17a302a8a567a9ae37f2f76413"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "id": "validation-centered-v1",
+      "split": "validation",
+      "fixtureVersion": "pill-photo-phone-validation-local-2026-09-02-v4",
+      "createdAt": "2026-09-02T07:57:52.199Z",
+      "requests": 18,
+      "scorePolicyVersion": "capture-candidate-recall-v1",
+      "pipeline": {
+        "model": "gpt-5.6-sol",
+        "ocrModel": "gpt-5.6-sol",
+        "preprocessingVersion": "pill-phone-centered-detail-contrast-v1",
+        "visionPromptVersion": "pill-photo-observation-v3-multiview",
+        "ocrPromptVersion": "pill-photo-imprint-ocr-per-side-dual-view-v2",
+        "fusionVersion": "pill-photo-vision-ocr-consensus-v1",
+        "searchVersion": "pill-structured-v8-anchored-partial-imprint",
+        "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119"
+      },
+      "metrics": {
+        "totalCases": 6,
+        "evaluatedCases": 6,
+        "recallAt1": { "hits": 3, "total": 6 },
+        "recallAt5": { "hits": 6, "total": 6 },
+        "recallAt20": { "hits": 6, "total": 6 },
+        "strongWrongCandidates": 0,
+        "retakeCandidateExposureCases": 0
+      },
+      "passedAtRun": true
+    },
+    {
+      "id": "validation-centered-v2",
+      "split": "validation",
+      "fixtureVersion": "pill-photo-phone-validation-local-2026-09-02-v4",
+      "createdAt": "2026-09-02T08:05:44.221Z",
+      "requests": 18,
+      "scorePolicyVersion": "capture-candidate-recall-v1",
+      "pipeline": {
+        "model": "gpt-5.6-sol",
+        "ocrModel": "gpt-5.6-sol",
+        "preprocessingVersion": "pill-phone-centered-detail-contrast-v2",
+        "visionPromptVersion": "pill-photo-observation-v3-multiview",
+        "ocrPromptVersion": "pill-photo-imprint-ocr-per-side-dual-view-v2",
+        "fusionVersion": "pill-photo-vision-ocr-consensus-v1",
+        "searchVersion": "pill-structured-v8-anchored-partial-imprint",
+        "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119"
+      },
+      "metrics": {
+        "totalCases": 6,
+        "evaluatedCases": 6,
+        "recallAt1": { "hits": 3, "total": 6 },
+        "recallAt5": { "hits": 5, "total": 6 },
+        "recallAt20": { "hits": 6, "total": 6 },
+        "strongWrongCandidates": 0,
+        "retakeCandidateExposureCases": 0
+      },
+      "passedAtRun": false
+    },
+    {
+      "id": "holdout-final-centered-v1",
+      "split": "holdout",
+      "fixtureVersion": "pill-photo-phone-holdout-local-2026-09-02-v5",
+      "createdAt": "2026-09-02T10:11:21.231Z",
+      "requests": 18,
+      "scorePolicyVersion": "capture-candidate-recall-v1",
+      "pipeline": {
+        "model": "gpt-5.6-sol",
+        "ocrModel": "gpt-5.6-sol",
+        "preprocessingVersion": "pill-phone-centered-detail-contrast-v1",
+        "visionPromptVersion": "pill-photo-observation-v3-multiview",
+        "ocrPromptVersion": "pill-photo-imprint-ocr-per-side-dual-view-v2",
+        "fusionVersion": "pill-photo-vision-ocr-consensus-v1",
+        "searchVersion": "pill-structured-v8-anchored-partial-imprint",
+        "catalogVersion": "mfds-pill-v1-7111bd2ae7787719ae454b6f3acccf42fedcaaabf08d65c9e2fd94b1404d2119"
+      },
+      "metrics": {
+        "totalCases": 6,
+        "evaluatedCases": 6,
+        "recallAt1": { "hits": 2, "total": 6 },
+        "recallAt5": { "hits": 2, "total": 6 },
+        "recallAt20": { "hits": 2, "total": 6 },
+        "strongWrongCandidates": 0,
+        "retakeCandidateExposureCases": 0
+      },
+      "passedAtRun": false
+    }
+  ]
+}

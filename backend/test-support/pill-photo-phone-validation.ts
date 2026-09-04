@@ -1,0 +1,348 @@
+// Node-only local smartphone validation data. Never import this loader in a production route.
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import sharp from "sharp";
+import { z } from "zod";
+import { loadFrozenPillPhotoFixture, readBoundedFixtureFile } from "./pill-photo-fixture.ts";
+import { officialPillRecordDigest } from "./pill-photo-label-audit.ts";
+import { loadPillPhotoEvaluationFixture } from "./pill-photo-evaluation.ts";
+import { PILL_PHOTO_FILES } from "./pill-photo-review.ts";
+import { loadPillPhotoUnseenEvaluationFixture } from "./pill-photo-unseen-evaluation.ts";
+
+export const PILL_PHOTO_PHONE_VALIDATION_VERSION = "pill-photo-phone-validation-local-2026-09-02-v4";
+export const PILL_PHOTO_PHONE_HOLDOUT_VERSION = "pill-photo-phone-holdout-local-2026-09-02-v5";
+export const PILL_PHOTO_PHONE_VALIDATION_DIRECTORY = fileURLToPath(
+  new URL("../../verification-artifacts/pill-photo-v4-intake/validation/", import.meta.url),
+);
+export const PILL_PHOTO_PHONE_HOLDOUT_DIRECTORY = fileURLToPath(
+  new URL("../../verification-artifacts/pill-photo-v4-intake/holdout/", import.meta.url),
+);
+
+const MAX_MANIFEST_BYTES = 128 * 1024;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const PHONE_PRODUCT_COUNT = 6;
+const PHONE_CASE_COUNT = 6;
+const PHONE_IMAGE_COUNT = 12;
+const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const itemSeqSchema = z.string().regex(/^\d{9}$/);
+const idSchema = z.string().regex(/^v4-[vh]0[1-6]$/);
+const imagePathSchema = z.string().regex(/^v4-[vh]0[1-6]-side-[ab]\.jpg$/);
+const sideSchema = z.enum(["front", "back"]);
+const captureSideSchema = z.enum(["side-a", "side-b"]);
+const officialSurfaceSchema = z.object({
+  rawImprint: z.string().min(1).nullable(),
+  imprint: z.string().min(1).nullable(),
+  scoreLine: z.enum(["none", "single", "cross", "other", "unknown"]),
+  mark: z.string().min(1).nullable(),
+}).strict();
+const expectedObservationSchema = z.object({
+  form: z.enum(["tablet", "capsule"]),
+  formName: z.string().min(1),
+  shape: z.string().min(1),
+  colors: z.array(z.string().min(1)).min(1).max(2),
+  front: officialSurfaceSchema,
+  back: officialSurfaceSchema,
+}).strict();
+const appearanceHistorySchema = z.object({
+  status: z.literal("verified_historical_variant"),
+  photoAppearance: z.string().min(1),
+  photoDimensionsMm: z.object({
+    longAxis: z.number().positive(), shortAxis: z.number().positive(), thickness: z.number().positive(),
+  }).strict(),
+  currentAppearance: z.string().min(1),
+  currentDimensionsMm: z.object({
+    longAxis: z.number().positive(), shortAxis: z.number().positive(), thickness: z.number().positive(),
+  }).strict(),
+  appearanceChangedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  manufacturerEvidenceUrl: z.string().url(),
+  identificationHistoryUrl: z.string().url(),
+  evaluationRule: z.string().min(1),
+}).strict();
+const productSchema = z.object({
+  id: idSchema,
+  providedName: z.string().min(1),
+  expectedItemSeq: itemSeqSchema,
+  officialProductName: z.string().min(1),
+  manufacturer: z.string().min(1),
+  expectedOfficialRecordSha256: digestSchema,
+  expectedObservation: expectedObservationSchema,
+  photoMatchesCurrentOfficialAppearance: z.literal(false).optional(),
+  appearanceHistory: appearanceHistorySchema.optional(),
+  sideMapping: z.object({ "side-a": sideSchema, "side-b": sideSchema }).strict(),
+}).strict();
+const imageSchema = z.object({
+  path: imagePathSchema,
+  productId: idSchema,
+  captureSide: captureSideSchema,
+  officialSide: sideSchema,
+  bytes: z.number().int().positive().max(MAX_IMAGE_BYTES),
+  width: z.number().int().positive().max(10_000),
+  height: z.number().int().positive().max(10_000),
+  sha256: digestSchema,
+}).strict();
+const caseSchema = z.object({
+  id: idSchema,
+  split: z.enum(["validation", "holdout"]),
+  expectedItemSeq: itemSeqSchema,
+  photos: z.array(imagePathSchema).length(2),
+}).strict();
+const manifestSchema = z.object({
+  schemaVersion: z.literal(1),
+  fixtureVersion: z.enum([PILL_PHOTO_PHONE_VALIDATION_VERSION, PILL_PHOTO_PHONE_HOLDOUT_VERSION]),
+  purpose: z.literal("smartphone_photo_feature_extraction_and_candidate_recall_validation"),
+  catalogFixtureVersion: z.literal("pill-photo-shared-2026-08-31-v1"),
+  reviewedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  scope: z.object({
+    split: z.enum(["validation", "holdout"]),
+    claim: z.enum(["smartphone_validation_tuning_only", "smartphone_final_holdout_only"]),
+    productCount: z.literal(PHONE_PRODUCT_COUNT),
+    caseCount: z.literal(PHONE_CASE_COUNT),
+    imageCount: z.literal(PHONE_IMAGE_COUNT),
+    historicalAppearanceCaseCount: z.number().int().nonnegative().max(16),
+    labelsMayBeUsedForTuning: z.boolean(),
+    labelsMayBeSentToModel: z.literal(false),
+    gitTracking: z.enum(["ignored_local_intake", "ignored_local_holdout"]),
+  }).strict(),
+  products: z.array(productSchema).length(PHONE_PRODUCT_COUNT),
+  images: z.array(imageSchema).length(PHONE_IMAGE_COUNT),
+  cases: z.array(caseSchema).length(PHONE_CASE_COUNT),
+}).strict();
+
+export type PillPhotoPhoneValidationManifest = z.infer<typeof manifestSchema>;
+
+interface PhoneFixtureSpec {
+  fixtureVersion: typeof PILL_PHOTO_PHONE_VALIDATION_VERSION | typeof PILL_PHOTO_PHONE_HOLDOUT_VERSION;
+  split: "validation" | "holdout";
+  idPrefix: "v4-v" | "v4-h";
+  claim: "smartphone_validation_tuning_only" | "smartphone_final_holdout_only";
+  labelsMayBeUsedForTuning: boolean;
+  gitTracking: "ignored_local_intake" | "ignored_local_holdout";
+}
+
+export interface PillPhotoFixtureIdentitySet {
+  imageSha256: ReadonlySet<string>;
+  expectedItemSeq: ReadonlySet<string>;
+  officialRecordSha256: ReadonlySet<string>;
+}
+
+interface PillPhotoFixtureIdentitySource {
+  images: readonly { sha256: string }[];
+  products: readonly { expectedItemSeq: string; expectedOfficialRecordSha256: string }[];
+}
+
+const VALIDATION_SPEC: PhoneFixtureSpec = {
+  fixtureVersion: PILL_PHOTO_PHONE_VALIDATION_VERSION,
+  split: "validation",
+  idPrefix: "v4-v",
+  claim: "smartphone_validation_tuning_only",
+  labelsMayBeUsedForTuning: true,
+  gitTracking: "ignored_local_intake",
+};
+const HOLDOUT_SPEC: PhoneFixtureSpec = {
+  fixtureVersion: PILL_PHOTO_PHONE_HOLDOUT_VERSION,
+  split: "holdout",
+  idPrefix: "v4-h",
+  claim: "smartphone_final_holdout_only",
+  labelsMayBeUsedForTuning: false,
+  gitTracking: "ignored_local_holdout",
+};
+
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+const resolveImage = (directory: string, relativePath: string) => join(directory, relativePath);
+
+function sameStrings(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function fixtureIdentitySet(source: PillPhotoFixtureIdentitySource): PillPhotoFixtureIdentitySet {
+  return {
+    imageSha256: new Set(source.images.map((image) => image.sha256)),
+    expectedItemSeq: new Set(source.products.map((product) => product.expectedItemSeq)),
+    officialRecordSha256: new Set(source.products.map((product) => product.expectedOfficialRecordSha256)),
+  };
+}
+
+function mergeFixtureIdentitySets(
+  ...sets: readonly PillPhotoFixtureIdentitySet[]
+): PillPhotoFixtureIdentitySet {
+  return {
+    imageSha256: new Set(sets.flatMap((set) => [...set.imageSha256])),
+    expectedItemSeq: new Set(sets.flatMap((set) => [...set.expectedItemSeq])),
+    officialRecordSha256: new Set(sets.flatMap((set) => [...set.officialRecordSha256])),
+  };
+}
+
+function validateManifestRelationships(
+  manifest: PillPhotoPhoneValidationManifest,
+  previousFixtureIdentities: PillPhotoFixtureIdentitySet,
+  spec: PhoneFixtureSpec,
+) {
+  const { scope } = manifest;
+  if (manifest.fixtureVersion !== spec.fixtureVersion || scope.split !== spec.split
+    || scope.claim !== spec.claim || scope.labelsMayBeUsedForTuning !== spec.labelsMayBeUsedForTuning
+    || scope.gitTracking !== spec.gitTracking
+    || manifest.products.some((product) => !product.id.startsWith(spec.idPrefix))
+    || manifest.images.some((image) => !image.productId.startsWith(spec.idPrefix))
+    || manifest.cases.some((fixtureCase) => !fixtureCase.id.startsWith(spec.idPrefix) || fixtureCase.split !== spec.split)) {
+    throw new Error("phone_validation_fixture_scope_mismatch");
+  }
+  if (scope.productCount !== manifest.products.length || scope.caseCount !== manifest.cases.length
+    || scope.imageCount !== manifest.images.length) throw new Error("phone_validation_fixture_scope_mismatch");
+  const productById = new Map(manifest.products.map((product) => [product.id, product]));
+  const imageByPath = new Map(manifest.images.map((image) => [image.path, image]));
+  if (productById.size !== manifest.products.length || imageByPath.size !== manifest.images.length) {
+    throw new Error("phone_validation_fixture_duplicate_entry");
+  }
+  if (new Set(manifest.products.map((product) => product.expectedItemSeq)).size !== manifest.products.length) {
+    throw new Error("phone_validation_fixture_duplicate_product");
+  }
+  if (new Set(manifest.products.map((product) => product.expectedOfficialRecordSha256)).size !== manifest.products.length) {
+    throw new Error("phone_validation_fixture_duplicate_official_record");
+  }
+  if (new Set(manifest.images.map((image) => image.sha256)).size !== manifest.images.length) {
+    throw new Error("phone_validation_fixture_duplicate_image");
+  }
+  if (manifest.images.some((image) => previousFixtureIdentities.imageSha256.has(image.sha256))) {
+    throw new Error("phone_validation_fixture_overlaps_previous_images");
+  }
+  if (manifest.products.some((product) => previousFixtureIdentities.expectedItemSeq.has(product.expectedItemSeq))) {
+    throw new Error("phone_validation_fixture_overlaps_previous_products");
+  }
+  if (manifest.products.some((product) => previousFixtureIdentities.officialRecordSha256
+    .has(product.expectedOfficialRecordSha256))) {
+    throw new Error("phone_validation_fixture_overlaps_previous_official_records");
+  }
+  const historyCases = manifest.products.filter((product) => product.appearanceHistory !== undefined);
+  if (historyCases.length !== scope.historicalAppearanceCaseCount
+    || manifest.products.some((product) => (product.photoMatchesCurrentOfficialAppearance === false)
+      !== (product.appearanceHistory !== undefined))) {
+    throw new Error("phone_validation_fixture_history_mismatch");
+  }
+
+  const usedPhotos = new Set<string>();
+  for (const fixtureCase of manifest.cases) {
+    const product = productById.get(fixtureCase.id);
+    const photos = fixtureCase.photos.map((path) => imageByPath.get(path));
+    if (!product || product.expectedItemSeq !== fixtureCase.expectedItemSeq || photos.some((photo) => !photo)) {
+      throw new Error("phone_validation_fixture_case_mapping_invalid");
+    }
+    if (photos.some((photo) => photo!.productId !== product.id
+      || product.sideMapping[photo!.captureSide] !== photo!.officialSide)) {
+      throw new Error("phone_validation_fixture_side_mapping_invalid");
+    }
+    if (new Set(photos.map((photo) => photo!.officialSide)).size !== 2) {
+      throw new Error("phone_validation_fixture_requires_opposite_sides");
+    }
+    for (const path of fixtureCase.photos) {
+      if (usedPhotos.has(path)) throw new Error("phone_validation_fixture_photo_reused");
+      usedPhotos.add(path);
+    }
+  }
+  if (usedPhotos.size !== manifest.images.length) throw new Error("phone_validation_fixture_unreferenced_image");
+}
+
+function validateOfficialLabels(
+  manifest: PillPhotoPhoneValidationManifest,
+  catalogFixtureVersion: string,
+  officialItems: Awaited<ReturnType<typeof loadFrozenPillPhotoFixture>>["snapshot"]["items"],
+) {
+  if (catalogFixtureVersion !== manifest.catalogFixtureVersion) {
+    throw new Error("phone_validation_fixture_catalog_version_mismatch");
+  }
+  for (const product of manifest.products) {
+    const matches = officialItems.filter((item) => item.itemSeq === product.expectedItemSeq);
+    if (matches.length !== 1) throw new Error("phone_validation_fixture_official_label_mismatch");
+    const item = matches[0]!;
+    const expected = product.expectedObservation;
+    if (officialPillRecordDigest(item) !== product.expectedOfficialRecordSha256
+      || item.productName !== product.officialProductName || item.manufacturer !== product.manufacturer
+      || item.form !== expected.form || item.formName !== expected.formName || item.shape !== expected.shape
+      || !sameStrings(item.colors, expected.colors)
+      || item.front.rawImprint !== expected.front.rawImprint || item.front.imprint !== expected.front.imprint
+      || item.front.scoreLine !== expected.front.scoreLine || item.front.mark !== expected.front.mark
+      || item.back.rawImprint !== expected.back.rawImprint || item.back.imprint !== expected.back.imprint
+      || item.back.scoreLine !== expected.back.scoreLine || item.back.mark !== expected.back.mark) {
+      throw new Error("phone_validation_fixture_official_label_mismatch");
+    }
+  }
+}
+
+async function defaultPreviousFixtureIdentities(): Promise<PillPhotoFixtureIdentitySet> {
+  const [evaluation, unseen] = await Promise.all([
+    loadPillPhotoEvaluationFixture(),
+    loadPillPhotoUnseenEvaluationFixture(),
+  ]);
+  return mergeFixtureIdentitySets(
+    {
+      imageSha256: new Set(PILL_PHOTO_FILES.map((image) => image.sha256)),
+      expectedItemSeq: new Set(),
+      officialRecordSha256: new Set(),
+    },
+    fixtureIdentitySet(evaluation.manifest),
+    fixtureIdentitySet(unseen.manifest),
+  );
+}
+
+async function loadPillPhotoPhoneFixture(spec: PhoneFixtureSpec, options: {
+  directory: string;
+  previousFixtureIdentities: PillPhotoFixtureIdentitySet;
+}) {
+  const { directory, previousFixtureIdentities } = options;
+  const [rawManifest, frozen] = await Promise.all([
+    readBoundedFixtureFile(join(directory, "manifest.local.json"), MAX_MANIFEST_BYTES),
+    loadFrozenPillPhotoFixture(),
+  ]);
+  const parsed = manifestSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(rawManifest)));
+  if (!parsed.success) throw new Error("phone_validation_fixture_manifest_invalid");
+  const manifest = parsed.data;
+  validateManifestRelationships(manifest, previousFixtureIdentities, spec);
+  validateOfficialLabels(manifest, frozen.manifest.fixtureVersion, frozen.snapshot.items);
+
+  for (const image of manifest.images) {
+    const bytes = await readBoundedFixtureFile(resolveImage(directory, image.path), image.bytes);
+    if (bytes.length !== image.bytes || sha256(bytes) !== image.sha256) {
+      throw new Error("phone_validation_fixture_image_hash_mismatch");
+    }
+    const metadata = await sharp(bytes, { limitInputPixels: 25_000_000, failOn: "warning" }).metadata();
+    if (metadata.format !== "jpeg" || (metadata.pages ?? 1) !== 1
+      || metadata.width !== image.width || metadata.height !== image.height) {
+      throw new Error("phone_validation_fixture_image_metadata_mismatch");
+    }
+  }
+
+  const inferenceInputs = manifest.cases.map((fixtureCase) => ({
+    id: fixtureCase.id,
+    split: fixtureCase.split,
+    photos: fixtureCase.photos.map((path) => resolveImage(directory, path)),
+  }));
+  return { manifest, inferenceInputs };
+}
+
+export async function loadPillPhotoPhoneValidationFixture() {
+  return loadPillPhotoPhoneFixture(VALIDATION_SPEC, {
+    directory: PILL_PHOTO_PHONE_VALIDATION_DIRECTORY,
+    previousFixtureIdentities: await defaultPreviousFixtureIdentities(),
+  });
+}
+
+export async function loadPillPhotoPhoneHoldoutFixture() {
+  const prior = await defaultPreviousFixtureIdentities();
+  const validation = await loadPillPhotoPhoneFixture(VALIDATION_SPEC, {
+    directory: PILL_PHOTO_PHONE_VALIDATION_DIRECTORY,
+    previousFixtureIdentities: prior,
+  });
+  return loadPillPhotoPhoneFixture(HOLDOUT_SPEC, {
+    directory: PILL_PHOTO_PHONE_HOLDOUT_DIRECTORY,
+    previousFixtureIdentities: mergeFixtureIdentitySets(prior, fixtureIdentitySet(validation.manifest)),
+  });
+}
+
+/** Test-only loader for synthetic manifests. Production evaluation always uses the fixed loaders above. */
+export async function loadPillPhotoPhoneFixtureForTest(options: {
+  split: "validation" | "holdout";
+  directory: string;
+  previousFixtureIdentities: PillPhotoFixtureIdentitySet;
+}) {
+  return loadPillPhotoPhoneFixture(options.split === "validation" ? VALIDATION_SPEC : HOLDOUT_SPEC, options);
+}

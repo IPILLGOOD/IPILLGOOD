@@ -1,0 +1,291 @@
+{
+  "schemaVersion": 3,
+  "fixtureVersion": "pill-photo-unseen-product-eval-2026-09-02-v3",
+  "purpose": "feature_extraction_and_candidate_recall_evaluation",
+  "reviewedAt": "2026-09-02",
+  "catalogFixtureVersion": "pill-photo-shared-2026-08-31-v1",
+  "scope": {
+    "productCount": 7,
+    "caseCount": 7,
+    "imageCount": 14,
+    "claim": "unseen_product_generalization_pilot",
+    "limitations": [
+      "The fixture contains isolated public pill photographs rather than user phone photographs.",
+      "Seven products are insufficient to estimate production identification accuracy.",
+      "The sealed holdout must not be used for prompt, preprocessing, OCR, search-rule, or threshold tuning.",
+      "Source group 40767 has filename chronology that cannot establish its historical capture or approval date."
+    ]
+  },
+  "splitPolicy": {
+    "selectedBeforeInference": true,
+    "disjointProducts": true,
+    "validationProductCount": 4,
+    "holdoutProductCount": 3,
+    "holdoutStatus": "sealed_unopened"
+  },
+  "products": [
+    {
+      "sourceGroup": "34342",
+      "expectedItemSeq": "200502050",
+      "mappingEvidenceUrl": "https://health.kr/searchDrug/result_take.asp?drug_cd=ogplna5spck2n",
+      "expectedOfficialRecordSha256": "de26a80c804c1a328d3cb8cb7fb297ce84c151a8f1e50aa0e23efc53c27419da",
+      "expectedObservation": {
+        "form": "capsule",
+        "shape": "타원형",
+        "colors": ["주황"],
+        "frontImprint": "SD WE",
+        "backImprint": null
+      }
+    },
+    {
+      "sourceGroup": "40720",
+      "expectedItemSeq": "201803136",
+      "mappingEvidenceUrl": "https://health.kr/searchDrug/result_take.asp?drug_cd=2018073100018",
+      "expectedOfficialRecordSha256": "60ffc6cdd475d59f543764a84edb02268343fc20556f29f3ea2a99dff34b81b9",
+      "expectedObservation": {
+        "form": "tablet",
+        "shape": "타원형",
+        "colors": ["주황"],
+        "frontImprint": null,
+        "backImprint": "JNG"
+      }
+    },
+    {
+      "sourceGroup": "40949",
+      "expectedItemSeq": "201902911",
+      "mappingEvidenceUrl": "https://health.kr/searchDrug/result_take.asp?drug_cd=2019051000073",
+      "expectedOfficialRecordSha256": "7a82833dd2a672ba5bdb65216267087881fe036e3f1c0376c39f7e868ae94cda",
+      "expectedObservation": {
+        "form": "tablet",
+        "shape": "장방형",
+        "colors": ["하양"],
+        "frontImprint": "2K",
+        "backImprint": "CR"
+      }
+    },
+    {
+      "sourceGroup": "40953",
+      "expectedItemSeq": "201907290",
+      "mappingEvidenceUrl": "https://health.kr/searchDrug/result_take.asp?drug_cd=2019101700014",
+      "expectedOfficialRecordSha256": "3f8c8cbf762299b80266dbfa8e1554a6b7ca92fc5af55c60dcdc4f2a2a6ebd11",
+      "expectedObservation": {
+        "form": "capsule",
+        "shape": "장방형",
+        "colors": ["노랑"],
+        "frontImprint": "PSGB 300",
+        "backImprint": null
+      }
+    },
+    {
+      "sourceGroup": "41097",
+      "expectedItemSeq": "201907803",
+      "mappingEvidenceUrl": "https://health.kr/searchDrug/result_take.asp?drug_cd=2019110800014",
+      "expectedOfficialRecordSha256": "620900ab6c4ab479544a6115bbd148e6b42aec3f11d63bc02fad4acbfbecbd8c",
+      "expectedObservation": {
+        "form": "tablet",
+        "shape": "원형",
+        "colors": ["연두"],
+        "frontImprint": "FN",
+        "backImprint": "20"
+      }
+    },
+    {
+      "sourceGroup": "41169",
+      "expectedItemSeq": "199603340",
+      "mappingEvidenceUrl": "https://health.kr/searchDrug/result_take.asp?drug_cd=A11A6060B0025",
+      "expectedOfficialRecordSha256": "45d65eef4aec81d9ac92044ad912cc9d3f8bca2f1c26f42606d27b97262024a0",
+      "expectedObservation": {
+        "form": "tablet",
+        "shape": "원형",
+        "colors": ["하양"],
+        "frontImprint": "KF",
+        "backImprint": null
+      }
+    },
+    {
+      "sourceGroup": "40767",
+      "expectedItemSeq": "202107747",
+      "mappingEvidenceUrl": "https://health.kr/searchDrug/result_take.asp?drug_cd=2021120200004",
+      "expectedOfficialRecordSha256": "5b66f392690f32b482d2edc76d1bae8fcb7e8e07cb0ec9419135bc7831ea2951",
+      "expectedObservation": {
+        "form": "tablet",
+        "shape": "장방형",
+        "colors": ["연두"],
+        "frontImprint": "KIM",
+        "backImprint": "100"
+      }
+    }
+  ],
+  "images": [
+    {
+      "path": "images/unseen-v-01-a.png",
+      "sourcePath": "34342/IMG_20201124_155225.png",
+      "sourceIndex": 1,
+      "officialSide": "front",
+      "sha256": "b6df8edbf44749fed4f8d792121a1b4728287023ee8168b2350ca89469ecd96c",
+      "bytes": 427288
+    },
+    {
+      "path": "images/unseen-v-01-b.png",
+      "sourcePath": "34342/IMG_20201124_155309.png",
+      "sourceIndex": 21,
+      "officialSide": "back",
+      "sha256": "8b806b04e75f5286658436545572f2c016752876bf26b629c15a5f9f111a4e85",
+      "bytes": 431696
+    },
+    {
+      "path": "images/unseen-v-02-a.png",
+      "sourcePath": "40720/IMG_20201202_001003.png",
+      "sourceIndex": 1,
+      "officialSide": "back",
+      "sha256": "aef08e0974d4e433fdfc7c16b2b3d54c7ff55f979f0b91994db19717eff4ef2f",
+      "bytes": 755175
+    },
+    {
+      "path": "images/unseen-v-02-b.png",
+      "sourcePath": "40720/IMG_20201202_001045.png",
+      "sourceIndex": 21,
+      "officialSide": "front",
+      "sha256": "cf4787548acdaafbb77fbd31ffff858a0a0dda9079862cb1b7b5cd3c67b4a97e",
+      "bytes": 725957
+    },
+    {
+      "path": "images/unseen-v-03-a.png",
+      "sourcePath": "40949/IMG_20201117_205444.png",
+      "sourceIndex": 1,
+      "officialSide": "back",
+      "sha256": "26a727244973243fbc958d1fa02772e3f217da2acb35093fb84e04b50fa49a38",
+      "bytes": 527909
+    },
+    {
+      "path": "images/unseen-v-03-b.png",
+      "sourcePath": "40949/IMG_20201117_205515.png",
+      "sourceIndex": 21,
+      "officialSide": "front",
+      "sha256": "b63487cf65fbfd1741ce76caf09be2899bf7f7fab1b75d2381d0eda6b756e987",
+      "bytes": 519843
+    },
+    {
+      "path": "images/unseen-v-04-a.png",
+      "sourcePath": "40953/IMG_20201117_224446.png",
+      "sourceIndex": 1,
+      "officialSide": "front",
+      "sha256": "2a639eae5806573f1c5b92954e6da623fa51e1a460617cfcd747726830e4eb0a",
+      "bytes": 734923
+    },
+    {
+      "path": "images/unseen-v-04-b.png",
+      "sourcePath": "40953/IMG_20201117_224531.png",
+      "sourceIndex": 21,
+      "officialSide": "back",
+      "sha256": "2ce5a384819af463a6cc80181481fd98081a9d883b2ad56f976b6759897350a6",
+      "bytes": 648180
+    },
+    {
+      "path": "images/unseen-h-01-a.png",
+      "sourcePath": "41097/IMG_20201117_211438.png",
+      "sourceIndex": 1,
+      "officialSide": "front",
+      "sha256": "35e1c894535f00946dfd45f9d3884a2dcc663f7def4b417de552dae815aba7f4",
+      "bytes": 471732
+    },
+    {
+      "path": "images/unseen-h-01-b.png",
+      "sourcePath": "41097/IMG_20201117_211509.png",
+      "sourceIndex": 21,
+      "officialSide": "back",
+      "sha256": "a6282c8c185740526e1c3a6213131516eb8c1e6e546ad07d30b966c50a2b9ec2",
+      "bytes": 468747
+    },
+    {
+      "path": "images/unseen-h-02-a.png",
+      "sourcePath": "41169/IMG_20201117_220108.png",
+      "sourceIndex": 1,
+      "officialSide": "front",
+      "sha256": "efd74c793ec68048edd61c1d28c60fab3af724a663395da22a14f362c85f9e3b",
+      "bytes": 497903
+    },
+    {
+      "path": "images/unseen-h-02-b.png",
+      "sourcePath": "41169/IMG_20201117_220141.png",
+      "sourceIndex": 21,
+      "officialSide": "back",
+      "sha256": "129feaafd5e81f4d8cb9edd39500caf64379073d33135e58eaa9436097257a97",
+      "bytes": 493128
+    },
+    {
+      "path": "images/unseen-h-03-a.png",
+      "sourcePath": "40767/IMG_20201125_132735.png",
+      "sourceIndex": 1,
+      "officialSide": "front",
+      "sha256": "a565a5b7b55d500cb61d11cc529594161fab8dd5aab1d7da757745e9a02e675c",
+      "bytes": 833765
+    },
+    {
+      "path": "images/unseen-h-03-b.png",
+      "sourcePath": "40767/IMG_20201125_132809.png",
+      "sourceIndex": 21,
+      "officialSide": "back",
+      "sha256": "43f90c45c3b27bd0e1e9311759384a4119eb1d4e6f49eb7b4fddf6d2b7b3e8be",
+      "bytes": 840735
+    }
+  ],
+  "cases": [
+    {
+      "id": "unseen-v-01",
+      "split": "validation",
+      "sourceGroup": "34342",
+      "expectedItemSeq": "200502050",
+      "photos": ["images/unseen-v-01-a.png", "images/unseen-v-01-b.png"]
+    },
+    {
+      "id": "unseen-v-02",
+      "split": "validation",
+      "sourceGroup": "40720",
+      "expectedItemSeq": "201803136",
+      "photos": ["images/unseen-v-02-a.png", "images/unseen-v-02-b.png"]
+    },
+    {
+      "id": "unseen-v-03",
+      "split": "validation",
+      "sourceGroup": "40949",
+      "expectedItemSeq": "201902911",
+      "photos": ["images/unseen-v-03-a.png", "images/unseen-v-03-b.png"]
+    },
+    {
+      "id": "unseen-v-04",
+      "split": "validation",
+      "sourceGroup": "40953",
+      "expectedItemSeq": "201907290",
+      "photos": ["images/unseen-v-04-a.png", "images/unseen-v-04-b.png"]
+    },
+    {
+      "id": "unseen-h-01",
+      "split": "holdout",
+      "sourceGroup": "41097",
+      "expectedItemSeq": "201907803",
+      "photos": ["images/unseen-h-01-a.png", "images/unseen-h-01-b.png"]
+    },
+    {
+      "id": "unseen-h-02",
+      "split": "holdout",
+      "sourceGroup": "41169",
+      "expectedItemSeq": "199603340",
+      "photos": ["images/unseen-h-02-a.png", "images/unseen-h-02-b.png"]
+    },
+    {
+      "id": "unseen-h-03",
+      "split": "holdout",
+      "sourceGroup": "40767",
+      "expectedItemSeq": "202107747",
+      "photos": ["images/unseen-h-03-a.png", "images/unseen-h-03-b.png"]
+    }
+  ],
+  "rights": {
+    "checkedAt": "2026-08-31",
+    "statedScope": "이용허락범위 제한 없음",
+    "imageMetadataUrl": "https://www.data.go.kr/data/15112582/fileData.do",
+    "imageDownloadNotice": "https://health.kr/notice/notice_view.asp?show_idx=1001",
+    "catalogMetadataUrl": "https://www.data.go.kr/data/15057639/openapi.do"
+  }
+}
