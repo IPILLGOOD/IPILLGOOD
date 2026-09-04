@@ -7,7 +7,6 @@ import { PILL_OBSERVATION_SCHEMA_VERSION } from "../src/pill-identification.ts";
 import { pillPhotoFeaturesSchema } from "../src/pill-photo-features.ts";
 import { parsePillPhotoScoreArgs, runPillPhotoScore } from "../scripts/pill-photo-score.ts";
 import { loadRegisteredPillPhotoEvaluationFixture } from "./pill-photo-evaluation-registry.ts";
-import { loadPillPhotoEvaluationFixture } from "./pill-photo-evaluation.ts";
 import { loadFrozenPillPhotoFixture } from "./pill-photo-fixture.ts";
 import {
   PILL_PHOTO_SCORE_SCHEMA_VERSION,
@@ -17,7 +16,7 @@ import {
   type PillPhotoScoreInput,
 } from "./pill-photo-score.ts";
 
-const evaluationPromise = loadPillPhotoEvaluationFixture();
+const evaluationPromise = loadRegisteredPillPhotoEvaluationFixture("v2");
 const frozenPromise = loadFrozenPillPhotoFixture();
 
 function observedSide(imprint: string | null) {
@@ -27,11 +26,11 @@ function observedSide(imprint: string | null) {
 }
 
 async function perfectInput(split: "validation" | "holdout" = "validation"): Promise<PillPhotoScoreInput> {
-  const { manifest } = await evaluationPromise;
-  const products = new Map(manifest.products.map((product) => [product.receipt, product]));
+  const manifest = await evaluationPromise;
+  const products = new Map(manifest.products.map((product) => [product.expectedItemSeq, product]));
   const images = new Map(manifest.images.map((image) => [image.path, image]));
   const cases = manifest.cases.filter((fixtureCase) => fixtureCase.split === split).map((fixtureCase) => {
-    const product = products.get(fixtureCase.receipt)!;
+    const product = products.get(fixtureCase.expectedItemSeq)!;
     const sides = fixtureCase.photos.map((path) => images.get(path)!.officialSide);
     const imprint = (side: "front" | "back") => side === "front"
       ? product.expectedObservation.frontImprint
@@ -128,7 +127,7 @@ async function perfectUnseenValidationInput(): Promise<{
 }
 
 test("공식 특징을 정확히 추출한 파일은 4/4 recall@5와 안전 기준을 통과한다", async () => {
-  const [{ manifest }, frozen, input] = await Promise.all([evaluationPromise, frozenPromise, perfectInput()]);
+  const [manifest, frozen, input] = await Promise.all([evaluationPromise, frozenPromise, perfectInput()]);
   const report = scorePillPhotoEvaluation(input, manifest, frozen.catalog, "validation");
   assert.equal(report.passed, true);
   assert.deepEqual(report.metrics.recallAt["5"], { k: 5, hits: 4, total: 4, rate: 1 });
@@ -147,7 +146,7 @@ test("v3의 서로 다른 validation 품목 4건도 같은 오프라인 채점 �
 });
 
 test("다른 품목의 특징을 연결하면 후보가 있어도 recall 실패를 숨기지 않는다", async () => {
-  const [{ manifest }, frozen, input] = await Promise.all([evaluationPromise, frozenPromise, perfectInput()]);
+  const [manifest, frozen, input] = await Promise.all([evaluationPromise, frozenPromise, perfectInput()]);
   const rotated = { ...input, cases: input.cases.map((entry, index, entries) => ({
     ...entry,
     extraction: entries[(index + 1) % entries.length]!.extraction,
@@ -185,8 +184,19 @@ test("강한 오답과 재촬영 상태의 후보 노출을 별도 안전 실패
   assert.deepEqual(metrics.retakeCandidateExposureCaseIds, ["capture-v-01"]);
 });
 
+test("최소 표본보다 작은 완전 일치 결과도 평가 통과로 표시하지 않는다", async () => {
+  const [manifest, frozen, input] = await Promise.all([evaluationPromise, frozenPromise, perfectInput()]);
+  const oneCaseManifest = { ...manifest, cases: manifest.cases.filter((entry) => entry.split === "validation").slice(0, 1) };
+  const oneCaseInput = { ...input, cases: input.cases.slice(0, 1) };
+  const report = scorePillPhotoEvaluation(oneCaseInput, oneCaseManifest, frozen.catalog, "validation");
+  assert.equal(report.metrics.recallAt["5"]!.hits, 1);
+  assert.equal(report.gates.recallAt5.passed, true);
+  assert.deepEqual(report.gates.minimumSampleSize, { passed: false, required: 4, observed: 1 });
+  assert.equal(report.passed, false);
+});
+
 test("정답 필드·누락 사례·다른 split은 특징 결과 파일로 받을 수 없다", async () => {
-  const [{ manifest }, input] = await Promise.all([evaluationPromise, perfectInput()]);
+  const [manifest, input] = await Promise.all([evaluationPromise, perfectInput()]);
   const withLabel = structuredClone(input) as unknown as { cases: Array<Record<string, unknown>> };
   withLabel.cases[0]!.expectedItemSeq = "201505259";
   assert.throws(() => scorePillPhotoEvaluation(withLabel, manifest, { items: [], totalCount: 0, completeness: "complete", version: "test" }), /invalid_evaluation_input/);

@@ -6,7 +6,7 @@ import test from "node:test";
 import { parsePillPhotoEvaluationArgs, runPillPhotoEvaluation } from "../scripts/pill-photo-evaluate.ts";
 import { PILL_OBSERVATION_SCHEMA_VERSION } from "../src/pill-identification.ts";
 import { pillPhotoFeaturesSchema } from "../src/pill-photo-features.ts";
-import { loadPillPhotoEvaluationFixture } from "./pill-photo-evaluation.ts";
+import { loadRegisteredPillPhotoEvaluationFixture } from "./pill-photo-evaluation-registry.ts";
 import { parsePillPhotoScoreInput } from "./pill-photo-score.ts";
 
 const features = pillPhotoFeaturesSchema.parse({
@@ -110,7 +110,7 @@ test("고정 validation 4건만 세 요청씩 실행하고 정답 없는 채점 
   assert.equal(result.output.pipeline.ocrModel, "test-ocr-model");
   assert.equal(result.output.split, "validation");
   assert.equal(result.output.cases.length, 4);
-  const { manifest } = await loadPillPhotoEvaluationFixture();
+  const manifest = await loadRegisteredPillPhotoEvaluationFixture("v2");
   assert.deepEqual(parsePillPhotoScoreInput(JSON.parse(await readFile(result.featureFile, "utf8")), manifest, "validation"), result.output);
   const serialized = await readFile(result.featureFile, "utf8");
   assert.doesNotMatch(serialized, /expectedItemSeq|receipt|mappingEvidenceUrl|officialSide/);

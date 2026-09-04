@@ -29,6 +29,7 @@ export interface RegisteredPillPhotoEvaluationFixture {
   fixtureVersion: string;
   catalogFixtureVersion: string;
   scope: { claim: string };
+  minimumCasesForPass: Record<PillPhotoEvaluationSplit, number>;
   products: ExpectedPillPhotoProduct[];
   images: Array<{ path: string; officialSide: "front" | "back"; sha256: string }>;
   cases: Array<{
@@ -64,6 +65,7 @@ function commonFixture(
     images: Array<{ path: string; officialSide: "front" | "back"; sha256: string }>;
     cases: Array<{ id: string; split: PillPhotoEvaluationSplit; expectedItemSeq: string; photos: string[] }>;
   },
+  minimumCasesForPass: Record<PillPhotoEvaluationSplit, number>,
   inferenceInputs: RegisteredPillPhotoEvaluationFixture["inferenceInputs"],
   photoSet: RegisteredPillPhotoEvaluationFixture["photoSet"],
   preprocessing: RegisteredPillPhotoEvaluationFixture["preprocessing"],
@@ -73,6 +75,7 @@ function commonFixture(
     fixtureVersion: source.fixtureVersion,
     catalogFixtureVersion: source.catalogFixtureVersion,
     scope: { claim: source.scope.claim },
+    minimumCasesForPass,
     products: source.products,
     images: source.images,
     cases: source.cases,
@@ -89,7 +92,7 @@ async function loadV2Fixture(): Promise<RegisteredPillPhotoEvaluationFixture> {
     products: manifest.products.map((product) => ({ ...product })),
     images: manifest.images.map(({ path, officialSide, sha256 }) => ({ path, officialSide, sha256 })),
     cases: manifest.cases.map(({ id, split, expectedItemSeq, photos }) => ({ id, split, expectedItemSeq, photos })),
-  }, inferenceInputs, "evaluation", "public_alpha_mask");
+  }, { validation: 4, holdout: 4 }, inferenceInputs, "evaluation", "public_alpha_mask");
 }
 
 async function loadV3Fixture(): Promise<RegisteredPillPhotoEvaluationFixture> {
@@ -105,7 +108,7 @@ async function loadV3Fixture(): Promise<RegisteredPillPhotoEvaluationFixture> {
     })),
     images: manifest.images.map(({ path, officialSide, sha256 }) => ({ path, officialSide, sha256 })),
     cases: manifest.cases.map(({ id, split, expectedItemSeq, photos }) => ({ id, split, expectedItemSeq, photos })),
-  }, inferenceInputs, "unseen_evaluation", "public_alpha_mask");
+  }, { validation: 4, holdout: 3 }, inferenceInputs, "unseen_evaluation", "public_alpha_mask");
 }
 
 async function loadPhoneFixture(key: "v4" | "v5"): Promise<RegisteredPillPhotoEvaluationFixture> {
@@ -129,7 +132,8 @@ async function loadPhoneFixture(key: "v4" | "v5"): Promise<RegisteredPillPhotoEv
     })),
     images: manifest.images.map(({ path, officialSide, sha256 }) => ({ path, officialSide, sha256 })),
     cases: manifest.cases.map(({ id, split, expectedItemSeq, photos }) => ({ id, split, expectedItemSeq, photos })),
-  }, inferenceInputs, key === "v4" ? "phone_validation" : "phone_holdout", "phone_centered");
+  }, { validation: 6, holdout: 6 }, inferenceInputs,
+  key === "v4" ? "phone_validation" : "phone_holdout", "phone_centered");
 }
 
 export async function loadRegisteredPillPhotoEvaluationFixture(

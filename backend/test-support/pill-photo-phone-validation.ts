@@ -21,6 +21,9 @@ export const PILL_PHOTO_PHONE_HOLDOUT_DIRECTORY = fileURLToPath(
 
 const MAX_MANIFEST_BYTES = 128 * 1024;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const PHONE_PRODUCT_COUNT = 6;
+const PHONE_CASE_COUNT = 6;
+const PHONE_IMAGE_COUNT = 12;
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const itemSeqSchema = z.string().regex(/^\d{9}$/);
 const idSchema = z.string().regex(/^v4-[vh]0[1-6]$/);
@@ -93,17 +96,17 @@ const manifestSchema = z.object({
   scope: z.object({
     split: z.enum(["validation", "holdout"]),
     claim: z.enum(["smartphone_validation_tuning_only", "smartphone_final_holdout_only"]),
-    productCount: z.number().int().positive().max(16),
-    caseCount: z.number().int().positive().max(16),
-    imageCount: z.number().int().positive().max(32),
+    productCount: z.literal(PHONE_PRODUCT_COUNT),
+    caseCount: z.literal(PHONE_CASE_COUNT),
+    imageCount: z.literal(PHONE_IMAGE_COUNT),
     historicalAppearanceCaseCount: z.number().int().nonnegative().max(16),
     labelsMayBeUsedForTuning: z.boolean(),
     labelsMayBeSentToModel: z.literal(false),
     gitTracking: z.enum(["ignored_local_intake", "ignored_local_holdout"]),
   }).strict(),
-  products: z.array(productSchema).min(1).max(16),
-  images: z.array(imageSchema).min(2).max(32),
-  cases: z.array(caseSchema).min(1).max(16),
+  products: z.array(productSchema).length(PHONE_PRODUCT_COUNT),
+  images: z.array(imageSchema).length(PHONE_IMAGE_COUNT),
+  cases: z.array(caseSchema).length(PHONE_CASE_COUNT),
 }).strict();
 
 export type PillPhotoPhoneValidationManifest = z.infer<typeof manifestSchema>;
@@ -115,6 +118,17 @@ interface PhoneFixtureSpec {
   claim: "smartphone_validation_tuning_only" | "smartphone_final_holdout_only";
   labelsMayBeUsedForTuning: boolean;
   gitTracking: "ignored_local_intake" | "ignored_local_holdout";
+}
+
+export interface PillPhotoFixtureIdentitySet {
+  imageSha256: ReadonlySet<string>;
+  expectedItemSeq: ReadonlySet<string>;
+  officialRecordSha256: ReadonlySet<string>;
+}
+
+interface PillPhotoFixtureIdentitySource {
+  images: readonly { sha256: string }[];
+  products: readonly { expectedItemSeq: string; expectedOfficialRecordSha256: string }[];
 }
 
 const VALIDATION_SPEC: PhoneFixtureSpec = {
@@ -141,9 +155,27 @@ function sameStrings(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function fixtureIdentitySet(source: PillPhotoFixtureIdentitySource): PillPhotoFixtureIdentitySet {
+  return {
+    imageSha256: new Set(source.images.map((image) => image.sha256)),
+    expectedItemSeq: new Set(source.products.map((product) => product.expectedItemSeq)),
+    officialRecordSha256: new Set(source.products.map((product) => product.expectedOfficialRecordSha256)),
+  };
+}
+
+function mergeFixtureIdentitySets(
+  ...sets: readonly PillPhotoFixtureIdentitySet[]
+): PillPhotoFixtureIdentitySet {
+  return {
+    imageSha256: new Set(sets.flatMap((set) => [...set.imageSha256])),
+    expectedItemSeq: new Set(sets.flatMap((set) => [...set.expectedItemSeq])),
+    officialRecordSha256: new Set(sets.flatMap((set) => [...set.officialRecordSha256])),
+  };
+}
+
 function validateManifestRelationships(
   manifest: PillPhotoPhoneValidationManifest,
-  previousImageHashes: ReadonlySet<string>,
+  previousFixtureIdentities: PillPhotoFixtureIdentitySet,
   spec: PhoneFixtureSpec,
 ) {
   const { scope } = manifest;
@@ -171,8 +203,15 @@ function validateManifestRelationships(
   if (new Set(manifest.images.map((image) => image.sha256)).size !== manifest.images.length) {
     throw new Error("phone_validation_fixture_duplicate_image");
   }
-  if (manifest.images.some((image) => previousImageHashes.has(image.sha256))) {
+  if (manifest.images.some((image) => previousFixtureIdentities.imageSha256.has(image.sha256))) {
     throw new Error("phone_validation_fixture_overlaps_previous_images");
+  }
+  if (manifest.products.some((product) => previousFixtureIdentities.expectedItemSeq.has(product.expectedItemSeq))) {
+    throw new Error("phone_validation_fixture_overlaps_previous_products");
+  }
+  if (manifest.products.some((product) => previousFixtureIdentities.officialRecordSha256
+    .has(product.expectedOfficialRecordSha256))) {
+    throw new Error("phone_validation_fixture_overlaps_previous_official_records");
   }
   const historyCases = manifest.products.filter((product) => product.appearanceHistory !== undefined);
   if (historyCases.length !== scope.historicalAppearanceCaseCount
@@ -229,30 +268,35 @@ function validateOfficialLabels(
   }
 }
 
-async function defaultPreviousImageHashes() {
+async function defaultPreviousFixtureIdentities(): Promise<PillPhotoFixtureIdentitySet> {
   const [evaluation, unseen] = await Promise.all([
     loadPillPhotoEvaluationFixture(),
     loadPillPhotoUnseenEvaluationFixture(),
   ]);
-  return new Set([
-    ...PILL_PHOTO_FILES.map((image) => image.sha256),
-    ...evaluation.manifest.images.map((image) => image.sha256),
-    ...unseen.manifest.images.map((image) => image.sha256),
-  ]);
+  return mergeFixtureIdentitySets(
+    {
+      imageSha256: new Set(PILL_PHOTO_FILES.map((image) => image.sha256)),
+      expectedItemSeq: new Set(),
+      officialRecordSha256: new Set(),
+    },
+    fixtureIdentitySet(evaluation.manifest),
+    fixtureIdentitySet(unseen.manifest),
+  );
 }
 
 async function loadPillPhotoPhoneFixture(spec: PhoneFixtureSpec, options: {
-  directory?: string;
-  previousImageHashes?: ReadonlySet<string>;
-}, defaultDirectory: string) {
-  const directory = options.directory ?? defaultDirectory;
-  const [rawManifest, frozen, previousImageHashes] = await Promise.all([
+  directory: string;
+  previousFixtureIdentities: PillPhotoFixtureIdentitySet;
+}) {
+  const { directory, previousFixtureIdentities } = options;
+  const [rawManifest, frozen] = await Promise.all([
     readBoundedFixtureFile(join(directory, "manifest.local.json"), MAX_MANIFEST_BYTES),
     loadFrozenPillPhotoFixture(),
-    options.previousImageHashes ? Promise.resolve(options.previousImageHashes) : defaultPreviousImageHashes(),
   ]);
-  const manifest = manifestSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(rawManifest)));
-  validateManifestRelationships(manifest, previousImageHashes, spec);
+  const parsed = manifestSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(rawManifest)));
+  if (!parsed.success) throw new Error("phone_validation_fixture_manifest_invalid");
+  const manifest = parsed.data;
+  validateManifestRelationships(manifest, previousFixtureIdentities, spec);
   validateOfficialLabels(manifest, frozen.manifest.fixtureVersion, frozen.snapshot.items);
 
   for (const image of manifest.images) {
@@ -275,30 +319,30 @@ async function loadPillPhotoPhoneFixture(spec: PhoneFixtureSpec, options: {
   return { manifest, inferenceInputs };
 }
 
-export async function loadPillPhotoPhoneValidationFixture(options: {
-  directory?: string;
-  previousImageHashes?: ReadonlySet<string>;
-} = {}) {
-  return loadPillPhotoPhoneFixture(VALIDATION_SPEC, options, PILL_PHOTO_PHONE_VALIDATION_DIRECTORY);
+export async function loadPillPhotoPhoneValidationFixture() {
+  return loadPillPhotoPhoneFixture(VALIDATION_SPEC, {
+    directory: PILL_PHOTO_PHONE_VALIDATION_DIRECTORY,
+    previousFixtureIdentities: await defaultPreviousFixtureIdentities(),
+  });
 }
 
-export async function loadPillPhotoPhoneHoldoutFixture(options: {
-  directory?: string;
-  previousImageHashes?: ReadonlySet<string>;
-} = {}) {
-  let previousImageHashes = options.previousImageHashes;
-  if (!previousImageHashes) {
-    const prior = await defaultPreviousImageHashes();
-    const validation = await loadPillPhotoPhoneFixture(
-      VALIDATION_SPEC,
-      { previousImageHashes: prior },
-      PILL_PHOTO_PHONE_VALIDATION_DIRECTORY,
-    );
-    previousImageHashes = new Set([...prior, ...validation.manifest.images.map((image) => image.sha256)]);
-  }
-  return loadPillPhotoPhoneFixture(
-    HOLDOUT_SPEC,
-    { ...options, previousImageHashes },
-    PILL_PHOTO_PHONE_HOLDOUT_DIRECTORY,
-  );
+export async function loadPillPhotoPhoneHoldoutFixture() {
+  const prior = await defaultPreviousFixtureIdentities();
+  const validation = await loadPillPhotoPhoneFixture(VALIDATION_SPEC, {
+    directory: PILL_PHOTO_PHONE_VALIDATION_DIRECTORY,
+    previousFixtureIdentities: prior,
+  });
+  return loadPillPhotoPhoneFixture(HOLDOUT_SPEC, {
+    directory: PILL_PHOTO_PHONE_HOLDOUT_DIRECTORY,
+    previousFixtureIdentities: mergeFixtureIdentitySets(prior, fixtureIdentitySet(validation.manifest)),
+  });
+}
+
+/** Test-only loader for synthetic manifests. Production evaluation always uses the fixed loaders above. */
+export async function loadPillPhotoPhoneFixtureForTest(options: {
+  split: "validation" | "holdout";
+  directory: string;
+  previousFixtureIdentities: PillPhotoFixtureIdentitySet;
+}) {
+  return loadPillPhotoPhoneFixture(options.split === "validation" ? VALIDATION_SPEC : HOLDOUT_SPEC, options);
 }

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { comparePillPhotoFeatures, pillPhotoFeaturesSchema } from "../src/pill-photo-features.ts";
 import type { PillCatalog } from "../src/pill-identification.ts";
 export const PILL_PHOTO_SCORE_SCHEMA_VERSION = "pill-photo-score.v1";
-export const PILL_PHOTO_SCORE_POLICY_VERSION = "capture-candidate-recall-v1";
+export const PILL_PHOTO_SCORE_POLICY_VERSION = "capture-candidate-recall-v2-minimum-sample";
 export const PILL_PHOTO_RECALL_KS = [1, 5, 20] as const;
 export const PILL_PHOTO_REQUIRED_RECALL_K = 5;
 
@@ -49,6 +49,7 @@ export type PillPhotoEvaluationSplit = "validation" | "holdout";
 export interface PillPhotoScoringManifest {
   fixtureVersion: string;
   scope: { claim: string };
+  minimumCasesForPass: Record<PillPhotoEvaluationSplit, number>;
   cases: readonly {
     id: string;
     split: PillPhotoEvaluationSplit;
@@ -196,7 +197,13 @@ export function scorePillPhotoEvaluation(
   });
   const metrics = summarizePillPhotoCaseScores(rows);
   const requiredRecall = metrics.recallAt[String(PILL_PHOTO_REQUIRED_RECALL_K)]!;
+  const minimumCasesForPass = manifest.minimumCasesForPass[input.split];
   const gates = {
+    minimumSampleSize: {
+      passed: metrics.totalCases >= minimumCasesForPass,
+      required: minimumCasesForPass,
+      observed: metrics.totalCases,
+    },
     allCasesEvaluated: { passed: metrics.evaluatedCases === metrics.totalCases, required: metrics.totalCases, observed: metrics.evaluatedCases },
     recallAt5: { passed: requiredRecall.hits === requiredRecall.total, required: requiredRecall.total, observed: requiredRecall.hits },
     noStrongWrongCandidates: { passed: metrics.strongWrongCandidateCount === 0, maximum: 0, observed: metrics.strongWrongCandidateCount },
