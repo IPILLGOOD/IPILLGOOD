@@ -814,8 +814,10 @@ function createMedicationPlanDraft(
       const endDate = explicitEndDate ?? (startDate && supplyDays
         ? addCalendarDays(startDate, supplyDays - 1)
         : undefined);
+      const verifiedItemSeq = verifiedMedicationIdentity(medication).itemSeq;
       return {
         ...medication,
+        ...(verifiedItemSeq ? { mfdsItemSeq: verifiedItemSeq } : {}),
         startDate,
         ...(endDate ? { endDate } : {}),
         id: `${id}-candidate-${index + 1}`,

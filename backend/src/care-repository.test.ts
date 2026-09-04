@@ -714,11 +714,14 @@ function confirmationCandidates(draft: NonNullable<Awaited<ReturnType<typeof get
     included: candidate.included,
     productName: candidate.productName,
     ingredientName: candidate.ingredientName,
+    mfdsItemSeq: candidate.mfdsItemSeq ?? candidate.itemCode,
+    insuranceCode: candidate.insuranceCode,
     doseAmount: candidate.doseAmount,
     frequency: candidate.frequency,
     timing: candidate.timing,
     startDate: candidate.startDate,
     endDate: candidate.endDate,
+    supplyDays: candidate.supplyDays,
   }));
 }
 
@@ -892,8 +895,8 @@ test("사용자가 제품명·성분을 수정하면 이전 검증 품목코드�
   const document = await registerDocument(scope, upload);
   const draft = (await getMedicationPlanDraft(scope, document.medicationDraftId!))!;
   const candidates = confirmationCandidates(draft);
-  candidates[0]!.productName = "다른 약";
-  candidates[1]!.ingredientName = "다른 성분";
+  candidates[0] = { ...candidates[0]!, productName: "다른 약", confirmedAgainstOriginal: true };
+  candidates[1] = { ...candidates[1]!, ingredientName: "다른 성분", confirmedAgainstOriginal: true };
   const result = await confirmMedicationPlanDraft(scope, { draftId: draft.id, revision: draft.revision, idempotencyKey: "confirm-edited-code", confirmedBy: "google:user", candidates });
   assert.equal(result.medications.every((item) => !("itemSeq" in item)), true);
 });
