@@ -25,6 +25,7 @@ import {
   type ValidatedPillPhotoExpectation,
   type PillPhotoOcrRotationViews,
   type PillPhotoPreprocessingVariants,
+  type PillPhonePhotoPreprocessingVariants,
 } from "./pill-photo-preprocessing.ts";
 
 export const PILL_PHOTO_PREVIEW_PREPROCESSING_VERSION = "public-rgba-alpha-bounds-white-1024-v1";
@@ -39,6 +40,19 @@ const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 export const PILL_PHOTO_TIMEOUT_MS = 90_000;
 type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "invalid_request" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error" | "ocr_failed" | "fusion_failed";
 type Usage = { inputTokens: number; outputTokens: number };
+export type PillPhotoRequestStage = "vision" | "ocrFront" | "ocrBack";
+export type PillPhotoRequestTrace = {
+  phase: "started"; stage: PillPhotoRequestStage; requestSha256: string;
+} | {
+  phase: "finished"; stage: PillPhotoRequestStage; requestSha256: string; elapsedMs: number;
+  httpStatus: number | null; requestId: string | null; responseId: string | null;
+  responseModel: string | null; responseStatus: string | null; usage: Usage | null;
+  outcome: "response_received" | PhotoFailure;
+};
+type RequestObserver = (event: PillPhotoRequestTrace) => Promise<void>;
+const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
+const safeProviderTag = (value: unknown): string | null => typeof value === "string"
+  && /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/.test(value) && !/^sk-/i.test(value) ? value : null;
 export type ReviewedPillPhotoSet = "development" | "evaluation" | "unseen_evaluation" | "phone_validation" | "phone_holdout";
 type ReviewedPillPhotoExpectation = ValidatedPillPhotoExpectation & { path: string };
 let evaluationPhotoAllowlistPromise: Promise<readonly ReviewedPillPhotoExpectation[]> | undefined;
@@ -312,29 +326,51 @@ async function requestPillPhotoProvider(
   body: unknown,
   apiKey: string,
   fetchImpl: typeof fetch,
+  stage: PillPhotoRequestStage,
+  observer?: RequestObserver,
 ): Promise<{ ok: true; value: unknown } | { ok: false; reason: PhotoFailure }> {
   const serialized = JSON.stringify(body);
   if (Buffer.byteLength(serialized, "utf8") > MAX_REQUEST_BODY_BYTES) return { ok: false, reason: "invalid_photo" };
+  const requestSha256 = digest(serialized);
+  // Recording failures propagate before transmission; never turn them into model/network failures.
+  await observer?.({ phase: "started", stage, requestSha256 });
+  const started = performance.now();
+  let httpStatus: number | null = null;
+  let requestId: string | null = null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PILL_PHOTO_TIMEOUT_MS);
-  try {
-    const response = await fetchImpl(ENDPOINT, {
-      method: "POST", redirect: "error", signal: controller.signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: serialized,
-    });
-    if (!response.ok) {
-      await response.body?.cancel().catch(() => undefined);
-      return { ok: false, reason: response.status === 400 || response.status === 422 ? "invalid_request" : response.status === 401 || response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "provider_unavailable" };
-    }
-    if (response.redirected || response.url && response.url !== ENDPOINT) {
-      await response.body?.cancel().catch(() => undefined);
-      return { ok: false, reason: "invalid_response" };
-    }
-    try { return { ok: true, value: await boundedResponse(response) }; }
-    catch { return { ok: false, reason: controller.signal.aborted ? "timeout" : "invalid_response" }; }
-  } catch { return { ok: false, reason: controller.signal.aborted ? "timeout" : "network_error" }; }
-  finally { clearTimeout(timer); }
+  const execute = async (): Promise<{ ok: true; value: unknown } | { ok: false; reason: PhotoFailure }> => {
+    try {
+      const response = await fetchImpl(ENDPOINT, {
+        method: "POST", redirect: "error", signal: controller.signal,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: serialized,
+      });
+      httpStatus = response.status;
+      requestId = safeProviderTag(response.headers.get("x-request-id"));
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        return { ok: false, reason: response.status === 400 || response.status === 422 ? "invalid_request" : response.status === 401 || response.status === 403 ? "access_denied" : response.status === 429 ? "rate_limited" : "provider_unavailable" };
+      }
+      if (response.redirected || response.url && response.url !== ENDPOINT) {
+        await response.body?.cancel().catch(() => undefined);
+        return { ok: false, reason: "invalid_response" };
+      }
+      try { return { ok: true, value: await boundedResponse(response) }; }
+      catch { return { ok: false, reason: controller.signal.aborted ? "timeout" : "invalid_response" }; }
+    } catch { return { ok: false, reason: controller.signal.aborted ? "timeout" : "network_error" }; }
+    finally { clearTimeout(timer); }
+  };
+  const result = await execute();
+  const envelope = result.ok && result.value && typeof result.value === "object"
+    ? result.value as Record<string, unknown> : {};
+  const usage = z.object({ input_tokens: z.number().int().nonnegative(), output_tokens: z.number().int().nonnegative() }).safeParse(envelope.usage);
+  await observer?.({ phase: "finished", stage, requestSha256,
+    elapsedMs: Math.round(performance.now() - started), httpStatus, requestId,
+    responseId: safeProviderTag(envelope.id), responseModel: safeProviderTag(envelope.model), responseStatus: safeProviderTag(envelope.status),
+    usage: usage.success ? { inputTokens: usage.data.input_tokens, outputTokens: usage.data.output_tokens } : null,
+    outcome: result.ok ? "response_received" : result.reason });
+  return result;
 }
 
 function totalUsage(first: Usage | null, second: Usage | null): Usage | null {
@@ -343,19 +379,19 @@ function totalUsage(first: Usage | null, second: Usage | null): Usage | null {
     : null;
 }
 
-/** Every network path enforces a fixed reviewed-manifest hash allowlist and explicit opt-in. */
-export async function extractReviewedPillPhotos(
+/** Keyless/offline preparation. The SAME reviewed bytes, transforms and builders are used by live extraction. */
+export async function prepareReviewedPillPhotoRequests(
   photos: readonly [Uint8Array, Uint8Array],
-  options: { allowExternalTransfer?: boolean; apiKey?: string; model?: string; ocrModel?: string; fetchImpl?: typeof fetch; photoSet?: ReviewedPillPhotoSet } = {},
-): Promise<PhotoExtractionResult> {
-  if (options.allowExternalTransfer !== true) return { ok: false, reason: "transfer_not_confirmed" };
-  if (!Array.isArray(photos) || photos.length !== 2) return { ok: false, reason: "unreviewed_photo" };
+  options: { model: string; ocrModel: string; photoSet?: ReviewedPillPhotoSet },
+) {
+  const failure = (reason: PhotoFailure) => ({ ok: false as const, reason });
+  if (!Array.isArray(photos) || photos.length !== 2) return failure("unreviewed_photo");
   const photoSet = options.photoSet ?? "development";
   let expectations: readonly [ReviewedPillPhotoExpectation, ReviewedPillPhotoExpectation];
   if (photoSet === "development") {
     const indexes = [reviewedPhotoIndex(photos[0]), reviewedPhotoIndex(photos[1])] as const;
-    if (indexes.some((index) => index < 0)) return { ok: false, reason: "unreviewed_photo" };
-    if (indexes[0] === indexes[1]) return { ok: false, reason: "duplicate_photo" };
+    if (indexes.some((index) => index < 0)) return failure("unreviewed_photo");
+    if (indexes[0] === indexes[1]) return failure("duplicate_photo");
     expectations = [PILL_PHOTO_FILES[indexes[0]]!, PILL_PHOTO_FILES[indexes[1]]!];
   } else if (photoSet === "evaluation" || photoSet === "unseen_evaluation"
     || photoSet === "phone_validation" || photoSet === "phone_holdout") {
@@ -368,18 +404,16 @@ export async function extractReviewedPillPhotos(
         const digest = createHash("sha256").update(bytes).digest("hex");
         return allowlist.find((image) => image.bytes === bytes.length && image.sha256 === digest);
       });
-      if (!entries[0] || !entries[1]) return { ok: false, reason: "unreviewed_photo" };
-      if (entries[0].path === entries[1].path) return { ok: false, reason: "duplicate_photo" };
+      if (!entries[0] || !entries[1]) return failure("unreviewed_photo");
+      if (entries[0].path === entries[1].path) return failure("duplicate_photo");
       expectations = [entries[0], entries[1]];
-    } catch { return { ok: false, reason: "unreviewed_photo" }; }
-  } else return { ok: false, reason: "unreviewed_photo" };
-  const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
-  const model = options.model ?? process.env.OPENAI_MODEL ?? "gpt-5.6-luna";
-  const ocrModel = options.ocrModel ?? process.env.OPENAI_OCR_MODEL ?? "gpt-5.6-sol";
-  if (!apiKey?.trim() || ![model, ocrModel].every((value) => /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(value))) return { ok: false, reason: "not_configured" };
+    } catch { return failure("unreviewed_photo"); }
+  } else return failure("unreviewed_photo");
+  const { model, ocrModel } = options;
+  if (![model, ocrModel].every((value) => /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(value) && !/^sk-/i.test(value))) return failure("not_configured");
   let prepared: [
-    Pick<PillPhotoPreprocessingVariants, "context" | "alignedColor" | "alignedContrast">,
-    Pick<PillPhotoPreprocessingVariants, "context" | "alignedColor" | "alignedContrast">,
+    PillPhotoPreprocessingVariants | PillPhonePhotoPreprocessingVariants,
+    PillPhotoPreprocessingVariants | PillPhonePhotoPreprocessingVariants,
   ];
   let ocrViews: [
     { color: PillPhotoOcrRotationViews; contrast: PillPhotoOcrRotationViews },
@@ -401,17 +435,45 @@ export async function extractReviewedPillPhotos(
       },
     ];
   }
-  catch { return { ok: false, reason: "invalid_photo" }; }
+  catch { return failure("invalid_photo"); }
+  return { ok: true as const, sourceSha256: photos.map((bytes) => digest(bytes)),
+    preprocessing: prepared.map((entry) => entry.metadata),
+    requests: {
+      vision: pillPhotoRequest(prepared[0], prepared[1], model),
+      ocrFront: pillPhotoOcrRequest(ocrViews[0].color, ocrViews[0].contrast, ocrModel),
+      ocrBack: pillPhotoOcrRequest(ocrViews[1].color, ocrViews[1].contrast, ocrModel),
+    } };
+}
+
+export type PreparedPillPhotoRequests = Extract<Awaited<ReturnType<typeof prepareReviewedPillPhotoRequests>>, { ok: true }>;
+
+/** Every network path enforces a fixed reviewed-manifest hash allowlist and explicit opt-in. */
+export async function extractReviewedPillPhotos(
+  photos: readonly [Uint8Array, Uint8Array],
+  options: { allowExternalTransfer?: boolean; apiKey?: string; model?: string; ocrModel?: string; fetchImpl?: typeof fetch;
+    photoSet?: ReviewedPillPhotoSet; onPrepared?: (prepared: PreparedPillPhotoRequests) => Promise<void>;
+    onRequestTrace?: RequestObserver } = {},
+): Promise<PhotoExtractionResult> {
+  if (options.allowExternalTransfer !== true) return { ok: false, reason: "transfer_not_confirmed" };
+  const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
+  const prepared = await prepareReviewedPillPhotoRequests(photos, {
+    photoSet: options.photoSet, model: options.model ?? process.env.OPENAI_MODEL ?? "gpt-5.6-luna",
+    ocrModel: options.ocrModel ?? process.env.OPENAI_OCR_MODEL ?? "gpt-5.6-sol",
+  });
+  if (!prepared.ok) return prepared;
+  if (!apiKey?.trim()) return { ok: false, reason: "not_configured" };
+  // Callbacks receive a copy and cannot modify the buffers/requests subsequently transmitted.
+  await options.onPrepared?.(structuredClone(prepared));
   const fetchImpl = options.fetchImpl ?? fetch;
-  const visionResponse = await requestPillPhotoProvider(pillPhotoRequest(prepared[0], prepared[1], model), apiKey, fetchImpl);
+  const visionResponse = await requestPillPhotoProvider(prepared.requests.vision, apiKey, fetchImpl, "vision", options.onRequestTrace);
   if (!visionResponse.ok) return visionResponse;
   const vision = parsePillPhotoResponse(visionResponse.value);
   if (!vision.ok) return vision;
-  const firstOcrResponse = await requestPillPhotoProvider(pillPhotoOcrRequest(ocrViews[0].color, ocrViews[0].contrast, ocrModel), apiKey, fetchImpl);
+  const firstOcrResponse = await requestPillPhotoProvider(prepared.requests.ocrFront, apiKey, fetchImpl, "ocrFront", options.onRequestTrace);
   if (!firstOcrResponse.ok) return firstOcrResponse;
   const firstOcr = parsePillPhotoOcrResponse(firstOcrResponse.value);
   if (!firstOcr.ok) return firstOcr;
-  const secondOcrResponse = await requestPillPhotoProvider(pillPhotoOcrRequest(ocrViews[1].color, ocrViews[1].contrast, ocrModel), apiKey, fetchImpl);
+  const secondOcrResponse = await requestPillPhotoProvider(prepared.requests.ocrBack, apiKey, fetchImpl, "ocrBack", options.onRequestTrace);
   if (!secondOcrResponse.ok) return secondOcrResponse;
   const secondOcr = parsePillPhotoOcrResponse(secondOcrResponse.value);
   if (!secondOcr.ok) return secondOcr;
