@@ -14,7 +14,7 @@ import { pillPhotoFeaturesSchema } from "../src/pill-photo-features.ts";
 import { type PillPhotoCaseScore } from "./pill-photo-score.ts";
 import { assertCurrentPillPhotoTrialProtocol, assertPillPhotoTrialPreparation, createPillPhotoTrialRequestGuard,
   describePillPhotoTrialPreparation, PILL_PHOTO_REQUEST_STAGES, PILL_PHOTO_TRIAL_CASE_IDS, PILL_PHOTO_TRIAL_PROTOCOL,
-  summarizePillPhotoTrialRepeats, trialSha256, renderPillPhotoTrialPlan } from "./pill-photo-trial.ts";
+  summarizePillPhotoTrialRepeats, trialSha256, renderPillPhotoTrialPlan, PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL } from "./pill-photo-trial.ts";
 
 const protocol = PILL_PHOTO_TRIAL_PROTOCOL;
 const prepareOptions = { model: protocol.model, ocrModel: protocol.ocrModel };
@@ -176,6 +176,13 @@ test("반복 실행 편차는 모든 실행의 순위·후보·보류를 보존�
   assert.deepEqual(summary.rows[0]!.ranks, [1, 6, 1]);
   assert.equal(summary.rows[0]!.changed, true); assert.equal(summary.independentProducts, 6);
   assert.throws(() => summarizePillPhotoTrialRepeats(repeats.slice(0, 1)), /trial_incomplete_repetitions/);
+  const safetyOnly = structuredClone(repeats);
+  for (const repeat of safetyOnly) for (const row of repeat.rows) row.expectedRank = 1;
+  const unchanged = summarizePillPhotoTrialRepeats(safetyOnly);
+  assert.equal(unchanged.rows[0]!.changed, false);
+  safetyOnly[1]!.rows[0]!.strongCandidateItemSeqs = ["synthetic-wrong"];
+  safetyOnly[1]!.rows[0]!.strongWrongCandidateItemSeqs = ["synthetic-wrong"];
+  assert.equal(summarizePillPhotoTrialRepeats(safetyOnly).rows[0]!.changed, true);
 });
 
 test("plan 변조·다른 조건·holdout·환경변수 무단 모델변경 경로를 허용하지 않는다", async (t) => {
@@ -202,6 +209,10 @@ test("합성 54요청 저장 통합: 모든 반복·요청 trace·score를 남�
   const prepared = await prepareReviewedPillPhotoRequests(photos, prepareOptions); assert.ok(prepared.ok);
   const { manifest } = await describePillPhotoTrialPreparation(prepared);
   const records = PILL_PHOTO_TRIAL_CASE_IDS.map((_, index) => pillRecord({ ITEM_SEQ: String(209900001 + index) }));
+  const candidatePrepared = await prepareReviewedPillPhotoRequests(photos, { ...prepareOptions,
+    visionPromptVersion: PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL.visionPrompt });
+  assert.ok(candidatePrepared.ok);
+  const candidate = await describePillPhotoTrialPreparation(candidatePrepared, PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL);
   const catalog = { ...parseOfficialPillPage(pillEnvelope(records), "json", "2026-09-01T00:00:00.000Z"),
     completeness: "complete" as const, version: "synthetic-integration-only" };
   const context: PillPhotoTrialExecutionContext = {
@@ -215,8 +226,9 @@ test("합성 54요청 저장 통합: 모든 반복·요청 trace·score를 남�
   };
   let requests = 0;
   const extractor: typeof extractReviewedPillPhotos = async (_photos, options) => {
-    await options?.onPrepared?.(structuredClone(prepared));
-    for (const request of manifest.requests) {
+    const isCandidate = options?.visionPromptVersion === PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL.visionPrompt;
+    await options?.onPrepared?.(structuredClone(isCandidate ? candidatePrepared : prepared));
+    for (const request of (isCandidate ? candidate.manifest : manifest).requests) {
       await options?.onRequestTrace?.({ phase: "started", stage: request.stage, requestSha256: request.bodySha256 });
       requests++;
       await options?.onRequestTrace?.({ phase: "finished", stage: request.stage, requestSha256: request.bodySha256, elapsedMs: 1,
@@ -240,6 +252,15 @@ test("합성 54요청 저장 통합: 모든 반복·요청 trace·score를 남�
     assert.equal(savedFeatures.requests, 18); assert.equal(savedFeatures.cases.length, 6);
     for (const name of names) assert.doesNotMatch(await readFile(join(repeat, name), "utf8"), /never-persist-this-key|Authorization/);
   }
+  const candidateDirectory = await mkdtemp(join(tmpdir(), "pill-trial-candidate-synthetic-"));
+  const candidateContext = { ...context, condition: { ...context.condition, protocol: PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL,
+    cases: PILL_PHOTO_TRIAL_CASE_IDS.map((id) => ({ id, ...candidate.manifest })) } };
+  const candidateRun = await executePillPhotoTrialRun(candidateContext, candidateDirectory, "never-persist-this-key", extractor);
+  assert.equal(candidateRun.status, "complete"); assert.equal(candidateRun.requestIntents, 54);
+  const candidatePreflight = JSON.parse(await readFile(join(candidateDirectory, "repeat-1/preflight.json"), "utf8"));
+  const candidateFeatures = JSON.parse(await readFile(join(candidateDirectory, "repeat-1/features.json"), "utf8"));
+  assert.equal(candidatePreflight.pipeline.prompt, PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL.visionPrompt);
+  assert.equal(candidateFeatures.pipeline.visionVersion, candidatePreflight.pipeline.prompt);
   let casesAttempted = 0;
   const failedDirectory = await mkdtemp(join(tmpdir(), "pill-trial-incomplete-synthetic-"));
   const failed = await executePillPhotoTrialRun(context, failedDirectory, "never-persist-this-key", async (pair, options) => {

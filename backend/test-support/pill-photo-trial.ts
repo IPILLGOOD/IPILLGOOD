@@ -6,6 +6,8 @@ import { pillPhotoExperimentVersions, type PreparedPillPhotoRequests, type PillP
 import { PILL_SEARCH_RULES_VERSION } from "../src/pill-identification.ts";
 import { PILL_PHOTO_SCORE_POLICY_VERSION, type PillPhotoCaseScore } from "./pill-photo-score.ts";
 import { PILL_PHOTO_PHONE_VALIDATION_VERSION } from "./pill-photo-phone-validation.ts";
+import { PILL_PHOTO_STRUCTURED_PROMPT_VERSION, pillPhotoVisionInstructions } from "../src/pill-photo-prompt-profiles.ts";
+import { PILL_PHOTO_OCR_INSTRUCTIONS } from "../src/pill-photo-ocr.ts";
 
 export const PILL_PHOTO_TRIAL_PROTOCOL = Object.freeze({
   schemaVersion: "pill-photo-trial-protocol.v1", id: "validation-baseline-v1",
@@ -19,27 +21,39 @@ export const PILL_PHOTO_TRIAL_PROTOCOL = Object.freeze({
   reasoningEffort: "low", imageDetail: "high", visionMaxOutputTokens: 2400, ocrMaxOutputTokens: 1400,
   store: false, retries: 0, stopOnAnyExtractionFailure: true,
 } as const);
+export const PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL = Object.freeze({
+  ...PILL_PHOTO_TRIAL_PROTOCOL, id: "validation-structured-observation-v1",
+  visionPrompt: PILL_PHOTO_STRUCTURED_PROMPT_VERSION,
+} as const);
+export type PillPhotoTrialProtocol = typeof PILL_PHOTO_TRIAL_PROTOCOL | typeof PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL;
+export function pillPhotoTrialProtocol(id: string = PILL_PHOTO_TRIAL_PROTOCOL.id): PillPhotoTrialProtocol {
+  if (id === PILL_PHOTO_TRIAL_PROTOCOL.id) return PILL_PHOTO_TRIAL_PROTOCOL;
+  if (id === PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL.id) return PILL_PHOTO_STRUCTURED_TRIAL_PROTOCOL;
+  throw new Error("trial_unknown_protocol");
+}
 export const PILL_PHOTO_TRIAL_CASE_IDS = Array.from({ length: 6 }, (_, index) => `v4-v0${index + 1}`);
 export const PILL_PHOTO_REQUEST_STAGES = ["vision", "ocrFront", "ocrBack"] as const;
 export const trialSha256 = (value: Uint8Array | string) => createHash("sha256").update(value).digest("hex");
 
-export function assertCurrentPillPhotoTrialProtocol() {
-  const protocol = PILL_PHOTO_TRIAL_PROTOCOL;
-  if (protocol.fixtureVersion !== PILL_PHOTO_PHONE_VALIDATION_VERSION
+export function assertCurrentPillPhotoTrialProtocol(protocol: PillPhotoTrialProtocol = PILL_PHOTO_TRIAL_PROTOCOL) {
+  if (!isDeepStrictEqual(protocol, pillPhotoTrialProtocol(protocol.id))
+    || protocol.fixtureVersion !== PILL_PHOTO_PHONE_VALIDATION_VERSION
     || protocol.preprocessing !== pillPhotoExperimentVersions.phonePreprocessing
-    || protocol.visionPrompt !== pillPhotoExperimentVersions.prompt || protocol.ocrPrompt !== pillPhotoExperimentVersions.ocrPrompt
+    || (protocol.id === PILL_PHOTO_TRIAL_PROTOCOL.id && protocol.visionPrompt !== pillPhotoExperimentVersions.prompt)
+    || protocol.ocrPrompt !== pillPhotoExperimentVersions.ocrPrompt
     || protocol.fusion !== pillPhotoExperimentVersions.fusion || protocol.search !== PILL_SEARCH_RULES_VERSION
     || protocol.scorePolicy !== PILL_PHOTO_SCORE_POLICY_VERSION) throw new Error("trial_protocol_version_mismatch");
 }
 
 /** Persist the actual request images, not separately regenerated approximations of them. */
-export async function describePillPhotoTrialPreparation(prepared: PreparedPillPhotoRequests) {
+export async function describePillPhotoTrialPreparation(prepared: PreparedPillPhotoRequests, protocol: PillPhotoTrialProtocol = PILL_PHOTO_TRIAL_PROTOCOL) {
+  assertCurrentPillPhotoTrialProtocol(protocol);
   const images = new Map<string, Buffer>();
-  const protocol = PILL_PHOTO_TRIAL_PROTOCOL;
   const requests = [];
   for (const stage of PILL_PHOTO_REQUEST_STAGES) {
     const request = prepared.requests[stage];
     if (request.model !== (stage === "vision" ? protocol.model : protocol.ocrModel)
+      || request.instructions !== (stage === "vision" ? pillPhotoVisionInstructions(protocol.visionPrompt) : PILL_PHOTO_OCR_INSTRUCTIONS)
       || request.reasoning.effort !== protocol.reasoningEffort || request.store !== protocol.store
       || request.max_output_tokens !== (stage === "vision" ? protocol.visionMaxOutputTokens : protocol.ocrMaxOutputTokens)) {
       throw new Error("trial_request_settings_mismatch");
@@ -142,8 +156,6 @@ export function summarizePillPhotoTrialRepeats(repeats: ScoredRepeat[]) {
       minHits: Math.min(...hits(k)), maxHits: Math.max(...hits(k)) })),
     rows: PILL_PHOTO_TRIAL_CASE_IDS.map((id, index) => {
       const rows = repeats.map((repeat) => repeat.rows[index]!);
-      const signatures = rows.map((row) => JSON.stringify({ rank: row.expectedRank, candidates: row.candidateItemSeqs,
-        held: row.heldCandidateItemSeqs, reason: row.comparisonReason, status: row.searchStatus, failure: row.failureReason }));
-      return { id, ranks: rows.map((row) => row.expectedRank), changed: new Set(signatures).size > 1, results: rows };
+      return { id, ranks: rows.map((row) => row.expectedRank), changed: rows.some((row) => !isDeepStrictEqual(row, rows[0])), results: rows };
     }) };
 }

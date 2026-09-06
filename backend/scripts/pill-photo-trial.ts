@@ -11,13 +11,15 @@ import { loadFrozenPillPhotoFixture, readBoundedFixtureFile } from "../test-supp
 import { PILL_PHOTO_SCORE_SCHEMA_VERSION, scorePillPhotoEvaluation, type PillPhotoScoreInput, type PillPhotoScoringManifest } from "../test-support/pill-photo-score.ts";
 import { assertCurrentPillPhotoTrialProtocol, assertPillPhotoTrialPreparation, createPillPhotoTrialRequestGuard,
   describePillPhotoTrialPreparation, PILL_PHOTO_TRIAL_CASE_IDS, PILL_PHOTO_TRIAL_PROTOCOL,
-  summarizePillPhotoTrialRepeats, trialSha256, renderPillPhotoTrialPlan, type PillPhotoTrialCasePreparation } from "../test-support/pill-photo-trial.ts";
+  summarizePillPhotoTrialRepeats, trialSha256, renderPillPhotoTrialPlan, pillPhotoTrialProtocol,
+  type PillPhotoTrialProtocol, type PillPhotoTrialCasePreparation } from "../test-support/pill-photo-trial.ts";
 import { serializePillProfile } from "./profile-pill-catalog.ts";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const OUTPUT = join(ROOT, "verification-artifacts/pill-photo-trials");
 const CODE_FILES = [
   "backend/src/pill-photo-experiment.ts", "backend/src/pill-photo-features.ts", "backend/src/pill-photo-ocr.ts",
+  "backend/src/pill-photo-prompt-profiles.ts",
   "backend/src/pill-photo-preprocessing.ts", "backend/src/pill-identification.ts", "backend/src/pill-form-policy.ts",
   "backend/src/official-pill-catalog.ts", "backend/src/pill-catalog-snapshot.ts", "backend/test-support/pill-photo-score.ts",
   "backend/test-support/pill-photo-phone-validation.ts", "backend/test-support/pill-photo-fixture.ts",
@@ -25,8 +27,10 @@ const CODE_FILES = [
   "backend/scripts/pill-photo-trial.ts", "package-lock.json",
 ];
 const HELP = `Controlled v4 validation only (never holdout):
-  prepare                                     # keyless; no API; writes plan and exact request-image PNGs
-  run --plan <plan-directory> --live --confirm-reviewed-transfer
+  prepare [--protocol <id>]                    # keyless; no API; writes exact request-image PNGs
+  run --plan <plan-directory> [--protocol <id>] --live --confirm-reviewed-transfer
+
+Protocols: validation-baseline-v1 (default), validation-structured-observation-v1 (Vision instructions only).
 
 The versioned baseline uses Sol Vision + Sol OCR, the current prompts, and THREE repetitions.
 A complete live trial makes at most 54 requests; no retries, no selective repeats or best-run selection.
@@ -35,18 +39,23 @@ run verifies code/runtime/input/request fingerprints and all saved PNGs before t
 Outputs are private ignored artifacts. Run success is not production readiness.`;
 
 export function parsePillPhotoTrialArgs(args: string[]) {
-  if (args.length === 1 && args[0] === "prepare") return { mode: "prepare" as const };
-  if (args[0] !== "run") throw new Error("trial_invalid_arguments");
+  if (args[0] !== "prepare" && args[0] !== "run") throw new Error("trial_invalid_arguments");
+  const mode = args[0];
   const flags = new Map<string, string>();
   for (let index = 1; index < args.length; index++) {
     const flag = args[index]!;
-    if (!["--plan", "--live", "--confirm-reviewed-transfer"].includes(flag) || flags.has(flag)) throw new Error("trial_invalid_arguments");
-    const value = flag === "--plan" ? args[++index] : "true";
+    const allowed = mode === "prepare" ? ["--protocol"] : ["--plan", "--live", "--confirm-reviewed-transfer", "--protocol"];
+    if (!allowed.includes(flag) || flags.has(flag)) throw new Error("trial_invalid_arguments");
+    const value = flag === "--plan" || flag === "--protocol" ? args[++index] : "true";
     if (!value || value.startsWith("--")) throw new Error("trial_invalid_arguments");
     flags.set(flag, value);
   }
+  const protocolId = flags.get("--protocol");
+  pillPhotoTrialProtocol(protocolId);
+  const selected = protocolId ? { protocolId } : {};
+  if (mode === "prepare") return { mode: "prepare" as const, ...selected };
   if (!flags.has("--plan") || !flags.has("--live") || !flags.has("--confirm-reviewed-transfer")) throw new Error("trial_explicit_transfer_required");
-  return { mode: "run" as const, planDirectory: resolve(flags.get("--plan")!) };
+  return { mode: "run" as const, planDirectory: resolve(flags.get("--plan")!), ...selected };
 }
 
 async function codeFingerprint() {
@@ -57,8 +66,8 @@ async function saveJson(directory: string, name: string, value: unknown) {
   await writeFile(join(directory, name), serializePillProfile(value), { flag: "wx", mode: 0o600 });
 }
 
-async function prepareContext() {
-  assertCurrentPillPhotoTrialProtocol();
+async function prepareContext(protocol: PillPhotoTrialProtocol) {
+  assertCurrentPillPhotoTrialProtocol(protocol);
   const [fixture, frozen, code] = await Promise.all([
     loadRegisteredPillPhotoEvaluationFixture("v4"), loadFrozenPillPhotoFixture(), codeFingerprint(),
   ]);
@@ -71,14 +80,14 @@ async function prepareContext() {
   for (const entry of fixture.inferenceInputs) {
     const photos = await Promise.all(entry.photos.map((path) => readBoundedFixtureFile(path, 5 * 1024 * 1024))) as [Buffer, Buffer];
     const prepared = await prepareReviewedPillPhotoRequests(photos, { photoSet: "phone_validation",
-      model: PILL_PHOTO_TRIAL_PROTOCOL.model, ocrModel: PILL_PHOTO_TRIAL_PROTOCOL.ocrModel });
+      model: protocol.model, ocrModel: protocol.ocrModel, visionPromptVersion: protocol.visionPrompt });
     if (!prepared.ok) throw new Error("trial_preparation_failed");
-    const described = await describePillPhotoTrialPreparation(prepared);
+    const described = await describePillPhotoTrialPreparation(prepared, protocol);
     for (const [hash, bytes] of described.images) images.set(hash, bytes);
     pairs.push({ id: entry.id, photos });
     cases.push({ id: entry.id, ...described.manifest });
   }
-  const condition = { schemaVersion: "pill-photo-trial-condition.v1", protocol: PILL_PHOTO_TRIAL_PROTOCOL,
+  const condition = { schemaVersion: "pill-photo-trial-condition.v1", protocol,
     runtime: { node: process.version, platform: process.platform, arch: process.arch, sharp: sharp.versions }, code,
     fixtureVersion: fixture.fixtureVersion, fixtureContentSha256: trialSha256(JSON.stringify({
       products: fixture.products, images: fixture.images, cases: fixture.cases,
@@ -88,7 +97,7 @@ async function prepareContext() {
   return { condition, conditionSha256: trialSha256(JSON.stringify(condition)), images, pairs, fixture, catalog: frozen.catalog };
 }
 export interface PillPhotoTrialExecutionContext {
-  condition: { protocol: typeof PILL_PHOTO_TRIAL_PROTOCOL; code: { path: string; sha256: string }[];
+  condition: { protocol: PillPhotoTrialProtocol; code: { path: string; sha256: string }[];
     cases: ({ id: string } & PillPhotoTrialCasePreparation)[] };
   conditionSha256: string;
   pairs: { id: string; photos: readonly [Uint8Array, Uint8Array] }[];
@@ -143,7 +152,7 @@ export async function executePillPhotoTrialRun(context: PillPhotoTrialExecutionC
         await mkdir(repeatDirectory);
         await saveJson(repeatDirectory, "preflight.json", { status: "ready", fixtureVersion: fixture.fixtureVersion, split: "validation",
           cases: PILL_PHOTO_TRIAL_CASE_IDS, maximumRequests: 18,
-          pipeline: { ...pillPhotoExperimentVersions, preprocessing: condition.protocol.preprocessing },
+          pipeline: { ...pillPhotoExperimentVersions, preprocessing: condition.protocol.preprocessing, prompt: condition.protocol.visionPrompt },
           model: condition.protocol.model, ocrModel: condition.protocol.ocrModel });
       }
       const pair = pairs.find((pair) => pair.id === id)!;
@@ -151,6 +160,7 @@ export async function executePillPhotoTrialRun(context: PillPhotoTrialExecutionC
       const guard = createPillPhotoTrialRequestGuard(prepared, attempts);
       const result = await extractor(pair.photos, {
         allowExternalTransfer: true, apiKey, model: condition.protocol.model, ocrModel: condition.protocol.ocrModel,
+        visionPromptVersion: condition.protocol.visionPrompt,
         photoSet: "phone_validation",
         onPrepared: async (actual) => { assertPillPhotoTrialPreparation(prepared, actual); },
         onRequestTrace: async (event) => {
@@ -196,7 +206,7 @@ export async function runPillPhotoTrial(args: string[]) {
   const parsed = parsePillPhotoTrialArgs(args);
   const apiKey = parsed.mode === "run" ? process.env.OPENAI_API_KEY?.trim() : undefined;
   if (parsed.mode === "run" && !apiKey) throw new Error("trial_api_key_required");
-  const context = await prepareContext();
+  const context = await prepareContext(pillPhotoTrialProtocol(parsed.protocolId));
   if (parsed.mode === "run") {
     const bytes = await readBoundedFixtureFile(join(parsed.planDirectory, "plan.json"), 2 * 1024 * 1024);
     assertPillPhotoTrialPlan(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)), context.condition);

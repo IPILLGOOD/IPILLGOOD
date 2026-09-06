@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { z } from "zod";
 import { PILL_PHOTO_FILES, PILL_PHOTO_REVIEW_VERSION } from "../test-support/pill-photo-review.ts";
-import { PILL_PHOTO_INSTRUCTIONS, PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, type PillPhotoFeatures } from "./pill-photo-features.ts";
+import { PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, type PillPhotoFeatures } from "./pill-photo-features.ts";
+import { pillPhotoVisionInstructions, type PillPhotoVisionPromptVersion } from "./pill-photo-prompt-profiles.ts";
 import {
   PILL_PHOTO_FUSION_VERSION,
   PILL_PHOTO_OCR_INSTRUCTIONS,
@@ -217,10 +218,11 @@ export function pillPhotoRequest(
   first: Pick<PillPhotoPreprocessingVariants, "context" | "alignedColor">,
   second: Pick<PillPhotoPreprocessingVariants, "context" | "alignedColor">,
   model: string,
+  visionPromptVersion: PillPhotoVisionPromptVersion = PILL_PHOTO_PROMPT_VERSION,
 ) {
   return {
     model, store: false, max_output_tokens: 2400, reasoning: { effort: "low" },
-    instructions: PILL_PHOTO_INSTRUCTIONS,
+    instructions: pillPhotoVisionInstructions(visionPromptVersion),
     input: [{ role: "user", content: [
       { type: "input_text", text: "Image A context and aligned-color detail show the same first surface. Do not count them twice:" },
       inputImage(first.context), inputImage(first.alignedColor),
@@ -382,11 +384,18 @@ function totalUsage(first: Usage | null, second: Usage | null): Usage | null {
 /** Keyless/offline preparation. The SAME reviewed bytes, transforms and builders are used by live extraction. */
 export async function prepareReviewedPillPhotoRequests(
   photos: readonly [Uint8Array, Uint8Array],
-  options: { model: string; ocrModel: string; photoSet?: ReviewedPillPhotoSet },
+  options: { model: string; ocrModel: string; photoSet?: ReviewedPillPhotoSet; visionPromptVersion?: PillPhotoVisionPromptVersion },
 ) {
   const failure = (reason: PhotoFailure) => ({ ok: false as const, reason });
   if (!Array.isArray(photos) || photos.length !== 2) return failure("unreviewed_photo");
   const photoSet = options.photoSet ?? "development";
+  const visionPromptVersion = options.visionPromptVersion ?? PILL_PHOTO_PROMPT_VERSION;
+  try { pillPhotoVisionInstructions(visionPromptVersion); }
+  catch { return failure("invalid_request"); }
+  // New prompt experiments are not allowed to consume frozen/unseen evaluation sets.
+  if (visionPromptVersion !== PILL_PHOTO_PROMPT_VERSION && photoSet !== "development" && photoSet !== "phone_validation") {
+    return failure("invalid_request");
+  }
   let expectations: readonly [ReviewedPillPhotoExpectation, ReviewedPillPhotoExpectation];
   if (photoSet === "development") {
     const indexes = [reviewedPhotoIndex(photos[0]), reviewedPhotoIndex(photos[1])] as const;
@@ -439,7 +448,7 @@ export async function prepareReviewedPillPhotoRequests(
   return { ok: true as const, sourceSha256: photos.map((bytes) => digest(bytes)),
     preprocessing: prepared.map((entry) => entry.metadata),
     requests: {
-      vision: pillPhotoRequest(prepared[0], prepared[1], model),
+      vision: pillPhotoRequest(prepared[0], prepared[1], model, visionPromptVersion),
       ocrFront: pillPhotoOcrRequest(ocrViews[0].color, ocrViews[0].contrast, ocrModel),
       ocrBack: pillPhotoOcrRequest(ocrViews[1].color, ocrViews[1].contrast, ocrModel),
     } };
@@ -451,12 +460,14 @@ export type PreparedPillPhotoRequests = Extract<Awaited<ReturnType<typeof prepar
 export async function extractReviewedPillPhotos(
   photos: readonly [Uint8Array, Uint8Array],
   options: { allowExternalTransfer?: boolean; apiKey?: string; model?: string; ocrModel?: string; fetchImpl?: typeof fetch;
+    visionPromptVersion?: PillPhotoVisionPromptVersion;
     photoSet?: ReviewedPillPhotoSet; onPrepared?: (prepared: PreparedPillPhotoRequests) => Promise<void>;
     onRequestTrace?: RequestObserver } = {},
 ): Promise<PhotoExtractionResult> {
   if (options.allowExternalTransfer !== true) return { ok: false, reason: "transfer_not_confirmed" };
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
   const prepared = await prepareReviewedPillPhotoRequests(photos, {
+    visionPromptVersion: options.visionPromptVersion,
     photoSet: options.photoSet, model: options.model ?? process.env.OPENAI_MODEL ?? "gpt-5.6-luna",
     ocrModel: options.ocrModel ?? process.env.OPENAI_OCR_MODEL ?? "gpt-5.6-sol",
   });
