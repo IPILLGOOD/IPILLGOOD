@@ -2,25 +2,26 @@ import {
   ArrowRight,
   CalendarCheck2,
   ChevronRight,
-  MessageCircleQuestion,
   TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
 
-import { CareTimeline } from "@/components/dashboard/CareTimeline";
+import { CareDiaryCalendar } from "@/components/dashboard/CareDiaryCalendar";
 import { MedicationSummaryList } from "@/components/dashboard/MedicationSummaryList";
+import { UnansweredDoseSummary } from "@/components/dashboard/UnansweredDoseSummary";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getCareSnapshot } from "@care-atlas/backend";
 import {
   activeMedications,
-  adherenceSummary,
+  createMedicationSchedule,
   formatDate,
   uniqueSymptomDays,
 } from "@/lib/presentation";
 import { recentCareRecords } from "@/lib/recent-care-records";
 import { requireCareScope } from "@/lib/auth/care-scope";
+import { dateKeyInSeoul } from "@care-atlas/backend/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,19 @@ export default async function DashboardPage() {
   const snapshot = await getCareSnapshot(scope);
   const medications = activeMedications(snapshot.medications);
   const recent = recentCareRecords(snapshot);
-  const adherence = adherenceSummary(recent.doseEvents);
+  const todayTasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
+  const calendarDoses = [
+    ...snapshot.doseEvents,
+    ...todayTasks
+      .filter((task) => !snapshot.doseEvents.some((event) => event.medicationPlanId === task.medicationPlanId && event.scheduledAt === task.scheduledAt))
+      .map((task) => ({
+        id: task.id,
+        medicationPlanId: task.medicationPlanId,
+        scheduledAt: task.scheduledAt,
+        response: task.response,
+        answeredBy: "caregiver" as const,
+      })),
+  ];
   const symptomDays = uniqueSymptomDays(recent.symptomEvents);
   const dizzinessDays = uniqueSymptomDays(
     recent.symptomEvents.filter((event) => event.symptomType === "어지러움"),
@@ -39,12 +52,20 @@ export default async function DashboardPage() {
     <>
       <PageHeader
         eyebrow="돌봄 대시보드"
-        title={`${snapshot.recipient.displayName}의 최근 돌봄 기록`}
-        description="현재 복용약, 최근 몸 상태와 다음 상담에서 물어볼 내용을 한눈에 확인하세요."
+        title={`${snapshot.recipient.displayName}의 돌봄 다이어리`}
+        description="달력에서 매일의 복약 일정과 몸 상태 기록을 한눈에 확인하세요."
       />
 
       <div className="dashboard-grid">
         <div className="dashboard-main">
+          <CareDiaryCalendar
+            initialDate={dateKeyInSeoul()}
+            medications={medications}
+            doses={calendarDoses}
+            symptoms={snapshot.symptomEvents}
+            revision={snapshot.revision}
+          />
+
           <Card>
             <div className="section-heading">
               <div>
@@ -56,20 +77,6 @@ export default async function DashboardPage() {
               </Link>
             </div>
             <MedicationSummaryList medications={medications} />
-          </Card>
-
-          <Card>
-            <div className="section-heading">
-              <div>
-                <h2>최근 복약·몸 상태 기록</h2>
-                <p>약 변화와 증상을 한 시간축에 모았어요.</p>
-              </div>
-              <Badge tone="neutral">최근 7일</Badge>
-            </div>
-            <CareTimeline medications={recent.medications} symptoms={recent.symptomEvents} />
-            <p className="causal-note">
-              두 기록의 시기가 겹치더라도 약이 증상의 원인이라는 뜻은 아니에요.
-            </p>
           </Card>
         </div>
 
@@ -83,10 +90,11 @@ export default async function DashboardPage() {
               <CalendarCheck2 size={21} color="var(--color-primary-700)" aria-hidden="true" />
             </div>
             <div className="metric-row">
-              <div className="metric">
-                <strong>{adherence.rate === null ? "기록 없음" : `${adherence.rate}%`}</strong>
-                <span>응답 중 복용 완료</span>
-              </div>
+              <UnansweredDoseSummary
+                doses={recent.doseEvents}
+                medications={medications}
+                today={dateKeyInSeoul()}
+              />
               <div className="metric">
                 <strong>{symptomDays === 0 ? "기록 없음" : `${symptomDays}일`}</strong>
                 <span>몸 상태 기록</span>
@@ -118,39 +126,6 @@ export default async function DashboardPage() {
             </Card>
           ) : null}
 
-          {snapshot.clinicianQuestions.length > 0 ? (
-            <Card>
-              <div className="section-heading">
-                <div>
-                  <h2>의료진에게 물어볼 내용</h2>
-                  <p>관찰 기록을 질문으로 정리했어요.</p>
-                </div>
-                <MessageCircleQuestion
-                  size={21}
-                  color="var(--color-primary-700)"
-                  aria-hidden="true"
-                />
-              </div>
-              <ul className="question-list">
-                {snapshot.clinicianQuestions.slice(0, 2).map((question) => (
-                  <li className="question-item" key={question.id}>
-                    <Badge tone={question.priority === "today" ? "warning" : "neutral"}>
-                      {question.priority === "today" ? "오늘 확인" : "다음 진료"}
-                    </Badge>
-                    <strong>{question.question}</strong>
-                    {question.status === "answered" ? (
-                      <p><strong>답변 완료:</strong> {question.answer}</p>
-                    ) : question.status === "resolved" ? (
-                      <p><strong>해결됨</strong></p>
-                    ) : question.status === "open" ? (
-                      <p><strong>아직 답하지 않음</strong></p>
-                    ) : null}
-                    <p>{question.reason}</p>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ) : null}
         </aside>
       </div>
     </>

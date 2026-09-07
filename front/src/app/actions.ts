@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -17,6 +18,7 @@ import {
   getQuestionSetAvailability,
   isServiceCareProfileComplete,
   saveDailyCheckIn,
+  saveDoseResponse,
   saveWellbeingCheckIn,
   updateRecipientProfile,
   type ActionState,
@@ -47,6 +49,71 @@ async function demoWriteGuard(): Promise<ActionState | null> {
     status: "error",
     message: "현재는 읽기 전용 모드예요. 인증을 연결한 뒤 저장 기능을 활성화해주세요.",
   };
+}
+
+export async function saveDoseResponseAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const guard = await demoWriteGuard();
+    if (guard) return guard;
+    const eventId = String(formData.get("eventId") ?? "");
+    const medicationPlanId = String(formData.get("medicationPlanId") ?? "");
+    const scheduledAt = String(formData.get("scheduledAt") ?? "");
+    const response = String(formData.get("response") ?? "");
+    const reportSource = String(formData.get("reportSource") ?? "");
+    const expectedRevision = Number(formData.get("expectedRevision"));
+    if (!/^[^/]{1,256}$/.test(eventId)) return { status: "error", message: "복약 일정을 다시 선택해주세요." };
+    if (!["completed", "partial", "skipped", "not_yet", "unconfirmed"].includes(response)) {
+      return { status: "error", message: "복용 여부를 선택해주세요." };
+    }
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+      return { status: "error", conflict: true, message: "최신 기록을 다시 불러와주세요." };
+    }
+    const source = {
+      caregiver: { actorRole: "caregiver" as const, evidenceLevel: "caregiver_observed" as const },
+      recipient: { actorRole: "recipient" as const, evidenceLevel: "self_reported" as const },
+      unconfirmed: { actorRole: "caregiver" as const, evidenceLevel: "unconfirmed" as const },
+    }[reportSource];
+    if (!source) return { status: "error", message: "누가 확인했는지 선택해주세요." };
+
+    const session = await getSession();
+    if (!session) return { status: "error", message: "로그인 정보가 만료되었어요." };
+    const scope = careScopeFor(session);
+    const profileGuard = await completedProfileGuard(scope);
+    if (profileGuard) return profileGuard;
+    const snapshot = await getCareSnapshot(scope);
+    const event = snapshot.doseEvents.find((item) => item.id === eventId)
+      ?? snapshot.doseEvents.find((item) => item.medicationPlanId === medicationPlanId && item.scheduledAt === scheduledAt);
+    const todayTask = createMedicationSchedule(snapshot.medications, snapshot.doseEvents)
+      .find((task) => task.medicationPlanId === medicationPlanId && task.scheduledAt === scheduledAt);
+    const occurrence = event ?? todayTask;
+    if (!occurrence || dateKeyInSeoul(occurrence.scheduledAt) > dateKeyInSeoul()) {
+      return { status: "error", message: "오늘 또는 지난 복약 일정만 응답할 수 있어요." };
+    }
+
+    await saveDoseResponse(scope, {
+      doseResponse: {
+        medicationPlanId: occurrence.medicationPlanId,
+        scheduledAt: occurrence.scheduledAt,
+        response: response as "completed" | "partial" | "skipped" | "not_yet" | "unconfirmed",
+      },
+      actorId: `${session.provider}:${session.id}`,
+      ...source,
+      idempotencyKey: `dashboard-${randomUUID()}`,
+      correctionReason: "대시보드에서 복약 기록을 다시 확인해 수정함",
+    }, snapshot, expectedRevision);
+    revalidatePath("/dashboard");
+    revalidatePath("/report");
+    return { status: "success", message: "복약 기록을 수정했어요." };
+  } catch (error) {
+    if (error instanceof CareConflictError) {
+      return { status: "error", conflict: true, message: "다른 기기에서 먼저 변경했어요. 새로고침 후 다시 시도해주세요." };
+    }
+    console.error(error);
+    return { status: "error", message: "복약 기록을 수정하지 못했어요. 잠시 후 다시 시도해주세요." };
+  }
 }
 
 async function completedProfileGuard(scope: { recipientId: string; useDemoData?: boolean }): Promise<ActionState | null> {
@@ -243,7 +310,8 @@ export async function saveCheckInAction(
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
       return { status: "error", conflict: true, message: "최신 기록을 다시 불러와주세요." };
     }
-    const checkInScope = formData.get("checkInScope") === "wellbeing" ? "wellbeing" : "full";
+    const requestedScope = String(formData.get("checkInScope") ?? "");
+    const checkInScope = requestedScope === "wellbeing" || requestedScope === "guided_wellbeing" ? "wellbeing" : "full";
     const schedule = new Map(createMedicationSchedule(snapshot.medications, snapshot.doseEvents).map((task) => [task.id, task]));
     const { responses, missingTaskIds } = checkInScope === "full"
       ? collectCompleteDoseResponses(formData, schedule)
@@ -273,7 +341,7 @@ export async function saveCheckInAction(
       ...(correctionReason ? { correctionReason } : {}),
     };
 
-    if (checkInScope === "wellbeing") {
+    if (requestedScope === "wellbeing") {
       await saveWellbeingCheckIn(scope, observationInput, snapshot, expectedRevision);
       revalidatePath("/today");
       revalidatePath("/dashboard");
@@ -314,8 +382,8 @@ export async function saveCheckInAction(
       {
         doseResponses: responses,
         ...observationInput,
-        scope: "full",
-        inputSource: "daily_check_in",
+        scope: checkInScope,
+        inputSource: checkInScope === "wellbeing" ? "quick_wellbeing" : "daily_check_in",
         questionResponse,
       },
       snapshot,

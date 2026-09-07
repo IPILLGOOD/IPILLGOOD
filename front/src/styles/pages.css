@@ -508,6 +508,281 @@
   gap: var(--space-5);
 }
 
+/* Care diary calendar --------------------------------------------------- */
+
+.care-diary {
+  overflow: hidden;
+  border: 1px solid var(--color-sage-200);
+  border-radius: 24px;
+  background: #fbfdf9;
+  box-shadow: 0 14px 34px rgb(25 82 61 / 8%);
+}
+
+.care-diary__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border-bottom: 1px dashed var(--color-sage-200);
+  background: linear-gradient(135deg, var(--color-primary-50), #fbfdf9 72%);
+}
+
+.care-diary__eyebrow {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--color-primary-700);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.care-diary__header h2,
+.care-diary__header p {
+  margin: 0;
+}
+
+.care-diary__header h2 {
+  color: var(--color-primary-900);
+  font-size: 1.45rem;
+}
+
+.care-diary__header p {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+.care-diary__month-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-primary-900);
+  white-space: nowrap;
+}
+
+.care-diary__month-nav button {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 1px solid var(--color-sage-200);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--color-primary-700);
+  cursor: pointer;
+}
+
+.care-diary__month-nav button:hover,
+.care-diary__month-nav button:focus-visible {
+  background: var(--color-primary-100);
+}
+
+.care-diary__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(14rem, 0.75fr);
+}
+
+.care-calendar {
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+.care-calendar__weekdays,
+.care-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.care-calendar__weekdays span {
+  padding-bottom: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.care-calendar__weekdays span:first-child,
+.care-calendar__day:nth-child(7n + 1) > span:first-child {
+  color: var(--color-primary-600);
+}
+
+.care-calendar__day,
+.care-calendar__blank {
+  min-height: 4.5rem;
+}
+
+.care-calendar__day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin: 2px;
+  padding: 0.55rem 0.25rem;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.care-calendar__day:hover {
+  background: var(--color-primary-50);
+}
+
+.care-calendar__day.is-selected {
+  border-color: var(--color-primary-600);
+  background: var(--color-primary-100);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%);
+}
+
+.care-calendar__day.is-today > span:first-child {
+  display: grid;
+  width: 1.65rem;
+  height: 1.65rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-700);
+  color: #fff;
+  font-weight: 800;
+}
+
+.care-calendar__marks {
+  display: flex;
+  min-height: 0.9rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+}
+
+.mark {
+  display: inline-grid;
+  width: 0.48rem;
+  height: 0.48rem;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.mark--complete {
+  width: 0.9rem;
+  height: 0.9rem;
+  background: var(--color-primary-700);
+  color: white;
+}
+
+.mark--scheduled { background: #9fc7ac; }
+.mark--symptom { background: #6f9b84; }
+
+.care-calendar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--color-sage-200);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+}
+
+.care-calendar__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.care-diary__schedule {
+  padding: var(--space-5);
+  border-left: 1px dashed var(--color-sage-200);
+  background: var(--color-sage-50);
+}
+
+.care-diary__selected-date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-sage-200);
+  color: var(--color-primary-700);
+}
+
+.care-diary__selected-date strong,
+.care-diary__selected-date span {
+  display: block;
+}
+
+.care-diary__selected-date strong { color: var(--color-primary-900); }
+.care-diary__selected-date span { margin-top: 0.1rem; color: var(--color-text-muted); font-size: 0.75rem; }
+.care-diary__list { display: grid; gap: var(--space-3); margin-block: var(--space-4); }
+
+.care-diary__task {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-sage-200);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 78%);
+}
+
+.care-diary__task-check {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+}
+
+.care-diary__task.is-complete .care-diary__task-check { background: var(--color-primary-700); color: white; }
+.care-diary__task--symptom .care-diary__task-check { background: var(--color-sage-100); color: var(--color-primary-600); }
+.care-diary__task strong { color: var(--color-primary-900); font-size: 0.85rem; }
+.care-diary__task p { margin: 0.15rem 0 0; color: var(--color-text-secondary); font-size: 0.72rem; }
+.care-diary__task-editor {
+  border: 1px solid var(--color-sage-200);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 78%);
+}
+
+.care-diary__task-editor .unanswered-dose__toggle {
+  padding: var(--space-3);
+}
+
+.care-diary__task-editor .unanswered-dose__copy > span {
+  white-space: normal;
+}
+
+.care-diary__task-editor .unanswered-dose__status {
+  display: none;
+}
+
+.care-diary__task-editor .unanswered-dose__form {
+  background: var(--color-surface);
+}
+.care-diary__empty { padding: var(--space-6) var(--space-3); color: var(--color-text-muted); text-align: center; }
+.care-diary__empty svg { margin-inline: auto; }
+.care-diary__empty p { margin: var(--space-2) 0 0; font-size: 0.8rem; }
+.care-diary__checkin { width: 100%; border-color: var(--color-primary-700); background: var(--color-primary-700); color: #fff; }
+.care-diary__checkin:hover { background: var(--color-primary-800); }
+.care-diary__past-note { margin: 0; color: var(--color-text-muted); font-size: 0.75rem; text-align: center; }
+
+@media (max-width: 860px) {
+  .care-diary__body { grid-template-columns: 1fr; }
+  .care-diary__schedule { border-top: 1px dashed var(--color-sage-200); border-left: 0; }
+}
+
+@media (max-width: 560px) {
+  .care-diary__header { align-items: flex-start; flex-direction: column; padding: var(--space-5); }
+  .care-diary__month-nav { width: 100%; justify-content: space-between; }
+  .care-calendar { padding: var(--space-4) var(--space-3); }
+  .care-calendar__day, .care-calendar__blank { min-height: 3.4rem; }
+  .care-calendar__day { margin: 1px; border-radius: 10px; padding-inline: 0.1rem; font-size: 0.8rem; }
+  .care-calendar__legend { gap: var(--space-3); }
+}
+
 .today-card {
   position: relative;
   overflow: hidden;
@@ -589,6 +864,280 @@
 
 .metric span {
   color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.metric--action {
+  position: relative;
+  border: 0;
+  border-right: 1px solid var(--color-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.metric--action:hover strong,
+.metric--action:focus-visible strong {
+  color: var(--color-primary-600);
+}
+
+.metric--action > svg {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-4);
+  color: var(--color-primary-700);
+  transition: transform 160ms ease;
+}
+
+.metric--action.is-open > svg {
+  transform: rotate(180deg);
+}
+
+.metric--action.is-empty {
+  cursor: default;
+}
+
+.metric--action.is-empty > svg {
+  color: var(--color-primary-600);
+}
+
+.unanswered-doses {
+  grid-column: 1 / -1;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.unanswered-doses__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.unanswered-doses__heading strong {
+  color: var(--color-primary-900);
+  font-size: 0.88rem;
+}
+
+.unanswered-doses__heading p {
+  margin: 0.15rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.unanswered-doses__heading > span {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.unanswered-doses__list {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 15rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.unanswered-dose {
+  border-radius: var(--radius-sm);
+  background: var(--color-sage-50);
+  overflow: hidden;
+}
+
+.unanswered-dose__toggle {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.unanswered-dose__toggle:hover,
+.unanswered-dose__toggle:focus-visible {
+  background: var(--color-primary-50);
+}
+
+.unanswered-dose__toggle > svg {
+  color: var(--color-primary-700);
+  transition: transform 160ms ease;
+}
+
+.unanswered-dose.is-open .unanswered-dose__toggle > svg {
+  transform: rotate(180deg);
+}
+
+.unanswered-dose__copy,
+.unanswered-dose__copy strong,
+.unanswered-dose__copy > span {
+  display: block;
+}
+
+.unanswered-dose__copy strong {
+  color: var(--color-text);
+  font-size: 0.8rem;
+}
+
+.unanswered-dose__copy > span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.15rem;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+.unanswered-doses__icon {
+  display: grid;
+  width: 1.9rem;
+  height: 1.9rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+}
+
+.unanswered-doses__icon.is-recorded {
+  background: var(--color-primary-700);
+  color: white;
+}
+
+.unanswered-dose__status {
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-sage-100);
+  color: var(--color-text-secondary);
+  font-size: 0.66rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.unanswered-dose__status--completed {
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+}
+
+.unanswered-dose__status--skipped {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.unanswered-dose__form {
+  display: grid;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.unanswered-dose__form > label {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.unanswered-dose__form select {
+  min-height: 2.35rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding-inline: var(--space-3);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.unanswered-dose__choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.unanswered-dose__choices button {
+  min-height: 2.35rem;
+  border: 1px solid var(--color-sage-200);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-primary-800);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.unanswered-dose__choices button:hover:not(:disabled) {
+  border-color: var(--color-primary-600);
+  background: var(--color-primary-50);
+}
+
+.unanswered-dose__choices button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.unanswered-dose__message {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+}
+
+.unanswered-dose__message[role="alert"] {
+  color: var(--color-danger);
+}
+
+.unanswered-dose-jump {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-sage-50);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.unanswered-dose-jump:hover,
+.unanswered-dose-jump:focus-visible {
+  background: var(--color-primary-50);
+  box-shadow: inset 0 0 0 1px var(--color-sage-200);
+}
+
+.unanswered-dose-jump__arrow {
+  color: var(--color-primary-700);
+  transition: transform 160ms ease;
+}
+
+.unanswered-dose-jump:hover .unanswered-dose-jump__arrow {
+  transform: translate(0.15rem, -0.15rem);
+}
+
+.unanswered-doses__empty {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-50);
+  color: var(--color-text-secondary);
   font-size: 0.78rem;
 }
 

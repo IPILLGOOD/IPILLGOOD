@@ -7,7 +7,6 @@ import {
   getPatientQuestionSet,
   getQuestionSetAvailability,
 } from "@care-atlas/backend";
-import { createMedicationSchedule } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
 import { randomUUID } from "node:crypto";
 
@@ -29,19 +28,16 @@ export default async function CheckInPage() {
   const savedQuestionResponse = snapshot.todayCheckIn?.questionResponseId
     ? await getPatientQuestionResponse(scope, snapshot.todayCheckIn.questionResponseId)
     : null;
-  const tasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
-
   return (
     <>
       <PageHeader
         eyebrow="오늘의 안부 확인"
-        title="약은 잘 챙기셨나요?"
-        description="하루를 마무리하며 복용 여부와 몸 상태를 기록해주세요. 정답을 맞히는 질문이 아니므로, 확실하지 않은 내용은 ‘확인하지 못했어요’로 남겨도 괜찮아요."
+        title="오늘 몸 상태는 어떠셨나요?"
+        description="최근 기록을 바탕으로 고른 질문에 답하며 오늘의 변화를 남겨주세요. 정답을 맞히는 질문이 아니에요."
       />
       <div className="checkin-layout checkin-layout--single">
         <Card>
           <CheckInForm
-            tasks={tasks}
             questionSet={questions.status === "ready" ? questions.questionSet : null}
             initialCheckIn={snapshot.todayCheckIn ?? null}
             initialQuestionResponse={savedQuestionResponse}

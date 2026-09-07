@@ -29,6 +29,15 @@ export interface ObservationCheckInInput {
   scope: ObservationCheckInScope;
 }
 
+export interface DoseResponseObservationInput {
+  doseResponse: Pick<DoseEvent, "medicationPlanId" | "response" | "scheduledAt">;
+  actorId: string;
+  actorRole: ObservationActorRole;
+  evidenceLevel: ObservationEvidence;
+  idempotencyKey: string;
+  correctionReason?: string;
+}
+
 const observationId = (kind: "dose" | "symptom", key: string, identity: string) =>
   `${kind}-observation-${createHash("sha256").update(`${key}:${identity}`).digest("hex").slice(0, 32)}`;
 
@@ -175,6 +184,55 @@ function sameDose(event: DoseEvent, input: ObservationCheckInInput, response: Ob
   const evidence = response.response === "unconfirmed" ? "unconfirmed" : input.evidenceLevel;
   return event.response === response.response && event.answeredBy === input.actorRole &&
     event.actorId === input.actorId && inferredEvidence(event) === evidence;
+}
+
+/** Records or corrects one dose occurrence without changing today's wellbeing check-in. */
+export function applyDoseResponseObservation(
+  snapshot: CareSnapshot,
+  input: DoseResponseObservationInput,
+  now = new Date(),
+) {
+  if (!/^[^/]{8,256}$/.test(input.idempotencyKey)) throw new Error("OBSERVATION_IDEMPOTENCY_KEY_REQUIRED");
+  if (!/^[^/]{1,256}$/.test(input.actorId)) throw new Error("OBSERVATION_ACTOR_REQUIRED");
+  const response = input.doseResponse;
+  const current = snapshot.doseEvents.find((event) => doseOccurrenceKey(event) === doseOccurrenceKey(response));
+  const recordedAt = now.toISOString();
+  const evidenceLevel = response.response === "unconfirmed" ? "unconfirmed" : input.evidenceLevel;
+  let supersedesObservationId: string | undefined;
+  const doseObservations: DoseObservation[] = [];
+
+  if (current) {
+    const previous = legacyDoseObservation(current);
+    supersedesObservationId = previous.id;
+    if (!current.observationId) doseObservations.push(previous);
+  }
+
+  doseObservations.push({
+    id: observationId("dose", input.idempotencyKey, doseOccurrenceKey(response)),
+    kind: "dose",
+    medicationPlanId: response.medicationPlanId,
+    scheduledAt: response.scheduledAt,
+    occurredAt: response.scheduledAt,
+    recordedAt,
+    actorId: input.actorId,
+    actorRole: input.actorRole,
+    evidenceLevel,
+    inputSource: supersedesObservationId ? "correction" : "daily_check_in",
+    idempotencyKey: input.idempotencyKey,
+    response: response.response,
+    ...(supersedesObservationId ? {
+      supersedesObservationId,
+      correctionReason: input.correctionReason?.trim() || "지난 복약 기록을 다시 확인해 수정함",
+    } : {}),
+  });
+
+  return {
+    doseObservations,
+    nextSnapshot: {
+      ...snapshot,
+      doseEvents: projectDoseObservations(doseObservations, snapshot.doseEvents),
+    },
+  };
 }
 
 function sameSymptom(event: SymptomEvent, input: ObservationCheckInInput) {
