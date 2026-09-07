@@ -1,6 +1,6 @@
 // Label-assisted software diagnostics, never model input or new accuracy measurements.
 import { isDeepStrictEqual } from "node:util";
-import { comparePillPhotoFeatures, pillPhotoFeaturesSchema, type PillPhotoFeatures } from "../src/pill-photo-features.ts";
+import { comparePillPhotoFeatures, pillPhotoFeaturesSchema, pillPhotoSafetyFacts, type PillPhotoFeatures } from "../src/pill-photo-features.ts";
 import { fusePillPhotoSignals, pillPhotoOcrFeaturesSchema } from "../src/pill-photo-ocr.ts";
 import type { PillCatalog } from "../src/pill-identification.ts";
 
@@ -24,15 +24,15 @@ export function inspectPillFeatures(features: PillPhotoFeatures, expectedItemSeq
   const comparison = comparePillPhotoFeatures(features, catalog), search = comparison.search;
   const candidates = search?.candidates ?? [], held = search?.heldCandidates ?? [];
   const expectedRank = candidates.findIndex(candidate => candidate.itemSeq === expectedItemSeq);
-  const expected = [...candidates, ...held].find(candidate => candidate.itemSeq === expectedItemSeq);
+  const expected = [...candidates, ...held].filter(candidate => candidate.itemSeq === expectedItemSeq);
   return { comparisonStatus: comparison.status, comparisonReason: comparison.reason,
     searchReason: search?.reason ?? null, expectedRank: expectedRank < 0 ? null : expectedRank + 1,
     expectedHeld: held.some(candidate => candidate.itemSeq === expectedItemSeq),
     candidates: candidates.map(candidate => ({ itemSeq: candidate.itemSeq, grade: candidate.grade })),
     heldItemSeqs: held.map(candidate => candidate.itemSeq),
-    expectedVariants: expected?.variants ?? [],
+    expectedVariants: expected.flatMap(candidate => candidate.variants),
     strongWrongCandidates: candidates.filter(candidate => candidate.grade === "strong" && candidate.itemSeq !== expectedItemSeq).length,
-    retakeCandidateExposure: comparison.status === "needs_retake" && candidates.length > 0,
+    retakeCandidateExposure: pillPhotoSafetyFacts(comparison).retakeCandidateExposure,
   };
 }
 /** One already-bound validation pair. Swaps observed values, never values copied from the answer label. */

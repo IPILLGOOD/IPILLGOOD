@@ -143,7 +143,7 @@ test("OCR의 정확 문자 후보가 결합 상한에서 탈락하면 삭제 출
   assert.equal(side.fusion!.truncated, true);
 });
 
-test("안전 게이트·정답의 상위20 밖/탈락을 구분하고 정답 전용 probe는 recall을 올리지 않는다", () => {
+test("안전 게이트·정답의 실제 상위20 밖 순위/탈락을 구분하고 recall은 반환 범위로 유지한다", () => {
   const blocked = scenario();
   replaceCase(blocked, 0, (vision) => { vision.pairConsistency = "inconsistent"; });
   const blockedRow = diagnose(blocked).rows[0]!;
@@ -155,9 +155,9 @@ test("안전 게이트·정답의 상위20 밖/탈락을 구분하고 정답 전
   crowded.catalog.totalCount = crowded.catalog.items.length;
   const report = diagnose(crowded);
   assert.equal(report.rows[0]!.fused!.expectedRank, null);
-  assert.equal(report.rows[0]!.fused!.expectedOnlyProbe.eligible, true);
+  assert.equal(report.rows[0]!.fused!.candidateRankBeforeLimit! > 20, true);
   assert.equal(report.rows[0]!.fused!.expectedDisposition, "eligible_outside_top20");
-  assert.equal(report.rows[0]!.fused!.expectedOnlyProbe.usedForMetrics, false);
+  assert.equal(report.rows[0]!.fused!.provenance, "current_reconstruction");
   assert.equal(report.score.metrics.recallAt["20"]!.hits, 5);
   const excluded = scenario();
   replaceCase(excluded, 0, (vision, ocr) => {

@@ -1,13 +1,14 @@
 // Offline, label-assisted diagnostics only. Never feed this report back into model inference.
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
-import { comparePillPhotoFeatures, pillPhotoFeaturesSchema, type PillPhotoFeatures } from "../src/pill-photo-features.ts";
+import { pillPhotoFeaturesSchema, type PillPhotoFeatures } from "../src/pill-photo-features.ts";
 import { PILL_SEARCH_RULES_VERSION, type PillCatalog } from "../src/pill-identification.ts";
 import { fusePillPhotoSignals, pillPhotoOcrFeaturesSchema, PILL_PHOTO_FUSION_VERSION } from "../src/pill-photo-ocr.ts";
 import { PILL_PHOTO_PHONE_VALIDATION_VERSION, type PillPhotoPhoneValidationManifest } from "./pill-photo-phone-validation.ts";
 import { parsePillPhotoScoreInput, scorePillPhotoEvaluation } from "./pill-photo-score.ts";
+import { diagnosePillSearch } from "./pill-photo-search-diagnostics.ts";
 
-export const PILL_PHOTO_DIAGNOSTICS_VERSION = "pill-photo-validation-diagnostics.v1";
+export const PILL_PHOTO_DIAGNOSTICS_VERSION = "pill-photo-validation-diagnostics.v2-search-trace";
 const CASE_IDS = Array.from({ length: 6 }, (_, index) => `v4-v0${index + 1}`);
 const version = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/).refine((value) => !/^sk-/i.test(value));
 const usage = z.object({ inputTokens: z.number().int().nonnegative(), outputTokens: z.number().int().nonnegative() }).strict().nullable();
@@ -80,42 +81,7 @@ function readingEvidence(reading: ImprintReading | null, officialImprint: string
 }
 
 function searchEvidence(features: PillPhotoFeatures, expectedItemSeq: string, catalog: PillCatalog) {
-  const comparison = comparePillPhotoFeatures(features, catalog);
-  const search = comparison.search;
-  const rank = search?.candidates.findIndex((candidate) => candidate.itemSeq === expectedItemSeq) ?? -1;
-  // Label-assisted eligibility probe, NOT a ranked full-catalogue result or a metric input.
-  const expectedItems = catalog.items.filter((item) => item.itemSeq === expectedItemSeq);
-  const probe = comparison.status === "searched" ? comparePillPhotoFeatures(features, {
-    items: expectedItems, totalCount: expectedItems.length, completeness: "complete", version: catalog.version,
-  }).search : null;
-  const expectedHeld = search?.heldCandidates.some((candidate) => candidate.itemSeq === expectedItemSeq) ?? false;
-  const gateReason = comparison.status !== "searched" ? comparison.reason
-    : search && search.metrics.catalogRecords === 0 ? search.reason : null;
-  const probeEligible = probe?.candidates.some((candidate) => candidate.itemSeq === expectedItemSeq) ?? false;
-  const probeHeld = probe?.heldCandidates.some((candidate) => candidate.itemSeq === expectedItemSeq) ?? false;
-  return {
-    comparisonStatus: comparison.status, comparisonReason: comparison.reason,
-    searchStatus: search?.status ?? null, searchReason: search?.reason ?? null,
-    expectedRank: rank < 0 ? null : rank + 1,
-    expectedHeld,
-    expectedDisposition: gateReason ? "blocked_before_matching" : rank >= 0 ? "returned_candidate"
-      : expectedHeld ? "returned_held" : probeEligible ? "eligible_outside_top20"
-        : probeHeld ? "held_outside_display_limit" : "not_eligible_under_current_rules",
-    candidateItemSeqs: search?.candidates.map((candidate) => candidate.itemSeq) ?? [],
-    heldCandidateItemSeqs: search?.heldCandidates.map((candidate) => candidate.itemSeq) ?? [],
-    candidateCount: search?.metrics.candidateCount ?? 0,
-    heldCandidateCount: search?.metrics.heldCandidateCount ?? 0,
-    gateReason,
-    expectedOnlyProbe: {
-      labelAssisted: true, usedForMetrics: false,
-      eligible: probeEligible, held: probeHeld,
-      reason: probe?.reason ?? null,
-      variants: [...(probe?.candidates ?? []), ...(probe?.heldCandidates ?? [])].flatMap((candidate) => candidate.variants.map((variant) => ({
-        orientation: variant.orientation, grade: variant.grade, evidence: variant.evidence,
-        conflicts: variant.conflicts, reviewReasons: variant.reviewReasons,
-      }))),
-    },
-  };
+  return diagnosePillSearch(features, catalog, expectedItemSeq);
 }
 
 export function diagnosePillPhotoValidation(
@@ -191,7 +157,7 @@ export function diagnosePillPhotoValidation(
       "Literal imprint text matches exclude confusion expansion and cannot verify logos or blank surfaces.",
       "Saved labels are diagnostic references only; historical appearance differences need human review.",
       "Crop pixels, rotation-specific OCR and independent image quality were not recorded by these runs.",
-      "Do not use expected-only probes as recall metrics or inference inputs."],
+      "Expected labels are used only after the full search; pre-limit ranks use its actual order, never a label-only catalog."],
     score, rows,
   };
 }

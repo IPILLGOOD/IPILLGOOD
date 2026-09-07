@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { z } from "zod";
+import type { PillPhotoFailure as PhotoFailure } from "./pill-photo-failures.ts";
 import { PILL_PHOTO_FILES, PILL_PHOTO_REVIEW_VERSION } from "../test-support/pill-photo-review.ts";
 import { PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, type PillPhotoFeatures } from "./pill-photo-features.ts";
 import { pillPhotoVisionInstructions, type PillPhotoVisionPromptVersion } from "./pill-photo-prompt-profiles.ts";
@@ -39,7 +40,6 @@ const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_OUTPUT_TEXT = 16 * 1024;
 const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 export const PILL_PHOTO_TIMEOUT_MS = 90_000;
-type PhotoFailure = "transfer_not_confirmed" | "unreviewed_photo" | "invalid_photo" | "duplicate_photo" | "not_configured" | "refused" | "incomplete_response" | "invalid_response" | "invalid_request" | "access_denied" | "rate_limited" | "provider_unavailable" | "timeout" | "network_error" | "ocr_failed" | "fusion_failed";
 type Usage = { inputTokens: number; outputTokens: number };
 export type PillPhotoRequestStage = "vision" | "ocrFront" | "ocrBack";
 export type PillPhotoRequestTrace = {
