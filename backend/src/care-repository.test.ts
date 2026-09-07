@@ -664,6 +664,46 @@ test("자동 추출한 진단명과 코드는 원본 대조 후 수정하고 별
   assert.equal(confirmed.recipient.confirmedConditions?.[0]?.id, "condition-hypertension");
 });
 
+test("확정한 진단을 수정하면 해당 문서의 이전 질환만 해제하고 재확정 시 교체한다", async () => {
+  const firestore = new MemoryFirestore();
+  const scope = { recipientId: "google-diagnosis-correction", firestore };
+  await consentedSnapshot(scope);
+  for (const [id, name, code] of [
+    ["corrected-diagnosis", "고혈압", "I10"],
+    ["other-diagnosis", "두통", "R51"],
+  ]) {
+    await registerDocument(scope, {
+      fileName: `${id}.png`, contentHash: id, documentType: "진단서", size: 100, isSample: false,
+      analysis: {
+        documentType: "진단서", source: "openai", summary: name, findings: [],
+        carePoints: [], questionsForProfessional: [], disclaimer: "원본 확인",
+        diagnoses: [{ name, code }], extraction: { status: "complete", issues: [], missingFields: [] },
+      },
+    });
+    await confirmDocumentDiagnoses(scope, id);
+  }
+  await updateDocumentDiagnoses(scope, {
+    documentId: "corrected-diagnosis", expectedAnalysisRevision: 1, updatedBy: "google:user-1",
+    diagnoses: [{ name: "당뇨병", code: "E11" }],
+  });
+  const pending = await getCareSnapshot(scope);
+  assert.deepEqual(pending.recipient.confirmedConditions?.map((condition) => condition.code), ["R51"]);
+  assert.equal(pending.documents.find((document) => document.id === "corrected-diagnosis")?.status, "needs_review");
+  const canonical = firestore.store.get(`careRecipients/${scope.recipientId}`) as CareSnapshot["recipient"];
+  assert.deepEqual(canonical.confirmedConditions?.map((condition) => condition.code), ["R51"]);
+
+  await assert.rejects(updateDocumentDiagnoses(scope, {
+    documentId: "corrected-diagnosis", expectedAnalysisRevision: 1, updatedBy: "google:user-1",
+    diagnoses: [{ name: "고혈압", code: "I10" }],
+  }), /변경/);
+  await confirmDocumentDiagnoses(scope, "corrected-diagnosis");
+  const confirmed = await getCareSnapshot(scope);
+  assert.deepEqual(confirmed.recipient.confirmedConditions?.map((condition) => condition.code).sort(), ["E11", "R51"]);
+  assert.equal(confirmed.recipient.confirmedConditions?.find((condition) => condition.code === "R51")?.sourceDocumentId, "other-diagnosis");
+  await confirmDocumentDiagnoses(scope, "corrected-diagnosis");
+  assert.equal((await getCareSnapshot(scope)).revision, confirmed.revision);
+});
+
 const prescriptionUpload = (id: string) => ({
   fileName: `${id}.png`,
   contentHash: id,

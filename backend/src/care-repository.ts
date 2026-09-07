@@ -523,10 +523,19 @@ export async function updateDocumentDiagnoses(
         extraction: { status: "complete", issues: [], missingFields: [] },
       },
     };
+    // Confirmation applies to the previous document revision, not the edited diagnoses.
+    const recipient = {
+      ...snapshot.recipient,
+      confirmedConditions: (snapshot.recipient.confirmedConditions ?? []).filter(
+        (condition) => condition.sourceDocumentId !== document.id,
+      ),
+    };
+    tx.set(ref, recipient);
     tx.set(ref.collection("clinicalDocuments").doc(document.id), nextDocument);
     return {
       snapshot: {
         ...snapshot,
+        recipient,
         documents: snapshot.documents.map((item) => item.id === document.id ? nextDocument : item),
       },
       result: nextDocument,
@@ -560,7 +569,10 @@ export async function confirmDocumentDiagnoses(
       return { snapshot, result: additions, unchanged: true };
     }
     const merged = new Map(
-      [...(snapshot.recipient.confirmedConditions ?? []), ...additions].map((condition) => [condition.id, condition]),
+      [
+        ...(snapshot.recipient.confirmedConditions ?? []).filter((condition) => condition.sourceDocumentId !== documentId),
+        ...additions,
+      ].map((condition) => [condition.id, condition]),
     );
     const recipient = { ...snapshot.recipient, confirmedConditions: [...merged.values()], lastConfirmedAt: confirmedAt };
     const confirmedDocument: ClinicalDocument = {

@@ -16,6 +16,7 @@ import {
 
 import {
   analyzeClinicalDocumentWithOpenAI,
+  normalizeExtractedMedicationCodes,
   searchDiseaseWithOpenAI,
 } from "./openai-medical.ts";
 
@@ -388,27 +389,48 @@ function mergeMedication(
     (retry.fieldEvidence ?? []).map((evidence) => [evidence.field, evidence]),
   );
   for (const evidence of original.fieldEvidence ?? []) {
-    if (!retryEvidence.has(evidence.field)) retryEvidence.set(evidence.field, evidence);
+    if (String(original[evidence.field] ?? "").trim()) retryEvidence.set(evidence.field, evidence);
+  }
+  const codes = normalizeExtractedMedicationCodes(
+    nonEmpty(original.mfdsItemSeq ?? original.itemCode, retry.mfdsItemSeq ?? retry.itemCode) ?? "",
+    nonEmpty(original.insuranceCode, retry.insuranceCode) ?? "",
+  );
+  if (!codes.mfdsItemSeq) {
+    retryEvidence.delete("itemCode");
+    retryEvidence.delete("mfdsItemSeq");
   }
   return {
-    ...original,
     ...retry,
-    productName: nonEmpty(retry.productName, original.productName) ?? "",
-    ingredientName: nonEmpty(retry.ingredientName, original.ingredientName) ?? "",
-    itemCode: nonEmpty(retry.itemCode, original.itemCode),
-    mfdsItemSeq: nonEmpty(retry.mfdsItemSeq, original.mfdsItemSeq),
-    insuranceCode: nonEmpty(retry.insuranceCode, original.insuranceCode),
-    doseAmount: nonEmpty(retry.doseAmount, original.doseAmount) ?? "",
-    frequency: nonEmpty(retry.frequency, original.frequency) ?? "",
-    timing: nonEmpty(retry.timing, original.timing) ?? "",
-    startDate: nonEmpty(retry.startDate, original.startDate) ?? "",
-    endDate: nonEmpty(retry.endDate, original.endDate),
-    supplyDays: retry.supplyDays ?? original.supplyDays,
-    sourceRow: retry.sourceRow ?? original.sourceRow,
-    purposePlain: nonEmpty(retry.purposePlain, original.purposePlain) ?? "",
-    precautions: retry.precautions.length > 0 ? retry.precautions : original.precautions,
+    ...original,
+    // A targeted retry fills gaps; it must not rewrite already extracted values.
+    productName: nonEmpty(original.productName, retry.productName) ?? "",
+    ingredientName: nonEmpty(original.ingredientName, retry.ingredientName) ?? "",
+    itemCode: codes.mfdsItemSeq,
+    mfdsItemSeq: codes.mfdsItemSeq,
+    insuranceCode: codes.insuranceCode,
+    doseAmount: nonEmpty(original.doseAmount, retry.doseAmount) ?? "",
+    frequency: nonEmpty(original.frequency, retry.frequency) ?? "",
+    timing: nonEmpty(original.timing, retry.timing) ?? "",
+    startDate: nonEmpty(original.startDate, retry.startDate) ?? "",
+    endDate: nonEmpty(original.endDate, retry.endDate),
+    supplyDays: original.supplyDays ?? retry.supplyDays,
+    sourceRow: original.sourceRow ?? retry.sourceRow,
+    purposePlain: nonEmpty(original.purposePlain, retry.purposePlain) ?? "",
+    precautions: original.precautions.length > 0 ? original.precautions : retry.precautions,
     fieldEvidence: [...retryEvidence.values()],
   };
+}
+
+function sameMedicationIdentity(original: PrescriptionMedication, retry: PrescriptionMedication) {
+  const name = normalizedMedicationIdentity(original.productName);
+  const retryName = normalizedMedicationIdentity(retry.productName);
+  if (name && retryName && name !== retryName) return false;
+  const codes = [
+    [original.mfdsItemSeq ?? original.itemCode, retry.mfdsItemSeq ?? retry.itemCode],
+    [original.insuranceCode, retry.insuranceCode],
+  ].map(([first, second]) => [first?.trim(), second?.trim()]);
+  if (codes.some(([first, second]) => first && second && first !== second)) return false;
+  return Boolean((name && name === retryName) || codes.some(([first, second]) => first && first === second));
 }
 
 function mergeDocumentAnalyses(
@@ -417,17 +439,30 @@ function mergeDocumentAnalyses(
 ): DocumentAnalysis {
   const originalMedications = original.medications ?? [];
   const retryMedications = retry.medications ?? [];
-  const medicationCount = Math.max(originalMedications.length, retryMedications.length);
-  const medications = Array.from({ length: medicationCount }, (_, index) =>
-    mergeMedication(originalMedications[index], retryMedications[index]),
-  ).filter((medication): medication is PrescriptionMedication => Boolean(medication));
+  const medications = [...originalMedications];
+  const matched = new Set<number>();
+  for (const retryMedication of retryMedications) {
+    let candidates = originalMedications.flatMap((medication, index) =>
+      !matched.has(index) && sameMedicationIdentity(medication, retryMedication) ? [index] : []);
+    // Row numbers only disambiguate an already matching identity, never identify a drug alone.
+    if (candidates.length > 1 && retryMedication.sourceRow !== undefined) {
+      candidates = candidates.filter((index) => originalMedications[index].sourceRow === retryMedication.sourceRow);
+    }
+    if (candidates.length === 1) {
+      const index = candidates[0];
+      medications[index] = mergeMedication(originalMedications[index], retryMedication)!;
+      matched.add(index);
+    } else {
+      medications.push(retryMedication);
+    }
+  }
   const diagnoses = (retry.diagnoses?.length ?? 0) > 0 ? retry.diagnoses : original.diagnoses;
 
   return {
     ...original,
     ...retry,
-    prescriptionDate: nonEmpty(retry.prescriptionDate, original.prescriptionDate),
-    totalSupplyDays: retry.totalSupplyDays ?? original.totalSupplyDays,
+    prescriptionDate: nonEmpty(original.prescriptionDate, retry.prescriptionDate),
+    totalSupplyDays: original.totalSupplyDays ?? retry.totalSupplyDays,
     diagnoses,
     medications,
   };
@@ -689,12 +724,17 @@ export async function analyzeMedicationDocument(
     });
     const retryFocus = analysisMissingFields(structuredAnalysis);
     if (retryFocus.length > 0) {
-      const retryAnalysis = await dependencies.analyzeClinicalDocumentWithOpenAI({
-        ...input,
-        contentBase64: input.contentBase64,
-        retryFocus,
-      });
-      structuredAnalysis = mergeDocumentAnalyses(structuredAnalysis, retryAnalysis);
+      try {
+        const retryAnalysis = await dependencies.analyzeClinicalDocumentWithOpenAI({
+          ...input,
+          contentBase64: input.contentBase64,
+          retryFocus,
+        });
+        structuredAnalysis = mergeDocumentAnalyses(structuredAnalysis, retryAnalysis);
+      } catch {
+        // The first response is still a usable review draft even if recovery fails.
+        console.warn("Document extraction retry failed; preserving the initial draft.");
+      }
     }
     const analysis = withExtractionReview(await enrichDiagnosisAnalysis(
       await enrichMedicationVerification(
