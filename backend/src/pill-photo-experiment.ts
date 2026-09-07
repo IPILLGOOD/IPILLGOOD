@@ -8,15 +8,16 @@ import { PILL_PHOTO_PROMPT_VERSION, pillPhotoFeaturesSchema, type PillPhotoFeatu
 import { pillPhotoVisionInstructions, type PillPhotoVisionPromptVersion } from "./pill-photo-prompt-profiles.ts";
 import {
   PILL_PHOTO_FUSION_VERSION,
-  PILL_PHOTO_OCR_INSTRUCTIONS,
   PILL_PHOTO_OCR_PROMPT_VERSION,
   PILL_PHOTO_OCR_SCHEMA_VERSION,
   fusePillPhotoSignals,
+  pillPhotoOcrInstructions,
   pillPhotoOcrFeaturesSchema,
   pillPhotoOcrSideResponseSchema,
   type PillPhotoFusionEvidence,
   type PillPhotoOcrFeatures,
   type PillPhotoOcrSideResponse,
+  type PillPhotoOcrPromptVersion,
 } from "./pill-photo-ocr.ts";
 import {
   PILL_PHOTO_VARIANT_PREPROCESSING_VERSION,
@@ -238,10 +239,11 @@ export function pillPhotoOcrRequest(
   color: PillPhotoOcrRotationViews,
   contrast: PillPhotoOcrRotationViews,
   model: string,
+  ocrPromptVersion: PillPhotoOcrPromptVersion = PILL_PHOTO_OCR_PROMPT_VERSION,
 ) {
   return {
     model, store: false, max_output_tokens: 1400, reasoning: { effort: "low" },
-    instructions: PILL_PHOTO_OCR_INSTRUCTIONS,
+    instructions: pillPhotoOcrInstructions(ocrPromptVersion),
     input: [{ role: "user", content: [
       { type: "input_text", text: "Color rotations of one surface in this exact order: 0, 90, 180, 270 degrees." },
       ...color.map(inputImage),
@@ -384,16 +386,19 @@ function totalUsage(first: Usage | null, second: Usage | null): Usage | null {
 /** Keyless/offline preparation. The SAME reviewed bytes, transforms and builders are used by live extraction. */
 export async function prepareReviewedPillPhotoRequests(
   photos: readonly [Uint8Array, Uint8Array],
-  options: { model: string; ocrModel: string; photoSet?: ReviewedPillPhotoSet; visionPromptVersion?: PillPhotoVisionPromptVersion },
+  options: { model: string; ocrModel: string; photoSet?: ReviewedPillPhotoSet; visionPromptVersion?: PillPhotoVisionPromptVersion;
+    ocrPromptVersion?: PillPhotoOcrPromptVersion },
 ) {
   const failure = (reason: PhotoFailure) => ({ ok: false as const, reason });
   if (!Array.isArray(photos) || photos.length !== 2) return failure("unreviewed_photo");
   const photoSet = options.photoSet ?? "development";
   const visionPromptVersion = options.visionPromptVersion ?? PILL_PHOTO_PROMPT_VERSION;
-  try { pillPhotoVisionInstructions(visionPromptVersion); }
+  const ocrPromptVersion = options.ocrPromptVersion ?? PILL_PHOTO_OCR_PROMPT_VERSION;
+  try { pillPhotoVisionInstructions(visionPromptVersion); pillPhotoOcrInstructions(ocrPromptVersion); }
   catch { return failure("invalid_request"); }
   // New prompt experiments are not allowed to consume frozen/unseen evaluation sets.
-  if (visionPromptVersion !== PILL_PHOTO_PROMPT_VERSION && photoSet !== "development" && photoSet !== "phone_validation") {
+  if ((visionPromptVersion !== PILL_PHOTO_PROMPT_VERSION || ocrPromptVersion !== PILL_PHOTO_OCR_PROMPT_VERSION)
+    && photoSet !== "development" && photoSet !== "phone_validation") {
     return failure("invalid_request");
   }
   let expectations: readonly [ReviewedPillPhotoExpectation, ReviewedPillPhotoExpectation];
@@ -449,18 +454,60 @@ export async function prepareReviewedPillPhotoRequests(
     preprocessing: prepared.map((entry) => entry.metadata),
     requests: {
       vision: pillPhotoRequest(prepared[0], prepared[1], model, visionPromptVersion),
-      ocrFront: pillPhotoOcrRequest(ocrViews[0].color, ocrViews[0].contrast, ocrModel),
-      ocrBack: pillPhotoOcrRequest(ocrViews[1].color, ocrViews[1].contrast, ocrModel),
+      ocrFront: pillPhotoOcrRequest(ocrViews[0].color, ocrViews[0].contrast, ocrModel, ocrPromptVersion),
+      ocrBack: pillPhotoOcrRequest(ocrViews[1].color, ocrViews[1].contrast, ocrModel, ocrPromptVersion),
     } };
 }
 
 export type PreparedPillPhotoRequests = Extract<Awaited<ReturnType<typeof prepareReviewedPillPhotoRequests>>, { ok: true }>;
+
+export type PhotoOcrExtractionResult =
+  | { ok: true; features: PillPhotoOcrFeatures; usage: Usage | null }
+  | { ok: false; reason: PhotoFailure };
+
+/** Internal transport shared by full extraction and the OCR-only reviewed-photo entry point. */
+async function requestPreparedPillPhotoOcr(
+  prepared: PreparedPillPhotoRequests, apiKey: string, fetchImpl: typeof fetch, observer?: RequestObserver,
+): Promise<PhotoOcrExtractionResult> {
+  const firstResponse = await requestPillPhotoProvider(prepared.requests.ocrFront, apiKey, fetchImpl, "ocrFront", observer);
+  if (!firstResponse.ok) return firstResponse;
+  const first = parsePillPhotoOcrResponse(firstResponse.value);
+  if (!first.ok) return first;
+  const secondResponse = await requestPillPhotoProvider(prepared.requests.ocrBack, apiKey, fetchImpl, "ocrBack", observer);
+  if (!secondResponse.ok) return secondResponse;
+  const second = parsePillPhotoOcrResponse(secondResponse.value);
+  if (!second.ok) return second;
+  return { ok: true, features: pillPhotoOcrFeaturesSchema.parse({ schemaVersion: PILL_PHOTO_OCR_SCHEMA_VERSION,
+    front: first.features.side, back: second.features.side }), usage: totalUsage(first.usage, second.usage) };
+}
+
+/**
+ * OCR-only experiment entry point: rechecks original reviewed bytes and never sends the prepared Vision request.
+ * No environment credential lookup; callers must explicitly opt in and provide the key.
+ */
+export async function extractReviewedPillPhotoOcr(
+  photos: readonly [Uint8Array, Uint8Array],
+  options: { allowExternalTransfer?: boolean; apiKey?: string; ocrModel?: string; photoSet?: ReviewedPillPhotoSet;
+    ocrPromptVersion?: PillPhotoOcrPromptVersion; fetchImpl?: typeof fetch;
+    onPrepared?: (prepared: PreparedPillPhotoRequests) => Promise<void>; onRequestTrace?: RequestObserver } = {},
+): Promise<PhotoOcrExtractionResult> {
+  if (options.allowExternalTransfer !== true) return { ok: false, reason: "transfer_not_confirmed" };
+  const prepared = await prepareReviewedPillPhotoRequests(photos, {
+    model: options.ocrModel ?? "gpt-5.6-sol", ocrModel: options.ocrModel ?? "gpt-5.6-sol",
+    photoSet: options.photoSet, ocrPromptVersion: options.ocrPromptVersion,
+  });
+  if (!prepared.ok) return prepared;
+  if (!options.apiKey?.trim()) return { ok: false, reason: "not_configured" };
+  await options.onPrepared?.(structuredClone(prepared));
+  return requestPreparedPillPhotoOcr(prepared, options.apiKey, options.fetchImpl ?? fetch, options.onRequestTrace);
+}
 
 /** Every network path enforces a fixed reviewed-manifest hash allowlist and explicit opt-in. */
 export async function extractReviewedPillPhotos(
   photos: readonly [Uint8Array, Uint8Array],
   options: { allowExternalTransfer?: boolean; apiKey?: string; model?: string; ocrModel?: string; fetchImpl?: typeof fetch;
     visionPromptVersion?: PillPhotoVisionPromptVersion;
+    ocrPromptVersion?: PillPhotoOcrPromptVersion;
     photoSet?: ReviewedPillPhotoSet; onPrepared?: (prepared: PreparedPillPhotoRequests) => Promise<void>;
     onRequestTrace?: RequestObserver } = {},
 ): Promise<PhotoExtractionResult> {
@@ -468,6 +515,7 @@ export async function extractReviewedPillPhotos(
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
   const prepared = await prepareReviewedPillPhotoRequests(photos, {
     visionPromptVersion: options.visionPromptVersion,
+    ocrPromptVersion: options.ocrPromptVersion,
     photoSet: options.photoSet, model: options.model ?? process.env.OPENAI_MODEL ?? "gpt-5.6-luna",
     ocrModel: options.ocrModel ?? process.env.OPENAI_OCR_MODEL ?? "gpt-5.6-sol",
   });
@@ -480,21 +528,11 @@ export async function extractReviewedPillPhotos(
   if (!visionResponse.ok) return visionResponse;
   const vision = parsePillPhotoResponse(visionResponse.value);
   if (!vision.ok) return vision;
-  const firstOcrResponse = await requestPillPhotoProvider(prepared.requests.ocrFront, apiKey, fetchImpl, "ocrFront", options.onRequestTrace);
-  if (!firstOcrResponse.ok) return firstOcrResponse;
-  const firstOcr = parsePillPhotoOcrResponse(firstOcrResponse.value);
-  if (!firstOcr.ok) return firstOcr;
-  const secondOcrResponse = await requestPillPhotoProvider(prepared.requests.ocrBack, apiKey, fetchImpl, "ocrBack", options.onRequestTrace);
-  if (!secondOcrResponse.ok) return secondOcrResponse;
-  const secondOcr = parsePillPhotoOcrResponse(secondOcrResponse.value);
-  if (!secondOcr.ok) return secondOcr;
+  const ocr = await requestPreparedPillPhotoOcr(prepared, apiKey, fetchImpl, options.onRequestTrace);
+  if (!ocr.ok) return ocr;
   try {
-    const ocrFeatures = pillPhotoOcrFeaturesSchema.parse({
-      schemaVersion: PILL_PHOTO_OCR_SCHEMA_VERSION,
-      front: firstOcr.features.side,
-      back: secondOcr.features.side,
-    });
-    const ocrUsage = totalUsage(firstOcr.usage, secondOcr.usage);
+    const ocrFeatures = ocr.features;
+    const ocrUsage = ocr.usage;
     const fused = fusePillPhotoSignals(vision.features, ocrFeatures);
     return {
       ok: true,
