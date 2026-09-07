@@ -138,3 +138,7 @@ npm run pill:audit --workspace @care-atlas/backend -- --baseline C:/dev/IPILLGOO
 | 새로운 Vision/OCR 추론 | 필요 | 사진·키·명시적 외부 전송 승인; 이번에는 미실행 |
 
 이번 검증은 backend 범위다. 프론트 빌드, Firebase 풀사이클, 원격 CI를 새로 실행한 결과는 아니다. 단위 테스트 로그의 requests/requestIntents는 mock 전송 횟수이며 이번 작업의 실제 API 사용량이 아니다.
+
+## 후속: 사람 판독 확보 후 비교
+
+위 보고서의 사람 조건 미실행 표시는 당시 자료 미확보 사실로 보존한다. 이후 사용자가 원본 사진만 보고 작성했다고 확인한 12면 판독을 연결한 별도 결과는 [사람 판독 문자열 비교](pill-photo-human-oracle.md)에 기록했다. 기존 보고서·baseline은 수정하지 않았고 새 API 호출 없이 같은 저장 validation 3회에서 original/official/human 조건을 비교했다.
