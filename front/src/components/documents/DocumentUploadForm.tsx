@@ -50,7 +50,7 @@ function copyFormData(source: FormData) {
 
 export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) {
   const router = useRouter();
-  const [documentType, setDocumentType] = useState<ClinicalDocumentType>("처방전");
+  const documentType: ClinicalDocumentType = "처방전 또는 약봉투";
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -273,26 +273,6 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     await requestAnalysis(copyFormData(retryFormData.current));
   }
 
-  function selectDocumentType(type: ClinicalDocumentType) {
-    if (type === documentType) return;
-    sessionStorage.removeItem(activeJobStorageKey);
-    setActiveJobId(null);
-    retryFormData.current = null;
-    setDocumentType(type);
-    setFile(null);
-    setStatus("idle");
-    setMessage("");
-    setAnalysis(null);
-    setDocumentId(null);
-    setAnalysisRevision(1);
-    setDraft(null);
-    setRequiresPeriodReview(false);
-    setDuplicateCandidates([]);
-    setMedicationRegistration("draft");
-    setRetryJob(null);
-    setRetryable(false);
-  }
-
   const handleDiagnosesSaved = useCallback((document: ClinicalDocument) => {
     if (document.analysis) setAnalysis(document.analysis);
     setAnalysisRevision(document.analysisRevision ?? 1);
@@ -303,31 +283,12 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   return (
     <div className="upload-stack">
       <form onSubmit={handleSubmit}>
-        <fieldset className="document-type-field">
-          <legend>문서 종류</legend>
-          <div className="document-type-options">
-            {(["처방전", "진단서"] as const).map((type) => (
-              <label className="document-type-option" key={type}>
-                <input
-                  name="documentType"
-                  type="radio"
-                  value={type}
-                  checked={documentType === type}
-                  disabled={pending}
-                  onChange={() => selectDocumentType(type)}
-                />
-                <span>
-                  <strong>{type}</strong>
-                  <small>
-                    {type === "처방전"
-                      ? "약 이름과 먹는 방법을 정리해요"
-                      : "확인된 상태와 다음 계획을 정리해요"}
-                  </small>
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <input name="documentType" type="hidden" value={documentType} />
+        <div className="field">
+          <label htmlFor="diagnosis-name">병명</label>
+          <input id="diagnosis-name" name="diagnosisName" type="text" maxLength={100} placeholder="예: 고혈압" autoComplete="off" />
+          <p className="field-hint">문서에서 병명을 추측하지 않아요. 알고 있는 병명이 있을 때 직접 입력해주세요.</p>
+        </div>
 
         <label className="upload-dropzone" htmlFor="document">
           {previewUrl ? (
@@ -401,9 +362,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
             onClick={handleSample}
           >
             <FlaskConical size={18} aria-hidden="true" />
-            {documentType === "진단서"
-              ? "비식별 샘플 진단서로 체험"
-              : "비식별 샘플 처방전으로 체험"}
+            비식별 샘플 문서로 체험
           </button>
         </>
       ) : null}

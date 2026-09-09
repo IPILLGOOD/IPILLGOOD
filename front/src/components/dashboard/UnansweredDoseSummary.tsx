@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Check, ChevronDown, Clock3, Pill } from "lucide-react";
+import { ArrowUpRight, Check, ChevronDown, Clock3, Pill, X } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -26,17 +26,8 @@ function timeLabel(value: string) {
   return match ? `${match[1]}:${match[2]}` : "";
 }
 
-const responseLabels: Record<Dose["response"], string> = {
-  completed: "복용 완료",
-  partial: "일부 복용",
-  skipped: "먹지 못함",
-  not_yet: "응답 안 함",
-  unconfirmed: "확인 못함",
-};
-
-export function DoseResponseEditor({ dose, medication, revision, className = "", initiallyOpen = false }: { dose: Dose; medication?: Medication; revision: number; className?: string; initiallyOpen?: boolean }) {
+export function DoseResponseEditor({ dose, medication, revision, className = "" }: { dose: Dose; medication?: Medication; revision: number; className?: string; initiallyOpen?: boolean }) {
   const router = useRouter();
-  const [open, setOpen] = useState(initiallyOpen);
   const [state, action, pending] = useActionState(saveDoseResponseAction, { status: "idle" as const, message: "" });
   useEffect(() => {
     if (state.status === "success") router.refresh();
@@ -44,45 +35,24 @@ export function DoseResponseEditor({ dose, medication, revision, className = "",
   const time = timeLabel(dose.scheduledAt);
 
   return (
-    <div className={`unanswered-dose ${open ? "is-open" : ""} ${className}`.trim()}>
-      <button className="unanswered-dose__toggle" type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-        <span className={`unanswered-doses__icon ${dose.response !== "not_yet" ? "is-recorded" : ""}`} aria-hidden="true">
-          {dose.response === "completed" ? <Check size={15} /> : <Pill size={15} />}
-        </span>
+    <form className={`dose-quick-check is-${dose.response === "partial" ? "skipped" : dose.response} ${className}`.trim()} action={action}>
+      <input type="hidden" name="eventId" value={dose.id} />
+      <input type="hidden" name="medicationPlanId" value={dose.medicationPlanId} />
+      <input type="hidden" name="scheduledAt" value={dose.scheduledAt} />
+      <input type="hidden" name="expectedRevision" value={revision} />
+      <input type="hidden" name="reportSource" value={dose.answeredBy === "recipient" ? "recipient" : "caregiver"} />
+      <div className="dose-quick-check__info">
         <span className="unanswered-dose__copy">
           <strong>{medication?.productName ?? "복약 일정"}</strong>
-          <span><Clock3 size={12} aria-hidden="true" /> {dateLabel(dose.scheduledAt)}{time ? ` · ${time}` : ""}{medication?.timing ? ` · ${medication.timing}` : ""}</span>
+          <span><Clock3 size={12} aria-hidden="true" /> {time || medication?.timing}</span>
         </span>
-        <span className={`unanswered-dose__status unanswered-dose__status--${dose.response}`}>{responseLabels[dose.response]}</span>
-        <ChevronDown size={15} aria-hidden="true" />
-      </button>
-
-      {open ? (
-        <form className="unanswered-dose__form" action={action}>
-          <input type="hidden" name="eventId" value={dose.id} />
-          <input type="hidden" name="medicationPlanId" value={dose.medicationPlanId} />
-          <input type="hidden" name="scheduledAt" value={dose.scheduledAt} />
-          <input type="hidden" name="expectedRevision" value={revision} />
-          <label>
-            누가 확인했나요?
-            <select name="reportSource" defaultValue={dose.answeredBy === "recipient" ? "recipient" : "caregiver"}>
-              <option value="caregiver">보호자가 확인했어요</option>
-              <option value="recipient">어르신이 직접 답했어요</option>
-              <option value="unconfirmed">확인하지 못했어요</option>
-            </select>
-          </label>
-          <div className="unanswered-dose__choices" aria-label="복용 여부 수정">
-            <button type="submit" name="response" value="completed" disabled={pending}>복용 완료</button>
-            <button type="submit" name="response" value="partial" disabled={pending}>일부 복용</button>
-            <button type="submit" name="response" value="not_yet" disabled={pending}>아직 안 먹음</button>
-            <button type="submit" name="response" value="skipped" disabled={pending}>먹지 못함</button>
-            <button type="submit" name="response" value="unconfirmed" disabled={pending}>확인 못함</button>
-          </div>
-          {state.status === "error" ? <p className="unanswered-dose__message" role="alert">{state.message}</p> : null}
-          {pending ? <p className="unanswered-dose__message">저장하는 중…</p> : null}
-        </form>
-      ) : null}
-    </div>
+      </div>
+      <div className="dose-quick-check__actions" aria-label={`${medication?.productName ?? "복약 일정"} 복용 여부`}>
+        <button className="is-skipped" type="submit" name="response" value="skipped" disabled={pending} aria-label="미복용" title="미복용"><X size={18} /></button>
+        <button className="is-completed" type="submit" name="response" value="completed" disabled={pending} aria-label="복용 완료" title="복용 완료"><Check size={18} /></button>
+      </div>
+      {state.status === "error" ? <p className="unanswered-dose__message" role="alert">{state.message}</p> : null}
+    </form>
   );
 }
 

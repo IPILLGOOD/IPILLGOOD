@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowRight, CalendarDays, CheckCircle2, CircleHelp } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, CircleHelp, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState, type KeyboardEvent } from "react";
 
 import { Badge } from "@/components/ui/Badge";
+import { stopMedicationAction } from "@/app/actions";
 
 export type MedicationCabinetItem = {
   id: string;
@@ -23,7 +24,7 @@ export type MedicationCabinetItem = {
   clinicianQuestion?: string;
 };
 
-export function MedicationCabinet({ medications }: { medications: MedicationCabinetItem[] }) {
+export function MedicationCabinet({ medications, revision }: { medications: MedicationCabinetItem[]; revision: number }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const medication = medications[selectedIndex] ?? medications[0];
@@ -97,6 +98,13 @@ export function MedicationCabinet({ medications }: { medications: MedicationCabi
             <Link className="medicine-cabinet__detail-link" href={`/medications/${medication.id}`}>
               상세 정보 보기 <ArrowRight size={17} aria-hidden="true" />
             </Link>
+            <form action={stopMedicationAction}>
+              <input type="hidden" name="medicationPlanId" value={medication.id} />
+              <input type="hidden" name="expectedRevision" value={revision} />
+              <button className="button button--secondary" type="submit" aria-label={`${medication.productName} 복용약에서 빼기`}>
+                <Trash2 size={16} aria-hidden="true" /> 복용약에서 빼기
+              </button>
+            </form>
           </header>
 
           <div className="medicine-cabinet__purpose">

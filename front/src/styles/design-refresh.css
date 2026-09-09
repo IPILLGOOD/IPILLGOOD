@@ -551,8 +551,8 @@ h2 {
 /* Dashboard and reports -------------------------------------------------- */
 
 .dashboard-grid {
-  grid-template-columns: minmax(0, 1.5fr) minmax(17rem, 0.62fr);
-  gap: var(--space-10);
+  grid-template-columns: minmax(0, 1.65fr) minmax(17rem, 0.55fr);
+  gap: var(--space-6);
 }
 
 .dashboard-main,

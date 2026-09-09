@@ -1,4 +1,4 @@
-import { Check, Clock3, HelpCircle, Minus, Pill } from "lucide-react";
+import { Check, Clock3, HelpCircle, Pill } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import type { MedicationScheduleTask } from "@/lib/presentation";
@@ -8,7 +8,7 @@ function taskState(task: MedicationScheduleTask) {
     return { label: "완료", tone: "success" as const, icon: Check, className: "is-complete" };
   }
   if (task.response === "partial") {
-    return { label: "일부 복용", tone: "warning" as const, icon: Minus, className: "needs-review" };
+    return { label: "확인 필요", tone: "warning" as const, icon: HelpCircle, className: "needs-review" };
   }
   if (task.response === "skipped" || task.response === "unconfirmed") {
     return { label: "확인 필요", tone: "warning" as const, icon: HelpCircle, className: "needs-review" };

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Circle, HeartPulse, Pill } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Circle, HeartPulse, Pill, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { DoseResponseEditor } from "@/components/dashboard/UnansweredDoseSummary";
@@ -8,6 +8,7 @@ import { DoseResponseEditor } from "@/components/dashboard/UnansweredDoseSummary
 type CalendarMedication = {
   id: string;
   productName: string;
+  frequency: string;
   timing: string;
   startDate: string;
   endDate?: string;
@@ -64,9 +65,42 @@ function scheduledOn(medication: CalendarMedication, key: string) {
   return recurrence.weekdays.includes(WEEKDAY_KEYS[current.getUTCDay()]);
 }
 
+function scheduledDosePlaceholders(medication: CalendarMedication, key: string): CalendarDose[] {
+  if (!scheduledOn(medication, key)) return [];
+  const recurrence = medication.recurrence;
+  const legacyCount = medication.frequency.match(/(?:하루|1일)\s*(\d+)\s*회/)?.[1];
+  const count = recurrence && "count" in recurrence ? recurrence.count : Number(legacyCount ?? 1);
+  const timingParts = medication.timing.split(/[·,/]/).map((value) => value.trim()).filter(Boolean);
+  const slots = timingParts.length === count ? timingParts : count === 1 ? [medication.timing] : [];
+
+  return slots.flatMap((slot, index) => {
+    const clock = slot.match(/(?:^|\D)([01]?\d|2[0-3]):([0-5]\d)(?:\D|$)/);
+    const time = clock
+      ? `${clock[1]!.padStart(2, "0")}:${clock[2]}`
+      : slot.includes("아침") ? "08:00"
+        : slot.includes("점심") ? "13:00"
+          : slot.includes("저녁") ? "19:00"
+            : slot.includes("취침") || slot.includes("자기 전") ? "21:00"
+              : null;
+    if (!time) return [];
+    return [{
+      id: `${medication.id}__calendar__${key}__${index}`,
+      medicationPlanId: medication.id,
+      scheduledAt: `${key}T${time}:00+09:00`,
+      response: "not_yet" as const,
+      answeredBy: "caregiver" as const,
+    }];
+  });
+}
+
+function sameDoseSlot(left: CalendarDose, right: CalendarDose) {
+  return left.medicationPlanId === right.medicationPlanId
+    && left.scheduledAt.slice(0, 16) === right.scheduledAt.slice(0, 16);
+}
+
 function doseLabel(response: CalendarDose["response"] | undefined) {
   if (response === "completed") return "복용 완료";
-  if (response === "partial") return "일부 복용";
+  if (response === "partial") return "미복용";
   if (response === "skipped") return "건너뜀";
   if (response === "unconfirmed") return "확인 필요";
   return "아직 체크 전";
@@ -90,6 +124,7 @@ export function CareDiaryCalendar({
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [selectedDoseId, setSelectedDoseId] = useState<string | null>(null);
   const [selectionRequest, setSelectionRequest] = useState(0);
+  const [highlightedSymptomDates, setHighlightedSymptomDates] = useState<string[]>([]);
 
   useEffect(() => {
     const selectDose = (event: Event) => {
@@ -103,6 +138,15 @@ export function CareDiaryCalendar({
     };
     window.addEventListener("care-diary:select-dose", selectDose);
     return () => window.removeEventListener("care-diary:select-dose", selectDose);
+  }, []);
+
+  useEffect(() => {
+    const highlight = (event: Event) => {
+      const detail = (event as CustomEvent<{ active?: boolean; dates?: string[] }>).detail;
+      setHighlightedSymptomDates(detail?.active && Array.isArray(detail.dates) ? detail.dates : []);
+    };
+    window.addEventListener("care-diary:highlight-symptoms", highlight);
+    return () => window.removeEventListener("care-diary:highlight-symptoms", highlight);
   }, []);
 
   const cells = useMemo(() => {
@@ -152,20 +196,24 @@ export function CareDiaryCalendar({
               const day = Number(key.slice(-2));
               const dayDoses = doses.filter((dose) => parseDateKey(dose.scheduledAt) === key);
               const daySymptoms = symptoms.filter((symptom) => parseDateKey(symptom.occurredAt) === key);
-              const scheduled = medications.some((medication) => scheduledOn(medication, key));
-              const complete = dayDoses.some((dose) => dose.response === "completed");
+              const scheduledMedications = medications.filter((medication) => scheduledOn(medication, key));
+              const expectedDoses = scheduledMedications.flatMap((medication) => scheduledDosePlaceholders(medication, key));
+              const scheduled = scheduledMedications.length > 0;
+              const missed = dayDoses.some((dose) => dose.response === "skipped" || dose.response === "partial");
+              const complete = !missed && expectedDoses.length > 0
+                && expectedDoses.every((expected) => dayDoses.some((dose) => sameDoseSlot(expected, dose) && dose.response === "completed"));
               return (
                 <button
                   type="button"
                   key={key}
-                  className={["care-calendar__day", key === selectedDate ? "is-selected" : "", key === initialDate ? "is-today" : ""].filter(Boolean).join(" ")}
+                  className={["care-calendar__day", missed ? "is-skipped" : complete ? "is-complete" : "", highlightedSymptomDates.includes(key) ? "has-highlighted-symptom" : "", key === selectedDate ? "is-selected" : "", key === initialDate ? "is-today" : ""].filter(Boolean).join(" ")}
                   onClick={() => { setSelectedDate(key); setSelectedDoseId(null); }}
                   aria-pressed={key === selectedDate}
-                  aria-label={`${visibleMonth.month + 1}월 ${day}일${complete ? ", 복용 완료 기록 있음" : ""}`}
+                  aria-label={`${visibleMonth.month + 1}월 ${day}일${missed ? ", 미복용 기록 있음" : complete ? ", 복용 완료 기록 있음" : ""}`}
                 >
                   <span>{day}</span>
                   <span className="care-calendar__marks" aria-hidden="true">
-                    {complete ? <i className="mark mark--complete"><Check size={10} /></i> : scheduled ? <i className="mark mark--scheduled" /> : null}
+                    {missed ? <i className="mark mark--skipped"><X size={10} /></i> : complete ? <i className="mark mark--complete"><Check size={10} /></i> : scheduled ? <i className="mark mark--scheduled" /> : null}
                     {daySymptoms.length > 0 ? <i className="mark mark--symptom" /> : null}
                   </span>
                 </button>
@@ -174,6 +222,7 @@ export function CareDiaryCalendar({
           </div>
           <div className="care-calendar__legend">
             <span><i className="mark mark--complete"><Check size={9} /></i> 복용 완료</span>
+            <span><i className="mark mark--skipped"><X size={9} /></i> 미복용</span>
             <span><i className="mark mark--scheduled" /> 복약 일정</span>
             <span><i className="mark mark--symptom" /> 몸 상태 기록</span>
           </div>
@@ -190,24 +239,29 @@ export function CareDiaryCalendar({
               <div className="care-diary__empty"><Circle size={20} /><p>등록된 일정이나 기록이 없어요.</p></div>
             ) : null}
             {selectedMedications.map((medication) => {
-              const dose = selectedDoses.find((item) => item.medicationPlanId === medication.id);
-              const completed = dose?.response === "completed";
-              if (dose && selectedDate <= initialDate) {
-                return (
+              const placeholders = scheduledDosePlaceholders(medication, selectedDate);
+              const recorded = selectedDoses.filter((item) => item.medicationPlanId === medication.id);
+              const medicationDoses = [
+                ...placeholders.map((placeholder) => recorded.find((dose) => sameDoseSlot(placeholder, dose)) ?? placeholder),
+                ...recorded.filter((dose) => !placeholders.some((placeholder) => sameDoseSlot(placeholder, dose))),
+              ];
+              if (selectedDate <= initialDate && medicationDoses.length > 0) {
+                return medicationDoses.map((dose) => (
                   <DoseResponseEditor
                     className="care-diary__task-editor"
-                    key={`${selectedDate}-${medication.id}-${selectionRequest}`}
+                    key={`${selectedDate}-${medication.id}-${dose.scheduledAt}-${selectionRequest}`}
                     dose={dose}
                     medication={medication}
                     revision={revision}
                     initiallyOpen={dose.id === selectedDoseId}
                   />
-                );
+                ));
               }
+              const completed = medicationDoses.length > 0 && medicationDoses.every((dose) => dose.response === "completed");
               return (
                 <article className={`care-diary__task ${completed ? "is-complete" : ""}`} key={medication.id}>
                   <span className="care-diary__task-check" aria-hidden="true">{completed ? <Check size={16} /> : <Pill size={16} />}</span>
-                  <div><strong>{medication.productName}</strong><p>{medication.timing} · {doseLabel(dose?.response)}</p></div>
+                  <div><strong>{medication.productName}</strong><p>{medication.timing} · {doseLabel(medicationDoses[0]?.response)}</p></div>
                 </article>
               );
             })}

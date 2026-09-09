@@ -92,7 +92,7 @@ export function DocumentAnalysisResult({
         </div>
       ) : null}
 
-      {analysis.documentType === "처방전" && analysis.medications?.length ? (
+      {analysis.documentType !== "진단서" && analysis.medications?.length ? (
         <div
           className={`disease-lookup-status disease-lookup-status--${medicationRegistration === "pending" || requiresMedicationVerification ? "failed" : requiresPeriodReview ? "not_configured" : "official_match"}`}
           role="status"
@@ -120,12 +120,12 @@ export function DocumentAnalysisResult({
                   ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 원본과 모든 값을 대조한 기록이 있어야 활성화할 수 있어요.`
                   : requiresPeriodReview
                     ? "처방일과 총 투약일수를 원본에서 확인하고 확정하기 전에는 약을 활성화하지 않아요."
-                    : `처방전에서 약 ${analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.`}
+                    : `문서에서 약 ${analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.`}
           </p>
         </div>
       ) : null}
 
-      {analysis.documentType === "처방전" && analysis.medications?.length ? (
+      {analysis.documentType !== "진단서" && analysis.medications?.length ? (
         <section className="medication-evidence" aria-labelledby="medication-evidence-title">
           <div className="medication-evidence__heading">
             <h4 id="medication-evidence-title">약별 OCR 근거와 공식 정보 대조</h4>

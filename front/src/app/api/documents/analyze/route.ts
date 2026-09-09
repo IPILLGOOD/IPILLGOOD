@@ -28,7 +28,7 @@ import { careScopeFor } from "@/lib/auth/care-scope";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { rateLimitResponse } from "@/lib/rate-limit-core";
 
-const allowedDocumentTypes = new Set<ClinicalDocumentType>(["처방전", "진단서"]);
+const allowedDocumentTypes = new Set<ClinicalDocumentType>(["처방전 또는 약봉투"]);
 const maxFileSize = 5 * 1024 * 1024;
 const overallAnalysisTimeoutMs = 120_000;
 
@@ -97,7 +97,8 @@ export async function POST(request: Request) {
 
   try {
     const formData = await request.formData();
-    const documentType = String(formData.get("documentType") ?? "처방전");
+    const documentType = String(formData.get("documentType") ?? "처방전 또는 약봉투");
+    const diagnosisName = String(formData.get("diagnosisName") ?? "").trim().slice(0, 100);
     const isSample = formData.get("sample") === "true";
     const idempotencyKey = String(formData.get("idempotencyKey") ?? "").trim();
     const duplicateActionValue = String(formData.get("duplicateAction") ?? "");
@@ -113,13 +114,13 @@ export async function POST(request: Request) {
     }
 
     if (!allowedDocumentTypes.has(documentType as ClinicalDocumentType)) {
-      return Response.json({ message: "처방전 또는 진단서를 선택해주세요." }, { status: 400 });
+      return Response.json({ message: "처방전 또는 약봉투를 선택해주세요." }, { status: 400 });
     }
 
     const file = formData.get("document");
     if (!isSample && (!(file instanceof File) || file.size === 0)) {
       return Response.json(
-        { message: "분석할 처방전이나 진단서 파일을 선택해주세요." },
+        { message: "분석할 처방전 또는 약봉투 파일을 선택해주세요." },
         { status: 400 },
       );
     }
@@ -136,6 +137,8 @@ export async function POST(request: Request) {
     const claimedContentType = file instanceof File ? file.type : "";
     const contentHash = createHash("sha256")
       .update(typedDocumentType)
+      .update("\0")
+      .update(diagnosisName)
       .update("\0")
       .update(fileBytes ?? `sample:${fileName}`)
       .digest("hex");
@@ -192,7 +195,7 @@ export async function POST(request: Request) {
       const draft = storedDraft?.state === "needs_review" ? storedDraft : null;
       const requiresPeriodReview = draft?.candidates.some((candidate) =>
         !candidate.startDate || !candidate.endDate) ?? false;
-      const reviewMedicationCount = typedDocumentType === "처방전"
+      const reviewMedicationCount = typedDocumentType !== "진단서"
         ? (existingDocument.analysis?.medications ?? []).filter(
             (medication) => medication.reviewStatus !== "verified",
           ).length
@@ -224,7 +227,7 @@ export async function POST(request: Request) {
     }
 
     await advanceDocumentAnalysisJob(scope, jobId, "analyzing");
-    const result = pendingReview
+    let result = pendingReview
       ? { status: "complete" as const, message: "저장된 분석 결과를 불러왔어요.", analysis: pendingReview.analysis }
       : await withinOverallBudget(withCareAccountProcessing(
           scope.recipientId,
@@ -235,6 +238,16 @@ export async function POST(request: Request) {
             contentBase64,
           }),
         ));
+    if (diagnosisName && !result.analysis.diagnoses?.some((item) => item.name === diagnosisName)) {
+      result = {
+        ...result,
+        analysis: {
+          ...result.analysis,
+          diagnoses: [{ name: diagnosisName }],
+          findings: [{ label: "입력한 병명", value: diagnosisName }, ...result.analysis.findings],
+        },
+      };
+    }
     await assertDocumentAnalysisJobActive(scope, jobId);
     await advanceDocumentAnalysisJob(scope, jobId, "saving_draft");
     let document;
@@ -277,7 +290,7 @@ export async function POST(request: Request) {
       : null;
     const requiresPeriodReview = draft?.candidates.some((candidate) =>
       !candidate.startDate || !candidate.endDate) ?? false;
-    const reviewMedicationCount = typedDocumentType === "처방전"
+    const reviewMedicationCount = typedDocumentType !== "진단서"
       ? (result.analysis.medications ?? []).filter(
           (medication) => medication.reviewStatus !== "verified",
         ).length

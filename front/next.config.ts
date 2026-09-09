@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/:path*",
+        source: "/((?!__/auth/).*)",
         headers: commonSecurityHeaders(process.env.NODE_ENV === "production"),
       },
       {

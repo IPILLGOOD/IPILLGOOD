@@ -22,7 +22,7 @@ import type {
 } from "../official-medication-search.ts";
 
 interface DocumentInput {
-  documentType: "처방전" | "진단서";
+  documentType: "처방전 또는 약봉투" | "처방전" | "약봉투" | "진단서";
   fileName: string;
   contentType: string;
   contentBase64: string;
@@ -387,9 +387,9 @@ function documentAnalysisFromExtraction(
         ? [{ label: "확인된 약 이름", value: medication.productName }]
         : [],
     ),
-    carePoints: ["약 이름, 복용량, 횟수와 기간을 원본 처방전과 대조해 주세요."],
+    carePoints: ["약 이름, 복용량, 횟수와 기간을 원본 처방전 또는 약봉투와 대조해 주세요."],
     questionsForProfessional: ["추출된 복용법과 투약 기간이 현재 처방과 일치하나요?"],
-    disclaimer: "자동 추출 결과이며 원본 처방전과 의료진의 확인을 우선하세요.",
+    disclaimer: "자동 추출 결과이며 원본 처방전 또는 약봉투와 의료진의 확인을 우선하세요.",
     ...(prescriptionDate ? { prescriptionDate } : {}),
     ...(totalSupplyDays ? { totalSupplyDays } : {}),
     diagnoses: [],
@@ -421,14 +421,14 @@ function documentContent(input: DocumentInput): ResponseInputContent[] {
         `첨부된 ${input.documentType}에서 핵심 행과 컬럼의 원문 값만 추출하세요.`,
         "문서에 실제로 적힌 내용만 사용하고, 불명확하거나 없는 값은 추측하지 마세요.",
         "진단서라면 diagnoses에 진단명과 KCD/ICD 코드를 각각 넣고, 코드가 없으면 빈 문자열을 넣으세요.",
-        "처방전이라면 diagnoses는 빈 배열로 반환하세요.",
-        "처방전이라면 표의 위쪽부터 약 한 행을 medications 한 항목으로 만들고 sourceRow를 1부터 순서대로 넣으세요. 진단서라면 medications는 빈 배열로 반환하세요.",
+        "처방전이나 약봉투라면 diagnoses는 빈 배열로 반환하세요.",
+        "처방전이나 약봉투라면 표의 위쪽부터 약 한 행을 medications 한 항목으로 만들고 sourceRow를 1부터 순서대로 넣으세요. 진단서라면 medications는 빈 배열로 반환하세요.",
         "약품명·제품명은 productName, 성분명은 ingredientName에 넣으세요.",
         "품목기준코드 또는 ITEM_SEQ라고 명시된 값만 mfdsItemSeq에 넣으세요. [급여], 보험, EDI 옆의 코드는 insuranceCode에만 넣고 mfdsItemSeq는 빈 문자열로 두세요.",
         "문서에 숫자 코드가 하나만 보이면 같은 값을 두 코드 필드에 복사하지 마세요. 두 코드를 서로 바꾸거나 하나로 합치지 마세요.",
         "1회 투약량·복용량은 doseAmount, 1일 투여횟수는 frequency, 용법·복용방법은 timing에 원문대로 넣으세요.",
         "행별 투약일수·총 투여일수가 있으면 supplyDays에 양의 정수로 넣으세요. 확인할 수 없으면 0으로 쓰세요.",
-        "처방전의 발행일을 prescriptionDate에 YYYY-MM-DD로 넣고, 확인할 수 없으면 빈 문자열로 쓰세요.",
+        "처방전의 발행일 또는 약봉투의 조제일을 prescriptionDate에 YYYY-MM-DD로 넣고, 확인할 수 없으면 빈 문자열로 쓰세요.",
         "모든 약에 공통인 총 투약일수만 totalSupplyDays에 양의 정수로 넣으세요. 행별 기간이 다르거나 확인할 수 없으면 0으로 쓰세요. 진단서는 prescriptionDate를 빈 문자열, totalSupplyDays를 0으로 쓰세요.",
         "복용 시작일과 종료일은 YYYY-MM-DD로 쓰고, 문서에 종료일이 없으면 endDate를 빈 문자열로 쓰세요.",
         "문서에 없는 문자열 필드는 빈 문자열, 없는 숫자 필드는 0으로 반환하세요.",

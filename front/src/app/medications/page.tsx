@@ -1,48 +1,29 @@
-import { Pill } from "lucide-react";
+import { Pill, Plus } from "lucide-react";
+import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
 import { MedicationCabinet } from "@/components/medications/MedicationCabinet";
-import { OfficialMedicationSearch } from "@/components/medications/OfficialMedicationSearch";
+import { MedicationSearchAdd } from "@/components/medications/MedicationSearchAdd";
 import { PageHeader } from "@/components/ui/PageHeader";
-import {
-  getCareSnapshot,
-  PRODUCT_SOURCE_URL,
-  searchOfficialMedicationInfo,
-  withCareAccountProcessing,
-  type OfficialMedicationLookupResult,
-} from "@care-atlas/backend";
+import { getCareSnapshot, PRODUCT_SOURCE_URL, searchOfficialMedicationInfo, withCareAccountProcessing, type OfficialMedicationLookupResult } from "@care-atlas/backend";
 import { activeMedications, daysSince, formatDate } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { dateKeyInSeoul } from "@care-atlas/backend/dates";
 
 export const dynamic = "force-dynamic";
 
-export default async function MedicationsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string | string[] }>;
-}) {
+export default async function MedicationsPage({ searchParams }: { searchParams: Promise<{ q?: string | string[]; add?: string | string[] }> }) {
   const scope = await requireCareScope();
-  const rawQuery = (await searchParams).q;
-  const query = (Array.isArray(rawQuery) ? rawQuery[0] : rawQuery)?.trim().slice(0, 100) ?? "";
-  const rateLimit = query
-    ? await enforceRateLimit("medicationSearch", { userId: scope.recipientId })
-    : null;
-  const limitedResult: OfficialMedicationLookupResult = {
-    status: "unavailable",
-    items: [],
-    totalCount: 0,
-    sourceUrl: PRODUCT_SOURCE_URL,
-    message: `검색 요청이 많아요. ${rateLimit?.retryAfterSeconds ?? 60}초 뒤 다시 시도해주세요.`,
-    reason: "rate_limited",
-  };
-  const [snapshot, officialMedicationResult] = await Promise.all([
+  const params = await searchParams;
+  const queryValue = Array.isArray(params.q) ? params.q[0] : params.q;
+  const query = queryValue?.trim().slice(0, 100) ?? "";
+  const adding = params.add === "1" || query.length > 0;
+  const rateLimit = query ? await enforceRateLimit("medicationSearch", { userId: scope.recipientId }) : null;
+  const limitedResult: OfficialMedicationLookupResult = { status: "unavailable", items: [], totalCount: 0, sourceUrl: PRODUCT_SOURCE_URL, message: `검색 요청이 많아요. ${rateLimit?.retryAfterSeconds ?? 60}초 뒤 다시 시도해주세요.`, reason: "rate_limited" };
+  const [snapshot, result] = await Promise.all([
     getCareSnapshot(scope),
-    query
-      ? rateLimit?.allowed
-        ? withCareAccountProcessing(scope.recipientId, () => searchOfficialMedicationInfo(query))
-        : Promise.resolve(limitedResult)
-      : Promise.resolve(null),
+    query ? rateLimit?.allowed ? withCareAccountProcessing(scope.recipientId, () => searchOfficialMedicationInfo(query)) : Promise.resolve(limitedResult) : Promise.resolve(null),
   ]);
   const medications = activeMedications(snapshot.medications);
 
@@ -52,18 +33,14 @@ export default async function MedicationsPage({
         eyebrow="현재 복용약"
         title="약 설명을 쉬운 말로 확인하세요"
         description="처방 목적을 추측하지 않고, 문서에서 확인된 복용법과 약의 일반적인 쓰임을 구분해 보여드려요."
+        action={<Link className="button button--primary" href="/medications?add=1"><Plus size={17} aria-hidden="true" /> 약 검색해서 추가</Link>}
       />
 
-      <OfficialMedicationSearch
-        query={query}
-        result={officialMedicationResult}
-        officialApiConfigured={Boolean(
-          process.env.MFDS_MEDICATION_API_KEY ?? process.env.MFDS_PARMGEN_API_KEY,
-        )}
-      />
+      {adding ? <MedicationSearchAdd query={query} result={result} revision={snapshot.revision} today={dateKeyInSeoul()} /> : null}
 
       {medications.length > 0 ? (
         <MedicationCabinet
+          revision={snapshot.revision}
           medications={medications.map((medication) => ({
             id: medication.id,
             productName: medication.productName,
@@ -89,7 +66,7 @@ export default async function MedicationsPage({
             <div className="empty-state" role="status">
               <Pill size={28} aria-hidden="true" />
               <strong>아직 등록된 복용약이 없어요</strong>
-              <p>문서 메뉴에서 처방전을 등록하면 이 계정에 복용약 정보를 모을 수 있어요.</p>
+              <p>문서 메뉴에서 약봉투나 처방전을 등록하면 복용약을 추가하고 검토할 수 있어요.</p>
             </div>
           </Card>
         ) : null}

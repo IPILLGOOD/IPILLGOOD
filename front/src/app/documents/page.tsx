@@ -31,8 +31,8 @@ export default async function DocumentsPage() {
     <>
       <PageHeader
         eyebrow="문서 등록"
-        title="처방전과 진단서를 쉬운 말로 확인해요"
-        description="문서를 첨부하면 중요한 내용을 정리하고, 진단서는 공식 질병 API를 우선 조회한 뒤 필요할 때 OpenAI 웹 검색으로 보완해요."
+        title="처방전 또는 약봉투를 쉬운 말로 확인해요"
+        description="병명을 입력하고 문서를 첨부하면 약 이름과 복용법을 정리해요."
       />
 
       <div className="document-layout">
@@ -40,7 +40,7 @@ export default async function DocumentsPage() {
           <div className="section-heading">
             <div>
               <h2>새 문서 등록</h2>
-              <p>처방전 또는 진단서를 선택하고 분석 결과를 바로 확인하세요.</p>
+              <p>병명을 입력한 뒤 처방전 또는 약봉투를 첨부하세요.</p>
             </div>
           </div>
           <DocumentUploadForm allowSamples={scope.useDemoData === true} />
@@ -137,7 +137,7 @@ export default async function DocumentsPage() {
                 <p>
                   {scope.useDemoData
                     ? "비식별 샘플로 안전하게 흐름을 체험할 수 있어요."
-                    : "처방전이나 진단서를 첨부하고 분석해보세요."}
+                    : "처방전 또는 약봉투를 첨부하고 분석해보세요."}
                 </p>
               </div>
             )}

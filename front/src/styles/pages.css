@@ -580,7 +580,7 @@
 
 .care-diary__body {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(14rem, 0.75fr);
+  grid-template-columns: minmax(0, 1.48fr) minmax(18rem, 0.78fr);
 }
 
 .care-calendar {
@@ -638,6 +638,21 @@
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%);
 }
 
+.care-calendar__day.is-complete { background: #f0f8f3; }
+.care-calendar__day.is-skipped { background: var(--color-danger-bg); color: var(--color-danger); }
+.care-calendar__day.is-complete.is-selected { border-color: var(--color-primary-600); background: var(--color-primary-100); }
+.care-calendar__day.is-skipped.is-selected { border-color: var(--color-danger); background: #fde3df; }
+
+.care-calendar__day.has-highlighted-symptom {
+  border-color: #8b9490;
+  box-shadow: inset 0 0 0 1px rgb(139 148 144 / 24%);
+}
+
+.care-calendar__day.has-highlighted-symptom:not(.is-complete, .is-skipped) {
+  background: #f0f2f1;
+  color: #505955;
+}
+
 .care-calendar__day.is-today > span:first-child {
   display: grid;
   width: 1.65rem;
@@ -671,6 +686,18 @@
   background: var(--color-primary-700);
   color: white;
 }
+
+.care-calendar__day.is-skipped.is-today > span:first-child { background: var(--color-danger); }
+
+.mark--skipped {
+  width: 0.9rem;
+  height: 0.9rem;
+  background: var(--color-danger);
+  color: white;
+}
+
+.mark--complete,
+.mark--skipped { box-shadow: 0 2px 5px rgb(24 52 42 / 18%); }
 
 .mark--scheduled { background: #9fc7ac; }
 .mark--symptom { background: #6f9b84; }
@@ -747,6 +774,10 @@
   background: rgb(255 255 255 / 78%);
 }
 
+.care-diary__task-editor.is-completed { border-color: #b9d8c4; background: #f7fcf8; }
+.care-diary__task-editor.is-skipped { border-color: #edbbb5; background: var(--color-danger-bg); }
+.care-diary__task-editor.is-unconfirmed { border-color: #c9dfe4; background: #f3f8fa; }
+
 .care-diary__task-editor .unanswered-dose__toggle {
   padding: var(--space-3);
 }
@@ -756,7 +787,69 @@
 }
 
 .care-diary__task-editor .unanswered-dose__status {
-  display: none;
+  display: inline-flex;
+}
+
+.dose-quick-check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.dose-quick-check__info {
+  min-width: 0;
+}
+
+.dose-quick-check__actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.dose-quick-check__actions button {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.dose-quick-check__actions .is-skipped {
+  border-color: #edbbb5;
+  color: var(--color-danger);
+}
+
+.dose-quick-check__actions .is-completed {
+  border-color: #b9d8c4;
+  color: var(--color-primary-700);
+}
+
+.dose-quick-check.is-skipped .dose-quick-check__actions .is-skipped {
+  background: var(--color-danger);
+  color: #fff;
+}
+
+.dose-quick-check.is-completed .dose-quick-check__actions .is-completed {
+  background: var(--color-primary-700);
+  color: #fff;
+}
+
+.dose-quick-check__actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.dose-quick-check__actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.dose-quick-check > .unanswered-dose__message {
+  grid-column: 1 / -1;
 }
 
 .care-diary__task-editor .unanswered-dose__form {
@@ -767,7 +860,6 @@
 .care-diary__empty p { margin: var(--space-2) 0 0; font-size: 0.8rem; }
 .care-diary__checkin { width: 100%; border-color: var(--color-primary-700); background: var(--color-primary-700); color: #fff; }
 .care-diary__checkin:hover { background: var(--color-primary-800); }
-.care-diary__past-note { margin: 0; color: var(--color-text-muted); font-size: 0.75rem; text-align: center; }
 
 @media (max-width: 860px) {
   .care-diary__body { grid-template-columns: 1fr; }
@@ -895,6 +987,16 @@
   transform: rotate(180deg);
 }
 
+.metric--action.metric--symptoms.is-open {
+  background: #f0f2f1;
+  box-shadow: inset 0 -3px #8b9490;
+}
+
+.metric--action.metric--medications.is-open {
+  background: var(--color-primary-50);
+  box-shadow: inset 0 -3px var(--color-primary-600);
+}
+
 .metric--action.is-empty {
   cursor: default;
 }
@@ -1012,10 +1114,13 @@
   color: var(--color-primary-700);
 }
 
-.unanswered-doses__icon.is-recorded {
+.unanswered-doses__icon.is-completed {
   background: var(--color-primary-700);
   color: white;
 }
+
+.unanswered-doses__icon.is-skipped { background: var(--color-danger); color: white; }
+.unanswered-doses__icon.is-unconfirmed { background: #dbeaf0; color: #426a78; }
 
 .unanswered-dose__status {
   padding: 0.2rem 0.45rem;
@@ -1033,9 +1138,11 @@
 }
 
 .unanswered-dose__status--skipped {
-  background: var(--color-warning-bg);
-  color: var(--color-warning);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
+
+.unanswered-dose__status--unconfirmed { background: #e8f1f4; color: #426a78; }
 
 .unanswered-dose__form {
   display: grid;
@@ -1085,6 +1192,11 @@
   border-color: var(--color-primary-600);
   background: var(--color-primary-50);
 }
+
+.unanswered-dose__choices button[value="completed"] { border-color: #b9d8c4; color: var(--color-primary-700); }
+.unanswered-dose__choices button[value="skipped"] { border-color: #edbbb5; color: var(--color-danger); }
+.unanswered-dose__choices button[value="completed"]:hover:not(:disabled) { background: var(--color-primary-100); }
+.unanswered-dose__choices button[value="skipped"]:hover:not(:disabled) { border-color: var(--color-danger); background: var(--color-danger-bg); }
 
 .unanswered-dose__choices button:disabled {
   cursor: wait;
@@ -1249,6 +1361,21 @@
   font-size: 0.9rem;
 }
 
+.checkin-signal-card { margin: 0; }
+
+.dashboard-medications-card .medication-row {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.dashboard-medications-card .medication-row__detail {
+  min-height: auto;
+  grid-column: 2;
+  justify-content: flex-start;
+  padding: 0;
+  text-align: left;
+}
+
 .causal-note {
   border-left: 3px solid var(--color-warning);
   margin-top: var(--space-4);
@@ -1330,6 +1457,73 @@
 .medication-cards {
   display: grid;
   gap: var(--space-4);
+}
+
+.medication-search-add {
+  margin-bottom: var(--space-6);
+}
+
+.medication-search-add__results {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.medication-search-add__item {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.medication-search-add__item header,
+.medication-search-add__item header span {
+  display: block;
+}
+
+.medication-search-add__item header strong {
+  color: var(--color-primary-900);
+}
+
+.medication-search-add__item header span {
+  margin-top: 0.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.medication-search-add__fields {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.medication-search-add__fields label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.medication-search-add__fields input {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+@media (max-width: 860px) {
+  .medication-search-add__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .medication-search-add__fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 .official-drug-card {

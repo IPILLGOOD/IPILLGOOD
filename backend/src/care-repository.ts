@@ -468,6 +468,75 @@ export async function updateRecipientProfile(scope: CareDataScope, recipient: Ca
   }, { expectedRevision });
 }
 
+export async function stopMedicationPlan(
+  scope: CareDataScope,
+  medicationPlanId: string,
+  expectedRevision?: number,
+) {
+  if (!/^[^/]{1,256}$/.test(medicationPlanId)) throw new Error("올바르지 않은 복용약 식별자입니다.");
+  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
+    const medication = snapshot.medications.find((item) => item.id === medicationPlanId);
+    if (!medication) throw new Error("복용약을 찾을 수 없어요.");
+    if (medication.status !== "active") return { snapshot, result: snapshot, unchanged: true };
+    const stopped: MedicationPlan = { ...medication, status: "ended", endDate: dateKeyInSeoul() };
+    tx.set(ref.collection("medicationPlans").doc(medication.id), stopped);
+    return {
+      snapshot: {
+        ...snapshot,
+        medications: snapshot.medications.map((item) => item.id === medication.id ? stopped : item),
+      },
+      result: snapshot,
+    };
+  }, { affectsMedications: true, requiresConsent: true, expectedRevision });
+}
+
+export interface AddMedicationPlanInput {
+  itemSeq: string;
+  productName: string;
+  ingredientName: string;
+  categoryPlain?: string;
+  doseAmount: string;
+  frequency: string;
+  timing: string;
+  startDate: string;
+  endDate?: string;
+  confirmedBy: string;
+}
+
+export async function addMedicationPlan(scope: CareDataScope, input: AddMedicationPlanInput, expectedRevision?: number) {
+  const itemSeq = input.itemSeq.replace(/\D/g, "");
+  const productName = input.productName.trim();
+  const ingredientName = input.ingredientName.trim() || "성분 확인 필요";
+  const doseAmount = input.doseAmount.trim();
+  const frequency = input.frequency.trim();
+  const timing = input.timing.trim();
+  const startDate = validCalendarDate(input.startDate);
+  const endDate = input.endDate?.trim() ? validCalendarDate(input.endDate) : undefined;
+  if (!itemSeq || !productName) throw new Error("식약처에서 확인된 약을 다시 선택해주세요.");
+  if (!doseAmount || !frequency || !timing) throw new Error("복용량, 횟수와 복용 시점을 입력해주세요.");
+  if (!startDate || startDate !== input.startDate) throw new Error("복용 시작일을 확인해주세요.");
+  if (input.endDate?.trim() && (!endDate || endDate < startDate)) throw new Error("복용 종료일을 확인해주세요.");
+  if (!input.confirmedBy.trim()) throw new Error("등록 사용자를 확인할 수 없어요.");
+  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
+    if (snapshot.medications.some((item) => item.status === "active" && item.itemSeq === itemSeq)) throw new Error("이미 복용 중인 약이에요.");
+    const timestamp = new Date().toISOString();
+    const medication: MedicationPlan = {
+      id: `manual-${itemSeq}-${timestamp.replace(/\D/g, "").slice(0, 14)}`,
+      itemSeq, productName, ingredientName,
+      categoryPlain: input.categoryPlain?.trim() || "분류 확인 필요",
+      purposePlain: "처방 목적은 의사나 약사에게 확인해주세요.",
+      descriptionPlain: "식약처 검색 결과에서 사용자가 직접 등록한 복용약이에요.",
+      doseAmount, frequency, recurrence: normalizeMedicationRecurrence(frequency), timing, startDate,
+      ...(endDate ? { endDate } : {}),
+      status: endDate && endDate < dateKeyInSeoul() ? "ended" : "active",
+      isNew: true, sourceLabel: "식약처 공식 검색 · 직접 등록", watchFor: [],
+      confirmedBy: input.confirmedBy, confirmedAt: timestamp, stateChangedAt: timestamp,
+    };
+    tx.set(ref.collection("medicationPlans").doc(medication.id), medication);
+    return { snapshot: { ...snapshot, medications: [...snapshot.medications, medication] }, result: medication };
+  }, { affectsMedications: true, requiresConsent: true, expectedRevision });
+}
+
 export interface UpdateDocumentDiagnosesInput {
   documentId: string;
   expectedAnalysisRevision: number;
@@ -820,8 +889,8 @@ function createMedicationPlanDraft(
   analysis: ClinicalDocument["analysis"],
   now: Date,
 ): MedicationPlanDraft | null {
-  if (analysis?.documentType !== "처방전") return null;
-  const medications = analysis?.documentType === "처방전" ? analysis.medications ?? [] : [];
+  if (!analysis || analysis.documentType === "진단서") return null;
+  const medications = analysis.medications ?? [];
   const timestamp = now.toISOString();
   const id = medicationDraftId(documentId);
   const prescriptionDate = validCalendarDate(analysis?.prescriptionDate);
@@ -922,7 +991,7 @@ export async function registerDocument(scope: CareDataScope, input: RegisterDocu
     const requiresExtractionReview = input.analysis?.extraction?.status !== undefined &&
       input.analysis.extraction.status !== "complete";
     const prescriptionMedications = input.analysis?.medications ?? [];
-    const requiresMedicationReview = input.documentType === "처방전" &&
+    const requiresMedicationReview = input.documentType !== "진단서" &&
       (prescriptionMedications.length === 0 ||
         prescriptionMedications.some((medication) => medication.reviewStatus !== "verified"));
     const draft = input.duplicateAction === "merge"
@@ -1448,7 +1517,7 @@ export function medicationPlansFromPrescription(
   document: Pick<ClinicalDocument, "id" | "documentType" | "uploadedAt" | "analysis">,
   today = dateKeyInSeoul(),
 ): MedicationPlan[] {
-  if (document.documentType !== "처방전") return [];
+  if (document.documentType === "진단서") return [];
   const sourceMedications = document.analysis?.medications ?? [];
   const prescriptionDate = validCalendarDate(document.analysis?.prescriptionDate);
   const totalSupplyDays = validSupplyDays(document.analysis?.totalSupplyDays);

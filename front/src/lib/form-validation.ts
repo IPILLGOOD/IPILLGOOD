@@ -89,9 +89,7 @@ export function buildRecipientProfile(
 
 const allowedDoseResponses = new Set<DoseResponse>([
   "completed",
-  "partial",
   "skipped",
-  "not_yet",
   "unconfirmed",
 ]);
 

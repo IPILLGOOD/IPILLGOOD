@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
+  addMedicationPlan,
   buildPatientQuestionResponse,
   CareConflictError,
   confirmDocumentDiagnoses,
@@ -20,6 +21,7 @@ import {
   saveDailyCheckIn,
   saveDoseResponse,
   saveWellbeingCheckIn,
+  stopMedicationPlan,
   updateRecipientProfile,
   type ActionState,
   type QuestionSetAvailability,
@@ -65,7 +67,7 @@ export async function saveDoseResponseAction(
     const reportSource = String(formData.get("reportSource") ?? "");
     const expectedRevision = Number(formData.get("expectedRevision"));
     if (!/^[^/]{1,256}$/.test(eventId)) return { status: "error", message: "복약 일정을 다시 선택해주세요." };
-    if (!["completed", "partial", "skipped", "not_yet", "unconfirmed"].includes(response)) {
+    if (!["completed", "skipped", "unconfirmed"].includes(response)) {
       return { status: "error", message: "복용 여부를 선택해주세요." };
     }
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
@@ -86,9 +88,10 @@ export async function saveDoseResponseAction(
     const snapshot = await getCareSnapshot(scope);
     const event = snapshot.doseEvents.find((item) => item.id === eventId)
       ?? snapshot.doseEvents.find((item) => item.medicationPlanId === medicationPlanId && item.scheduledAt === scheduledAt);
-    const todayTask = createMedicationSchedule(snapshot.medications, snapshot.doseEvents)
+    const occurrenceDate = new Date(scheduledAt);
+    const scheduledTask = Number.isNaN(occurrenceDate.getTime()) ? undefined : createMedicationSchedule(snapshot.medications, snapshot.doseEvents, occurrenceDate)
       .find((task) => task.medicationPlanId === medicationPlanId && task.scheduledAt === scheduledAt);
-    const occurrence = event ?? todayTask;
+    const occurrence = event ?? scheduledTask;
     if (!occurrence || dateKeyInSeoul(occurrence.scheduledAt) > dateKeyInSeoul()) {
       return { status: "error", message: "오늘 또는 지난 복약 일정만 응답할 수 있어요." };
     }
@@ -97,7 +100,7 @@ export async function saveDoseResponseAction(
       doseResponse: {
         medicationPlanId: occurrence.medicationPlanId,
         scheduledAt: occurrence.scheduledAt,
-        response: response as "completed" | "partial" | "skipped" | "not_yet" | "unconfirmed",
+        response: response as "completed" | "skipped" | "unconfirmed",
       },
       actorId: `${session.provider}:${session.id}`,
       ...source,
@@ -424,4 +427,45 @@ export async function recoverCheckInQuestions(): Promise<QuestionSetAvailability
   } catch {
     return { status: "unavailable", message: "질문을 불러오지 못했어요. 잠시 후 다시 시도해 주세요." };
   }
+}
+
+export async function stopMedicationAction(formData: FormData) {
+  const guard = await demoWriteGuard();
+  if (guard) throw new Error(guard.message);
+  const session = await getSession();
+  if (!session) throw new Error("로그인 정보가 만료되었어요.");
+  const medicationPlanId = String(formData.get("medicationPlanId") ?? "");
+  const expectedRevision = Number(formData.get("expectedRevision"));
+  await stopMedicationPlan(
+    careScopeFor(session),
+    medicationPlanId,
+    Number.isSafeInteger(expectedRevision) ? expectedRevision : undefined,
+  );
+  revalidatePath("/medications");
+  revalidatePath("/dashboard");
+  revalidatePath("/today");
+}
+
+export async function addMedicationAction(formData: FormData) {
+  const guard = await demoWriteGuard();
+  if (guard) throw new Error(guard.message);
+  const session = await getSession();
+  if (!session) throw new Error("로그인 정보가 만료되었어요.");
+  const expectedRevision = Number(formData.get("expectedRevision"));
+  await addMedicationPlan(careScopeFor(session), {
+    itemSeq: String(formData.get("itemSeq") ?? ""),
+    productName: String(formData.get("productName") ?? ""),
+    ingredientName: String(formData.get("ingredientName") ?? ""),
+    categoryPlain: String(formData.get("categoryPlain") ?? ""),
+    doseAmount: String(formData.get("doseAmount") ?? ""),
+    frequency: String(formData.get("frequency") ?? ""),
+    timing: String(formData.get("timing") ?? ""),
+    startDate: String(formData.get("startDate") ?? ""),
+    endDate: String(formData.get("endDate") ?? ""),
+    confirmedBy: session.name,
+  }, Number.isSafeInteger(expectedRevision) ? expectedRevision : undefined);
+  revalidatePath("/medications");
+  revalidatePath("/dashboard");
+  revalidatePath("/today");
+  redirect("/medications");
 }

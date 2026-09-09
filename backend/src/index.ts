@@ -1,4 +1,5 @@
 export {
+  addMedicationPlan,
   confirmDocumentDiagnoses,
   deleteDocument,
   findMedicationDuplicateCandidates,
@@ -22,9 +23,11 @@ export {
   saveDailyCheckIn,
   saveDoseResponse,
   saveWellbeingCheckIn,
+  stopMedicationPlan,
   updateDocumentDiagnoses,
   updateRecipientProfile,
   type CareDataScope,
+  type AddMedicationPlanInput,
   type DocumentImportReview,
   type MedicationDuplicateCandidate,
   type ConfirmMedicationPlanDraftInput,
