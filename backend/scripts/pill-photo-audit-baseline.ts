@@ -47,7 +47,7 @@ export async function captureAuditBaseline(head: string) {
       result: comparePillPhotoFeatures(row.extraction.features, frozen.catalog) });
   }
   const code = await Promise.all(["backend/src/pill-identification.ts", "backend/src/pill-photo-features.ts",
-    "backend/src/pill-photo-ocr.ts", "backend/src/pill-photo-experiment.ts", "backend/src/pill-photo-preprocessing.ts",
+    "backend/src/pill-photo-ocr.ts", "backend/src/pill-photo-experiment.ts", "backend/src/pill-photo-pipeline.ts", "backend/src/pill-photo-preprocessing.ts",
     "backend/src/pill-photo-prompt-profiles.ts", "backend/test-support/pill-photo-score.ts"].map(async path => ({ path, sha256: sha(await readFile(join(ROOT, path))) })));
   const outputRoot = join(ROOT, "verification-artifacts/pill-photo-audit");
   await mkdir(outputRoot, { recursive: true });

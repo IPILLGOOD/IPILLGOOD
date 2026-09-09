@@ -20,6 +20,8 @@ const REQUIRED_CODE = [
   "backend/scripts/pill-photo-trial.ts", "package-lock.json",
 ];
 const PROMPT_CODE = "backend/src/pill-photo-prompt-profiles.ts";
+// Historical trials predate this module; current pairs must bind it identically on both sides.
+const PIPELINE_CODE = "backend/src/pill-photo-pipeline.ts";
 const CHANGEABLE_CODE = new Set([
   "backend/src/pill-photo-experiment.ts", "backend/test-support/pill-photo-trial.ts",
   "backend/scripts/pill-photo-trial.ts", PROMPT_CODE,
@@ -66,7 +68,7 @@ const requestSchema = z.object({
 const conditionSchema = z.object({
   schemaVersion: z.literal("pill-photo-trial-condition.v1"), protocol: z.record(z.string().max(100), z.json()),
   runtime: z.object({ node: tag, platform: tag, arch: tag, sharp: z.record(z.string().max(100), z.string().max(200)) }).strict(),
-  code: z.array(z.object({ path: z.string().max(200), sha256: hash }).strict()).min(REQUIRED_CODE.length).max(REQUIRED_CODE.length + 1),
+  code: z.array(z.object({ path: z.string().max(200), sha256: hash }).strict()).min(REQUIRED_CODE.length).max(REQUIRED_CODE.length + 2),
   fixtureVersion: z.literal("pill-photo-phone-validation-local-2026-09-02-v4"), fixtureContentSha256: hash,
   catalogVersion: tag, catalogSha256: hash,
   cases: z.array(z.object({ id: z.string().regex(/^v4-v0[1-6]$/), sourceSha256: z.tuple([hash, hash]),
@@ -145,7 +147,7 @@ function parseCondition(value: unknown, candidate: boolean) {
     || new Set(condition.cases.flatMap((entry) => entry.sourceSha256)).size !== 12) return fail("case_or_request_order_mismatch");
   const paths = new Set(condition.code.map((file) => file.path));
   if (paths.size !== condition.code.length || REQUIRED_CODE.some((path) => !paths.has(path))
-    || [...paths].some((path) => !REQUIRED_CODE.includes(path) && path !== PROMPT_CODE)
+    || [...paths].some((path) => !REQUIRED_CODE.includes(path) && path !== PROMPT_CODE && path !== PIPELINE_CODE)
     || candidate && !paths.has(PROMPT_CODE)) return fail("code_manifest_invalid");
   verifyRequests(condition, candidate);
   return { condition, conditionSha256: sha256(conditionJson) };
@@ -196,6 +198,7 @@ function compareConditions(baseline: Condition, candidate: Condition) {
   const unchangedFields = ["runtime", "fixtureVersion", "fixtureContentSha256", "catalogVersion", "catalogSha256"] as const;
   if (unchangedFields.some((field) => !isDeepStrictEqual(baseline[field], candidate[field]))) return fail("non_prompt_condition_changed");
   const baselineCode = new Map(baseline.code.map((file) => [file.path, file.sha256]));
+  if (baselineCode.get(PIPELINE_CODE) !== candidate.code.find((file) => file.path === PIPELINE_CODE)?.sha256) return fail("protected_code_changed");
   const codeChanges = candidate.code.flatMap((file) => {
     const previous = baselineCode.get(file.path) ?? null;
     if (previous === file.sha256) return [];

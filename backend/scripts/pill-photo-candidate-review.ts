@@ -32,7 +32,7 @@ const check = (ok: boolean, reason: string) => { if (!ok) throw Error(`candidate
 const CODE = ["backend/scripts/pill-photo-candidate-review.ts", "backend/test-support/pill-photo-candidate-review.ts",
   "backend/test-support/pill-photo-candidate-pool.ts", "backend/test-support/pill-photo-candidate-transport.ts",
   "backend/src/pill-identification.ts", "backend/src/pill-photo-features.ts", "backend/src/pill-photo-ocr.ts",
-  "backend/src/pill-photo-experiment.ts", "backend/src/pill-photo-preprocessing.ts", "backend/src/pill-form-policy.ts",
+  "backend/src/pill-photo-experiment.ts", "backend/src/pill-photo-pipeline.ts", "backend/src/pill-photo-preprocessing.ts", "backend/src/pill-form-policy.ts",
   "backend/src/official-pill-catalog.ts", "backend/test-support/pill-photo-score.ts",
   "backend/test-support/pill-photo-trial.ts", "backend/test-support/pill-photo-diagnostics.ts",
   "backend/test-support/pill-photo-search-diagnostics.ts", "backend/package.json", "package-lock.json"];

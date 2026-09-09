@@ -1,5 +1,28 @@
 # #123 팀원 시작 안내 — 같은 자료로 알약 식별 개발하기
 
+## 직접 찍은 새 사진으로 로컬 테스트
+
+저장소 루트의 `local-pill-photos/input/`에 **같은 온전한 알약의 앞면 `front.jpg`, 뒷면 `back.jpg`**를 저장한다. 서로 다른 JPG/JPEG 두 장이 필요하며 각각 최대 5MiB / 2,500만 화소다. 현재 휴대폰 전처리는 사진 중앙을 확대하므로 알약을 중앙에 두고 촬영한다. HEIC나 PNG는 이번 로컬 입력에서 지원하지 않는다.
+
+```sh
+# 파일과 전처리만 확인: API 키 불필요, 외부 호출 없음
+npm run pill:local
+
+# 실제 Vision 1회 + 앞뒤 OCR 각 1회 → 특징 통합 → 전체 카탈로그 검색
+npm run pill:local -- --live
+
+# 파일명을 바꾸어 반복 테스트 (상대 경로는 항상 저장소 루트 기준)
+npm run pill:local -- --front local-pill-photos/input/a.jpg --back local-pill-photos/input/b.jpg --live
+```
+
+`--live`는 지정한 사진의 가공본을 AI API에 전송한다. `OPENAI_API_KEY` 환경 변수를 사용하며 없으면 `front/.env.local`에서 읽는다. API 호출은 자동 반복·재시도하지 않는다. 새 사진은 기존 평가 목록에 등록할 필요가 없으며, 기존 고정 평가·holdout에는 추가되지 않는다.
+
+Node.js 24를 사용한다. 실행 명령은 현재 Node24 또는 Windows `C:/tools/node-v24.*-win-*/node.exe` 설치본을 찾아 실행한다. 다른 위치라면 `IPILLGOOD_NODE24` 환경 변수로 Node24 실행 파일의 절대 경로를 지정할 수 있다. 기본 Vision/OCR 모델은 최근 실험과 같은 `gpt-5.6-sol`, reasoning은 `low`다. 다른 모델은 `--model`, `--ocr-model`로 명시하며 프론트의 `OPENAI_MODEL` 설정은 기본값을 바꾸지 않는다.
+
+실행마다 `local-pill-photos/results/run-*/result.json`에 원관찰값, OCR, 통합 특징, 후보·보류·재촬영 결과, 요청 수와 소요 시간 및 사용 버전을 저장한다. 터미널에는 상위 후보 5개를 표시하고 전체 반환 후보는 JSON에 남긴다. 사진 파일이나 이전 결과를 덮어쓰지 않으며, 이 폴더 전체는 Git에서 제외한다. API 요청 본문·사진의 base64·인증 키는 결과에 저장하지 않는다.
+
+카탈로그는 Git에 있는 **2026-08-31 기준의 고정 로컬 테스트 스냅샷**이다. 실행마다 무결성을 검증하고 실제 날짜·버전을 표시하며, 최신 데이터라고 취급하거나 자동으로 새 카탈로그를 수집하지 않는다. 후보가 반환되는지 확인하는 도구이며, 알려진 정답이 없는 사진으로는 정답률을 계산하지 않는다. 서비스 배포 API와 UI를 추가하는 작업은 포함하지 않는다.
+
 후속 #141의 첫 작업으로 [휴대폰 validation 단계별 오프라인 진단](pill-photo-diagnostics.md)을 추가했다. `pill:diagnose`는 비공개 v4 validation의 저장 원신호를 재생하며, 기존 공개 fixture `pill:replay`와 달리 개인별 자료가 필요하다. 새 API 호출이나 정확도 개선 완료를 뜻하지 않는다.
 
 ## 1. 준비와 첫 실행

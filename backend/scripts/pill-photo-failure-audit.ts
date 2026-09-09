@@ -36,7 +36,7 @@ async function json(path: string, max = 8 * 1024 * 1024) {
   return { value: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown, sha256: hash(bytes) };
 }
 const currentCodePaths = ["backend/src/pill-identification.ts", "backend/src/pill-photo-features.ts", "backend/src/pill-photo-failures.ts",
-  "backend/src/pill-photo-ocr.ts", "backend/src/pill-photo-experiment.ts", "backend/src/pill-photo-preprocessing.ts",
+  "backend/src/pill-photo-ocr.ts", "backend/src/pill-photo-experiment.ts", "backend/src/pill-photo-pipeline.ts", "backend/src/pill-photo-preprocessing.ts",
   "backend/src/pill-photo-prompt-profiles.ts", "backend/test-support/pill-photo-score.ts", "backend/test-support/pill-photo-diagnostics.ts",
   "backend/test-support/pill-photo-search-diagnostics.ts", "backend/test-support/pill-photo-oracle.ts", "backend/test-support/pill-photo-signal-cross.ts",
   "backend/scripts/pill-photo-failure-audit.ts", "backend/scripts/pill-photo-audit-baseline.ts", "backend/scripts/pill-photo-diagnose.ts"];

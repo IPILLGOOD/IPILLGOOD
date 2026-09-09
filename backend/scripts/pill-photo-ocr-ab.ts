@@ -63,6 +63,7 @@ export async function prepareOcrAb() {
   ]);
   const humanMetadata = z.object({ currentCode: z.array(z.object({ path: z.string(), sha256: hashSchema })) }).parse(humanFile.value);
   const codePaths = [...new Set([...humanMetadata.currentCode.map(file => file.path),
+    "backend/src/pill-photo-pipeline.ts",
     "backend/test-support/pill-photo-ocr-ab.ts", "backend/scripts/pill-photo-ocr-ab.ts",
     "backend/test-support/pill-photo-ocr-ab.test.ts", "backend/test-support/pill-photo-ocr-profiles.test.ts", "backend/package.json", "package-lock.json"])];
   const fingerprintCode = async () => Promise.all(codePaths.map(async path => ({ path,

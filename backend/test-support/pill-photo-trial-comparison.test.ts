@@ -120,6 +120,38 @@ test("두 고정 조건의 3회 결과를 재계산해 사전 기준에 따른 v
   assert.equal(JSON.stringify({ before, after }), original);
 });
 
+test("과거 조건은 공통 파이프라인 지문 없이 읽고 새 조건은 동일한 지문으로 비교한다", () => {
+  const { before, after } = scenario();
+  const historical = comparePillPhotoTrialRuns(before, after);
+  const pipeline = { path: "backend/src/pill-photo-pipeline.ts", sha256: sha256("fixed-pipeline") };
+  for (const run of [before, after]) {
+    run.condition.code.push({ ...pipeline });
+    rehash(run);
+  }
+  const current = comparePillPhotoTrialRuns(before, after);
+  assert.equal(current.decision, historical.decision);
+  assert.deepEqual(current.recall, historical.recall);
+  assert.deepEqual(current.metadata.codeChanges, historical.metadata.codeChanges);
+  assert.equal(assertPillPhotoTrialComparisonConditions(before.condition, after.condition).onlyVisionInstructionsChanged, true);
+});
+
+test("공통 파이프라인 지문의 변경이나 한쪽 조건에서만 추가·삭제되는 것을 거부한다", () => {
+  const pipeline = { path: "backend/src/pill-photo-pipeline.ts", sha256: sha256("fixed-pipeline") };
+  for (const included of ["before", "after"] as const) {
+    const data = scenario();
+    data[included].condition.code.push({ ...pipeline });
+    rehash(data[included]);
+    assert.throws(() => comparePillPhotoTrialRuns(data.before, data.after), /protected_code_changed/);
+    assert.throws(() => assertPillPhotoTrialComparisonConditions(data.before.condition, data.after.condition), /protected_code_changed/);
+  }
+  const { before, after } = scenario();
+  before.condition.code.push({ ...pipeline });
+  after.condition.code.push({ ...pipeline, sha256: sha256("changed-pipeline") });
+  rehash(before); rehash(after);
+  assert.throws(() => comparePillPhotoTrialRuns(before, after), /protected_code_changed/);
+  assert.throws(() => assertPillPhotoTrialComparisonConditions(before.condition, after.condition), /protected_code_changed/);
+});
+
 test("동률, recall5 최저 회차 악화와 recall1 합계 악화를 유망 개선으로 선택하지 않는다", () => {
   assert.equal(comparePillPhotoTrialRuns(makeRun(false, [6, 6, 6]), makeRun(true, [6, 6, 6])).decision, "no_clear_gain");
   const minimum = comparePillPhotoTrialRuns(makeRun(false, [5, 5, 5]), makeRun(true, [1, 1, 6]));

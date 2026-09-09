@@ -1,5 +1,5 @@
-// Deterministic preprocessing for reviewed public evaluation images only.
-// External-transfer callers must still enforce their own fixed source allowlist before using these buffers.
+// Deterministic preprocessing for reviewed experiments and explicitly selected local phone photos.
+// Reviewed entry points enforce their own fixed source allowlists before using these buffers.
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 
@@ -238,6 +238,14 @@ export async function prepareValidatedPhonePillPhotoVariants(
     || !/^[a-f0-9]{64}$/.test(expected.sha256)
     || input.length !== expected.bytes || sha256(input) !== expected.sha256) {
     throw new Error("unreviewed_photo");
+  }
+  return preparePhonePillPhotoVariants(input);
+}
+
+/** Content-validated JPEG transform shared with local file tests; never transmits or registers an image. */
+export async function preparePhonePillPhotoVariants(input: Uint8Array): Promise<PillPhonePhotoPreprocessingVariants> {
+  if (!(input instanceof Uint8Array) || input.length < 1 || input.length > MAX_INPUT_BYTES) {
+    throw new Error("invalid_photo");
   }
   const source = sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" });
   const metadata = await source.metadata();

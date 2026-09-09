@@ -30,7 +30,7 @@ async function json(path: string, limit = 1024 * 1024) {
   return { value: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown, sha256: sha(bytes) };
 }
 const CODE = ["backend/src/pill-identification.ts", "backend/src/pill-photo-features.ts", "backend/src/pill-photo-ocr.ts",
-  "backend/src/pill-photo-preprocessing.ts", "backend/src/pill-photo-prompt-profiles.ts", "backend/src/pill-photo-experiment.ts",
+  "backend/src/pill-photo-preprocessing.ts", "backend/src/pill-photo-prompt-profiles.ts", "backend/src/pill-photo-experiment.ts", "backend/src/pill-photo-pipeline.ts",
   "backend/src/official-pill-catalog.ts", "backend/src/pill-form-policy.ts", "backend/test-support/pill-photo-score.ts",
   "backend/test-support/pill-photo-lexicon.ts", "backend/scripts/pill-photo-lexicon.ts"];
 async function fingerprints() {

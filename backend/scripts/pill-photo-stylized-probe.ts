@@ -15,6 +15,7 @@ import { serializePillProfile } from "./profile-pill-catalog.ts";
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const OUTPUT = join(ROOT, "verification-artifacts/pill-photo-stylized-probe");
 const FILES = ["backend/scripts/pill-photo-stylized-probe.ts", "backend/test-support/pill-photo-stylized-probe.ts",
+  "backend/src/pill-photo-pipeline.ts",
   "backend/test-support/pill-photo-vision-fields.ts", "backend/scripts/pill-photo-signal-cross.ts",
   "backend/test-support/pill-photo-signal-cross.ts", "backend/scripts/pill-photo-diagnose.ts", "backend/test-support/pill-photo-diagnostics.ts",
   "backend/test-support/pill-photo-trial-comparison.ts", "backend/scripts/pill-photo-trial-compare.ts"];
