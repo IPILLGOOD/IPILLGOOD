@@ -1,4 +1,6 @@
 export {
+  addMedicationPlan,
+  updateMedicationExplanation,
   confirmDocumentDiagnoses,
   deleteDocument,
   findMedicationDuplicateCandidates,
@@ -25,6 +27,8 @@ export {
   updateDocumentDiagnoses,
   updateRecipientProfile,
   type CareDataScope,
+  type AddMedicationPlanInput,
+  type UpdateMedicationExplanationInput,
   type DocumentImportReview,
   type MedicationDuplicateCandidate,
   type ConfirmMedicationPlanDraftInput,
@@ -142,6 +146,7 @@ export {
   type OfficialDiseaseItem,
   type OfficialDiseaseLookupResult,
 } from "./official-disease-api";
+export { simplifyOfficialMedicationSearchItemsWithOpenAI } from "./ai/openai-medical";
 export {
   fetchOfficialPillPage,
   parseOfficialPillPage,

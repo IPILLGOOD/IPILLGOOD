@@ -50,7 +50,7 @@ function copyFormData(source: FormData) {
 
 export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) {
   const router = useRouter();
-  const [documentType, setDocumentType] = useState<ClinicalDocumentType>("처방전");
+  const [documentType, setDocumentType] = useState<ClinicalDocumentType>("처방전 또는 약봉투");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -306,7 +306,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         <fieldset className="document-type-field">
           <legend>문서 종류</legend>
           <div className="document-type-options">
-            {(["처방전", "진단서"] as const).map((type) => (
+            {(["처방전 또는 약봉투", "진단서"] as const).map((type) => (
               <label className="document-type-option" key={type}>
                 <input
                   name="documentType"
@@ -319,7 +319,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
                 <span>
                   <strong>{type}</strong>
                   <small>
-                    {type === "처방전"
+                    {type !== "진단서"
                       ? "약 이름과 먹는 방법을 정리해요"
                       : "확인된 상태와 다음 계획을 정리해요"}
                   </small>
@@ -328,6 +328,12 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
             ))}
           </div>
         </fieldset>
+
+        {documentType !== "진단서" ? <div className="field">
+          <label htmlFor="diagnosis-name">병명 (선택)</label>
+          <input id="diagnosis-name" name="diagnosisName" type="text" maxLength={100} placeholder="예: 고혈압" autoComplete="off" disabled={pending} />
+          <p className="field-hint">문서에서 병명을 추측하지 않아요. 알고 있는 병명이 있을 때 직접 입력해주세요.</p>
+        </div> : null}
 
         <label className="upload-dropzone" htmlFor="document">
           {previewUrl ? (
@@ -348,6 +354,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
           )}
           <input
             key={documentType}
+            className="sr-only"
             id="document"
             name="document"
             type="file"
@@ -403,7 +410,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
             <FlaskConical size={18} aria-hidden="true" />
             {documentType === "진단서"
               ? "비식별 샘플 진단서로 체험"
-              : "비식별 샘플 처방전으로 체험"}
+              : "비식별 샘플 처방전·약봉투로 체험"}
           </button>
         </>
       ) : null}

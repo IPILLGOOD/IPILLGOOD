@@ -34,6 +34,11 @@
       "simple": { "limit": 5, "period": 60 }
     },
     {
+      "name": "RATE_LIMIT_NUTRITION",
+      "namespace_id": "5807",
+      "simple": { "limit": 6, "period": 60 }
+    },
+    {
       "name": "RATE_LIMIT_SEARCH",
       "namespace_id": "5803",
       "simple": { "limit": 30, "period": 60 }

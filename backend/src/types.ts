@@ -520,7 +520,7 @@ export interface ClinicalDocument {
   medicationDraftId?: string;
 }
 
-export type ClinicalDocumentType = "처방전" | "진단서";
+export type ClinicalDocumentType = "처방전 또는 약봉투" | "처방전" | "약봉투" | "진단서";
 
 export interface DiseaseReference {
   title: string;

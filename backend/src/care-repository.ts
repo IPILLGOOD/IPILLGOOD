@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import demoSeed from "./data/demo-seed.json" with { type: "json" };
 import { assertCareAccountActive } from "./account-lifecycle.ts";
 import { assertHealthDataConsentConfirmed } from "./health-data-consent.ts";
@@ -23,16 +24,22 @@ import type {
 
 import { getAdminFirestore } from "./firebase-admin.ts";
 import { isEphemeralDemoSessionActive } from "./demo-session.ts";
-import type { FirestoreLike, TransactionLike, DocumentReferenceLike } from "./firestore-rest.ts";
+import type {
+  FirestoreLike,
+  TransactionLike,
+  DocumentReferenceLike,
+} from "./firestore-rest.ts";
 import { stableJson } from "./stable-json.ts";
 import { conditionFromDiagnosis } from "./nutrition.ts";
 import { DocumentAnalysisCancelledError } from "./document-analysis-jobs.ts";
 import { normalizeMedicationRecurrence } from "./medication-schedule.ts";
-import { applyDoseResponseObservation, projectDoseObservations, projectSymptomObservations, type DoseResponseObservationInput } from "./observations.ts";
 import {
-  addCalendarDays,
-  dateKeyInSeoul,
-} from "./dates.ts";
+  applyDoseResponseObservation,
+  projectDoseObservations,
+  projectSymptomObservations,
+  type DoseResponseObservationInput,
+} from "./observations.ts";
+import { addCalendarDays, dateKeyInSeoul } from "./dates.ts";
 import {
   applyDailyCheckInToSnapshot,
   byDateDescending,
@@ -80,7 +87,9 @@ const DOCUMENT_DERIVED_COLLECTIONS = [
 ] as const;
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function hasSourceDocument(row: StoredRow, documentId: string) {
@@ -100,10 +109,14 @@ function patientAnswerLabel(
 ) {
   if (answer === null) return undefined;
   const values = Array.isArray(answer) ? answer : [answer];
-  return values.map((value) => {
-    const text = String(value);
-    return question.options.find((option) => option.value === text)?.label ?? text;
-  }).join(", ");
+  return values
+    .map((value) => {
+      const text = String(value);
+      return (
+        question.options.find((option) => option.value === text)?.label ?? text
+      );
+    })
+    .join(", ");
 }
 
 export function projectClinicianQuestions(
@@ -115,18 +128,20 @@ export function projectClinicianQuestions(
   );
   return questionSet.questions.map((question) => {
     const responseItem = answers.get(question.question_id);
-    const answer = responseItem && !responseItem.skipped
-      ? patientAnswerLabel(question, responseItem.answer)
-      : undefined;
+    const answer =
+      responseItem && !responseItem.skipped
+        ? patientAnswerLabel(question, responseItem.answer)
+        : undefined;
     const answered = answer !== undefined;
     return {
       id: `${questionSet.question_set_id}:${question.question_id}`,
       priority: ["urgent", "blocking", "high"].includes(question.priority)
         ? "today"
         : "next_visit",
-      question: questionSet.answerer === "recipient"
-        ? question.display.recipient_text
-        : question.display.caregiver_text,
+      question:
+        questionSet.answerer === "recipient"
+          ? question.display.recipient_text
+          : question.display.caregiver_text,
       reason: question.display.helper_text,
       status: answered ? "answered" : "open",
       ...(answer ? { answer } : {}),
@@ -148,20 +163,29 @@ async function clinicianQuestionsFromActualAccount(
   scope: CareDataScope,
   fallback: ClinicianQuestion[],
 ) {
-  const recipient = firestore.collection("careRecipients").doc(scope.recipientId);
-  const questionSets = await recipient.collection("questionSets")
+  const recipient = firestore
+    .collection("careRecipients")
+    .doc(scope.recipientId);
+  const questionSets = await recipient
+    .collection("questionSets")
     .orderBy("generated_at", "desc")
     .limit(1)
     .get();
-  const questionSet = questionSets.docs[0]?.data() as PatientQuestionSet | undefined;
-  if (!questionSet || questionSet.subject_ref !== scope.recipientId) return fallback;
-  const responses = await recipient.collection("questionResponses")
+  const questionSet = questionSets.docs[0]?.data() as
+    | PatientQuestionSet
+    | undefined;
+  if (!questionSet || questionSet.subject_ref !== scope.recipientId)
+    return fallback;
+  const responses = await recipient
+    .collection("questionResponses")
     .where("question_set_id", "==", questionSet.question_set_id)
     .where("subject_ref", "==", scope.recipientId)
     .orderBy("answered_at", "desc")
     .limit(1)
     .get();
-  const response = responses.docs[0]?.data() as PatientQuestionResponse | undefined;
+  const response = responses.docs[0]?.data() as
+    | PatientQuestionResponse
+    | undefined;
   return projectClinicianQuestions(questionSet, response);
 }
 
@@ -171,10 +195,25 @@ async function assertActiveDemoScope(
 ) {
   await assertCareAccountActive(firestore, scope.recipientId);
   if (scope.connection) {
-    const document = await firestore.collection("careConnections").doc(scope.recipientId).get();
-    const connection = document.data() as { status?: string; connectionId?: string; sessionVersion?: string; expiresAt?: string } | undefined;
-    if (!connection || connection.status !== "active" || connection.connectionId !== scope.connection.connectionId ||
-        connection.sessionVersion !== scope.connection.sessionVersion || Date.parse(connection.expiresAt ?? "") <= Date.now()) {
+    const document = await firestore
+      .collection("careConnections")
+      .doc(scope.recipientId)
+      .get();
+    const connection = document.data() as
+      | {
+          status?: string;
+          connectionId?: string;
+          sessionVersion?: string;
+          expiresAt?: string;
+        }
+      | undefined;
+    if (
+      !connection ||
+      connection.status !== "active" ||
+      connection.connectionId !== scope.connection.connectionId ||
+      connection.sessionVersion !== scope.connection.sessionVersion ||
+      Date.parse(connection.expiresAt ?? "") <= Date.now()
+    ) {
       throw new Error("연결 사용자 세션이 만료되었어요.");
     }
   }
@@ -239,7 +278,10 @@ export function createInitialCareSnapshot(scope: CareDataScope): CareSnapshot {
   };
 }
 
-function fromStoredReadModel(model: StoredCareReadModel, scope: CareDataScope): CareSnapshot {
+function fromStoredReadModel(
+  model: StoredCareReadModel,
+  scope: CareDataScope,
+): CareSnapshot {
   const fallback = scope.useDemoData ? seed : createInitialCareSnapshot(scope);
   const medications = model.medications ?? fallback.medications;
   return {
@@ -249,7 +291,8 @@ function fromStoredReadModel(model: StoredCareReadModel, scope: CareDataScope): 
           ...medication,
           categoryPlain:
             medication.categoryPlain ??
-            seed.medications.find((item) => item.id === medication.id)?.categoryPlain ??
+            seed.medications.find((item) => item.id === medication.id)
+              ?.categoryPlain ??
             "분류 확인 필요",
         }))
       : medications,
@@ -275,8 +318,20 @@ async function canonicalReadModel(
   firestore: FirestoreLike,
   scope: CareDataScope,
 ): Promise<StoredCareReadModel> {
-  const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
-  const [recipient, medications, doses, symptoms, doseObservations, symptomObservations, documents, questions, checkIn] = await Promise.all([
+  const recipientRef = firestore
+    .collection("careRecipients")
+    .doc(scope.recipientId);
+  const [
+    recipient,
+    medications,
+    doses,
+    symptoms,
+    doseObservations,
+    symptomObservations,
+    documents,
+    questions,
+    checkIn,
+  ] = await Promise.all([
     tx.get(recipientRef),
     tx.get(recipientRef.collection("medicationPlans")),
     tx.get(recipientRef.collection("doseEvents")),
@@ -285,14 +340,27 @@ async function canonicalReadModel(
     tx.get(recipientRef.collection("symptomObservations")),
     tx.get(recipientRef.collection("clinicalDocuments")),
     tx.get(recipientRef.collection("clinicianQuestions")),
-    tx.get(recipientRef.collection("dailyCheckIns").doc(dateKeyInSeoul(new Date()))),
+    tx.get(
+      recipientRef.collection("dailyCheckIns").doc(dateKeyInSeoul(new Date())),
+    ),
   ]);
   if (!recipient.exists) {
     // Never replace an orphaned account with an apparently empty account.
-    if ([medications, doses, symptoms, doseObservations, symptomObservations, documents, questions].some((rows) => rows.docs.length)) {
+    if (
+      [
+        medications,
+        doses,
+        symptoms,
+        doseObservations,
+        symptomObservations,
+        documents,
+        questions,
+      ].some((rows) => rows.docs.length)
+    ) {
       throw new Error("돌봄 데이터 원본 복구가 필요합니다.");
     }
-    if (scope.useDemoData) throw new Error("데모 세션 데이터가 만료되었습니다.");
+    if (scope.useDemoData)
+      throw new Error("데모 세션 데이터가 만료되었습니다.");
     return toStoredReadModel(createInitialCareSnapshot(scope));
   }
   return toStoredReadModel({
@@ -307,58 +375,109 @@ async function canonicalReadModel(
       symptoms.docs.map((doc) => doc.data() as SymptomEvent),
     ),
     documents: documents.docs.map((doc) => doc.data() as ClinicalDocument),
-    clinicianQuestions: questions.docs.map((doc) => doc.data() as ClinicianQuestion),
-    todayCheckIn: checkIn.exists ? checkIn.data() as DailyCheckIn : null,
+    clinicianQuestions: questions.docs.map(
+      (doc) => doc.data() as ClinicianQuestion,
+    ),
+    todayCheckIn: checkIn.exists ? (checkIn.data() as DailyCheckIn) : null,
     dataSource: "firestore",
     revision: 0,
   });
 }
 
-async function assertTransactionScope(tx: TransactionLike, firestore: FirestoreLike, scope: CareDataScope) {
+async function assertTransactionScope(
+  tx: TransactionLike,
+  firestore: FirestoreLike,
+  scope: CareDataScope,
+) {
   await assertCareAccountActive(firestore, scope.recipientId, tx);
   if (scope.connection) {
-    const document = await tx.get(firestore.collection("careConnections").doc(scope.recipientId));
-    const connection = document.data() as { status?: string; connectionId?: string; sessionVersion?: string; expiresAt?: string } | undefined;
-    if (!connection || connection.status !== "active" || connection.connectionId !== scope.connection.connectionId ||
-        connection.sessionVersion !== scope.connection.sessionVersion || Date.parse(connection.expiresAt ?? "") <= Date.now()) {
+    const document = await tx.get(
+      firestore.collection("careConnections").doc(scope.recipientId),
+    );
+    const connection = document.data() as
+      | {
+          status?: string;
+          connectionId?: string;
+          sessionVersion?: string;
+          expiresAt?: string;
+        }
+      | undefined;
+    if (
+      !connection ||
+      connection.status !== "active" ||
+      connection.connectionId !== scope.connection.connectionId ||
+      connection.sessionVersion !== scope.connection.sessionVersion ||
+      Date.parse(connection.expiresAt ?? "") <= Date.now()
+    ) {
       throw new Error("연결 사용자 세션이 만료되었어요.");
     }
   }
   if (!scope.useDemoData) return;
-  const doc = await tx.get(firestore.collection("demoSessions").doc(scope.recipientId));
-  const session = doc.data() as { status?: string; expiresAt?: string } | undefined;
-  if (!session || session.status !== "active" || Date.parse(session.expiresAt ?? "") <= Date.now()) {
+  const doc = await tx.get(
+    firestore.collection("demoSessions").doc(scope.recipientId),
+  );
+  const session = doc.data() as
+    | { status?: string; expiresAt?: string }
+    | undefined;
+  if (
+    !session ||
+    session.status !== "active" ||
+    Date.parse(session.expiresAt ?? "") <= Date.now()
+  ) {
     throw new Error("데모 세션이 만료되었거나 종료되었습니다.");
   }
 }
 
-async function getOrCreateReadModel(firestore: FirestoreLike, scope: CareDataScope) {
+async function getOrCreateReadModel(
+  firestore: FirestoreLike,
+  scope: CareDataScope,
+) {
   assertValidScope(scope);
   await assertActiveDemoScope(scope, firestore);
-  const isComplete = (model: StoredCareReadModel) => model.recipient?.id === scope.recipientId &&
-    [model.medications, model.doseEvents, model.symptomEvents, model.documents, model.clinicianQuestions].every(Array.isArray);
+  const isComplete = (model: StoredCareReadModel) =>
+    model.recipient?.id === scope.recipientId &&
+    [
+      model.medications,
+      model.doseEvents,
+      model.symptomEvents,
+      model.documents,
+      model.clinicianQuestions,
+    ].every(Array.isArray);
   const cached = await readModelRef(firestore, scope.recipientId).get();
-  if (cached.exists && isComplete(cached.data() as StoredCareReadModel)) return cached.data() as StoredCareReadModel;
+  if (cached.exists && isComplete(cached.data() as StoredCareReadModel))
+    return cached.data() as StoredCareReadModel;
   return firestore.runTransaction(async (tx) => {
     await assertTransactionScope(tx, firestore, scope);
     const ref = readModelRef(firestore, scope.recipientId);
     const existing = await tx.get(ref);
-    if (existing.exists && isComplete(existing.data() as StoredCareReadModel)) return existing.data() as StoredCareReadModel;
+    if (existing.exists && isComplete(existing.data() as StoredCareReadModel))
+      return existing.data() as StoredCareReadModel;
     const model = await canonicalReadModel(tx, firestore, scope);
-    const recipientRef = firestore.collection("careRecipients").doc(scope.recipientId);
+    const recipientRef = firestore
+      .collection("careRecipients")
+      .doc(scope.recipientId);
     const recipient = await tx.get(recipientRef);
     if (!recipient.exists) tx.create(recipientRef, model.recipient);
-    if (existing.exists) tx.set(ref, { ...model, revision: ((existing.data() as StoredCareReadModel).revision ?? 0) + 1 });
+    if (existing.exists)
+      tx.set(ref, {
+        ...model,
+        revision: ((existing.data() as StoredCareReadModel).revision ?? 0) + 1,
+      });
     else tx.create(ref, { ...model, revision: 0 });
     return model;
   });
 }
 
-export async function getCareSnapshot(scope: CareDataScope): Promise<CareSnapshot> {
+export async function getCareSnapshot(
+  scope: CareDataScope,
+): Promise<CareSnapshot> {
   assertValidScope(scope);
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   // Storage failures are failures, never authoritative empty snapshots.
-  const snapshot = fromStoredReadModel(await getOrCreateReadModel(firestore, scope), scope);
+  const snapshot = fromStoredReadModel(
+    await getOrCreateReadModel(firestore, scope),
+    scope,
+  );
   return {
     ...snapshot,
     clinicianQuestions: await clinicianQuestionsFromActualAccount(
@@ -371,7 +490,7 @@ export async function getCareSnapshot(scope: CareDataScope): Promise<CareSnapsho
 
 export async function getCareRevision(scope: CareDataScope): Promise<number> {
   assertValidScope(scope);
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   return (await getOrCreateReadModel(firestore, scope)).revision ?? 0;
 }
 
@@ -380,9 +499,11 @@ export async function getCareRevision(scope: CareDataScope): Promise<number> {
  * recipient authorization in the same request. Missing models fall back to the
  * fully validating creation path; this must never be used as cross-request auth cache.
  */
-export async function getCareRevisionForAuthorizedRequest(scope: CareDataScope): Promise<number> {
+export async function getCareRevisionForAuthorizedRequest(
+  scope: CareDataScope,
+): Promise<number> {
   assertValidScope(scope);
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   const model = await readModelRef(firestore, scope.recipientId).get();
   if (!model.exists) return getCareRevision({ ...scope, firestore });
   return (model.data() as StoredCareReadModel).revision ?? 0;
@@ -395,25 +516,41 @@ export class CareConflictError extends Error {
   }
 }
 
-export async function rebuildCareReadModel(scope: CareDataScope, options: { apply?: boolean } = {}) {
+export async function rebuildCareReadModel(
+  scope: CareDataScope,
+  options: { apply?: boolean } = {},
+) {
   assertValidScope(scope);
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   return firestore.runTransaction(async (tx) => {
     await assertTransactionScope(tx, firestore, scope);
     const ref = readModelRef(firestore, scope.recipientId);
     const old = await tx.get(ref);
-    const account = await tx.get(firestore.collection("careRecipients").doc(scope.recipientId));
-    if (!account.exists) throw new Error("기존 계정의 원본 데이터가 있어야 복구할 수 있습니다.");
+    const account = await tx.get(
+      firestore.collection("careRecipients").doc(scope.recipientId),
+    );
+    if (!account.exists)
+      throw new Error("기존 계정의 원본 데이터가 있어야 복구할 수 있습니다.");
     const canonical = await canonicalReadModel(tx, firestore, scope);
     const previous = old.data() as StoredCareReadModel | undefined;
-    const records = (items: Array<{ id: string }> | undefined) => Array.isArray(items) ? [...items].sort((a, b) => a.id.localeCompare(b.id)) : null;
-    const comparable = (model: StoredCareReadModel | undefined) => model && stableJson({
-      recipient: model.recipient, medications: records(model.medications),
-      documents: records(model.documents), doseEvents: records(model.doseEvents), symptomEvents: records(model.symptomEvents),
-      clinicianQuestions: records(model.clinicianQuestions), todayCheckIn: model.todayCheckIn,
-    });
+    const records = (items: Array<{ id: string }> | undefined) =>
+      Array.isArray(items)
+        ? [...items].sort((a, b) => a.id.localeCompare(b.id))
+        : null;
+    const comparable = (model: StoredCareReadModel | undefined) =>
+      model &&
+      stableJson({
+        recipient: model.recipient,
+        medications: records(model.medications),
+        documents: records(model.documents),
+        doseEvents: records(model.doseEvents),
+        symptomEvents: records(model.symptomEvents),
+        clinicianQuestions: records(model.clinicianQuestions),
+        todayCheckIn: model.todayCheckIn,
+      });
     const repaired = comparable(previous) !== comparable(canonical);
-    if (repaired && options.apply !== false) tx.set(ref, { ...canonical, revision: (previous?.revision ?? 0) + 1 });
+    if (repaired && options.apply !== false)
+      tx.set(ref, { ...canonical, revision: (previous?.revision ?? 0) + 1 });
     return { repaired, snapshot: fromStoredReadModel(canonical, scope) };
   });
 }
@@ -421,14 +558,26 @@ export async function rebuildCareReadModel(scope: CareDataScope, options: { appl
 async function mutateCare<T>(
   scope: CareDataScope,
   currentSnapshot: CareSnapshot | undefined,
-  change: (tx: TransactionLike, snapshot: CareSnapshot, recipientRef: DocumentReferenceLike) => Promise<{ snapshot: CareSnapshot; result: T; unchanged?: boolean }>,
-  options: { affectsMedications?: boolean; requiresConsent?: boolean; expectedRevision?: number } = {},
+  change: (
+    tx: TransactionLike,
+    snapshot: CareSnapshot,
+    recipientRef: DocumentReferenceLike,
+  ) => Promise<{ snapshot: CareSnapshot; result: T; unchanged?: boolean }>,
+  options: {
+    affectsMedications?: boolean;
+    requiresConsent?: boolean;
+    expectedRevision?: number;
+  } = {},
 ): Promise<T> {
   assertValidScope(scope);
-  if (currentSnapshot && (currentSnapshot.dataSource !== "firestore" || currentSnapshot.recipient.id !== scope.recipientId)) {
+  if (
+    currentSnapshot &&
+    (currentSnapshot.dataSource !== "firestore" ||
+      currentSnapshot.recipient.id !== scope.recipientId)
+  ) {
     throw new Error("유효한 서버 데이터를 확인한 후 다시 시도해 주세요.");
   }
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   await getOrCreateReadModel(firestore, scope);
   return firestore.runTransaction(async (tx) => {
     await assertTransactionScope(tx, firestore, scope);
@@ -436,36 +585,251 @@ async function mutateCare<T>(
     const document = await tx.get(modelRef);
     if (!document.exists) throw new Error("돌봄 데이터를 다시 불러와 주세요.");
     const stored = document.data() as StoredCareReadModel;
-    if (options.expectedRevision !== undefined && (stored.revision ?? 0) !== options.expectedRevision) {
+    if (
+      options.expectedRevision !== undefined &&
+      (stored.revision ?? 0) !== options.expectedRevision
+    ) {
       throw new CareConflictError();
     }
     const subscriptions = options.affectsMedications
-      ? await tx.get(firestore.collection("pushSubscriptions").where("recipientId", "==", scope.recipientId)) : null;
+      ? await tx.get(
+          firestore
+            .collection("pushSubscriptions")
+            .where("recipientId", "==", scope.recipientId),
+        )
+      : null;
     if (options.requiresConsent) {
       await assertHealthDataConsentConfirmed(firestore, scope.recipientId, tx);
     }
-    const update = await change(tx, fromStoredReadModel(stored, scope), firestore.collection("careRecipients").doc(scope.recipientId));
+    const update = await change(
+      tx,
+      fromStoredReadModel(stored, scope),
+      firestore.collection("careRecipients").doc(scope.recipientId),
+    );
     if (update.unchanged) return update.result;
     const revision = (stored.revision ?? 0) + 1;
     tx.set(modelRef, { ...toStoredReadModel(update.snapshot), revision });
-    if (options.affectsMedications && subscriptions?.docs.some((doc) => (doc.data() as { active?: boolean }).active)) {
+    if (
+      options.affectsMedications &&
+      subscriptions?.docs.some(
+        (doc) => (doc.data() as { active?: boolean }).active,
+      )
+    ) {
       // Durable intent and canonical plan updates commit together. No subscription => no reminder writes.
       const now = new Date().toISOString();
-      tx.set(firestore.collection("medicationReminderSync").doc(scope.recipientId), {
-        recipientId: scope.recipientId, desiredRevision: revision, status: "pending",
-        attempts: 0, nextAttemptAt: now, queuedAt: now, errorCode: null, updatedAt: now,
-      }, { merge: true });
+      tx.set(
+        firestore.collection("medicationReminderSync").doc(scope.recipientId),
+        {
+          recipientId: scope.recipientId,
+          desiredRevision: revision,
+          status: "pending",
+          attempts: 0,
+          nextAttemptAt: now,
+          queuedAt: now,
+          errorCode: null,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
     }
     return update.result;
   });
 }
 
-export async function updateRecipientProfile(scope: CareDataScope, recipient: CareRecipient, currentSnapshot?: CareSnapshot, expectedRevision?: number) {
-  if (recipient.id !== scope.recipientId) throw new Error("프로필 소유자가 일치하지 않습니다.");
-  await mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
-    tx.set(ref, recipient);
-    return { snapshot: { ...snapshot, recipient }, result: undefined };
-  }, { expectedRevision });
+export async function updateRecipientProfile(
+  scope: CareDataScope,
+  recipient: CareRecipient,
+  currentSnapshot?: CareSnapshot,
+  expectedRevision?: number,
+) {
+  if (recipient.id !== scope.recipientId)
+    throw new Error("프로필 소유자가 일치하지 않습니다.");
+  await mutateCare(
+    scope,
+    currentSnapshot,
+    async (tx, snapshot, ref) => {
+      tx.set(ref, recipient);
+      return { snapshot: { ...snapshot, recipient }, result: undefined };
+    },
+    { expectedRevision },
+  );
+}
+
+export interface AddMedicationPlanInput {
+  itemSeq: string;
+  productName: string;
+  ingredientName: string;
+  categoryPlain?: string;
+  purposePlain: string;
+  descriptionPlain: string;
+  commonEffects: string[];
+  doseAmount: string;
+  frequency: string;
+  timing: string;
+  startDate: string;
+  endDate?: string;
+  confirmedBy: string;
+}
+
+export async function addMedicationPlan(
+  scope: CareDataScope,
+  input: AddMedicationPlanInput,
+  expectedRevision?: number,
+) {
+  const itemSeq = input.itemSeq.trim();
+  const productName = input.productName.trim();
+  const ingredientName = input.ingredientName.trim() || "성분 확인 필요";
+  const doseAmount = input.doseAmount.trim();
+  const frequency = input.frequency.trim();
+  const timing = input.timing.trim();
+  const purposePlain = input.purposePlain.trim();
+  const descriptionPlain = input.descriptionPlain.trim();
+  const commonEffects = input.commonEffects
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const startDate = validCalendarDate(input.startDate);
+  const endDate = input.endDate?.trim()
+    ? validCalendarDate(input.endDate)
+    : undefined;
+  if (!/^\d{6,12}$/.test(itemSeq) || !productName || productName.length > 200)
+    throw new Error("식약처에서 확인된 약을 다시 선택해주세요.");
+  if (
+    !doseAmount ||
+    !frequency ||
+    !timing ||
+    [doseAmount, frequency, timing].some((value) => value.length > 100)
+  )
+    throw new Error("복용량, 횟수와 복용 시점을 입력해주세요.");
+  if (
+    !purposePlain ||
+    !descriptionPlain ||
+    purposePlain.length > 500 ||
+    descriptionPlain.length > 1_500
+  )
+    throw new Error("약의 쉬운 설명을 다시 불러와주세요.");
+  if (
+    commonEffects.length > 3 ||
+    commonEffects.some((item) => item.length > 300)
+  )
+    throw new Error("흔히 느낄 수 있는 변화 설명을 다시 불러와주세요.");
+  if (!startDate || startDate !== input.startDate)
+    throw new Error("복용 시작일을 확인해주세요.");
+  if (input.endDate?.trim() && (!endDate || endDate < startDate))
+    throw new Error("복용 종료일을 확인해주세요.");
+  if (!input.confirmedBy.trim())
+    throw new Error("등록 사용자를 확인할 수 없어요.");
+  return mutateCare(
+    scope,
+    undefined,
+    async (tx, snapshot, ref) => {
+      if (
+        snapshot.medications.some(
+          (item) => item.status === "active" && item.itemSeq === itemSeq,
+        )
+      )
+        throw new Error("이미 복용 중인 약이에요.");
+      const timestamp = new Date().toISOString();
+      const medication: MedicationPlan = {
+        id: `manual-${itemSeq}-${randomUUID()}`,
+        itemSeq,
+        productName,
+        ingredientName,
+        categoryPlain: input.categoryPlain?.trim() || "분류 확인 필요",
+        purposePlain,
+        descriptionPlain,
+        commonEffects,
+        doseAmount,
+        frequency,
+        recurrence: normalizeMedicationRecurrence(frequency),
+        timing,
+        startDate,
+        ...(endDate ? { endDate } : {}),
+        status: endDate && endDate < dateKeyInSeoul() ? "ended" : "active",
+        isNew: true,
+        sourceLabel: "식약처 공식 정보",
+        watchFor: [],
+        confirmedBy: input.confirmedBy,
+        confirmedAt: timestamp,
+        stateChangedAt: timestamp,
+      };
+      tx.set(ref.collection("medicationPlans").doc(medication.id), medication);
+      return {
+        snapshot: {
+          ...snapshot,
+          medications: [...snapshot.medications, medication],
+        },
+        result: medication,
+      };
+    },
+    { affectsMedications: true, requiresConsent: true, expectedRevision },
+  );
+}
+
+export interface UpdateMedicationExplanationInput {
+  medicationId: string;
+  itemSeq: string;
+  categoryPlain?: string;
+  purposePlain: string;
+  descriptionPlain: string;
+  commonEffects: string[];
+}
+
+export async function updateMedicationExplanation(
+  scope: CareDataScope,
+  input: UpdateMedicationExplanationInput,
+  expectedRevision?: number,
+) {
+  const medicationId = input.medicationId.trim();
+  const itemSeq = input.itemSeq.trim();
+  const purposePlain = input.purposePlain.trim();
+  const descriptionPlain = input.descriptionPlain.trim();
+  const commonEffects = input.commonEffects
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!medicationId || !/^\d{6,12}$/.test(itemSeq))
+    throw new Error("복용약 정보를 다시 확인해주세요.");
+  if (
+    !purposePlain ||
+    !descriptionPlain ||
+    purposePlain.length > 500 ||
+    descriptionPlain.length > 1_500
+  )
+    throw new Error("약의 쉬운 설명을 다시 불러와주세요.");
+  if (
+    commonEffects.length > 3 ||
+    commonEffects.some((item) => item.length > 300)
+  )
+    throw new Error("흔히 느낄 수 있는 변화 설명을 다시 불러와주세요.");
+  return mutateCare(
+    scope,
+    undefined,
+    async (tx, snapshot, ref) => {
+      const medication = snapshot.medications.find(
+        (item) => item.id === medicationId,
+      );
+      if (!medication || medication.itemSeq !== itemSeq)
+        throw new Error("해당 복용약의 공식 품목코드를 확인할 수 없어요.");
+      const updated: MedicationPlan = {
+        ...medication,
+        categoryPlain: input.categoryPlain?.trim() || medication.categoryPlain,
+        purposePlain,
+        descriptionPlain,
+        commonEffects,
+        sourceLabel: "식약처 공식 정보",
+      };
+      tx.set(ref.collection("medicationPlans").doc(updated.id), updated);
+      return {
+        snapshot: {
+          ...snapshot,
+          medications: snapshot.medications.map((item) =>
+            item.id === updated.id ? updated : item,
+          ),
+        },
+        result: updated,
+      };
+    },
+    { requiresConsent: true, expectedRevision },
+  );
 }
 
 export interface UpdateDocumentDiagnosesInput {
@@ -479,9 +843,14 @@ export async function updateDocumentDiagnoses(
   scope: CareDataScope,
   input: UpdateDocumentDiagnosesInput,
 ) {
-  if (!/^[^/]{1,256}$/.test(input.documentId)) throw new Error("올바르지 않은 문서 식별자입니다.");
-  if (!input.updatedBy.trim()) throw new Error("수정 사용자를 확인할 수 없습니다.");
-  if (!Number.isInteger(input.expectedAnalysisRevision) || input.expectedAnalysisRevision < 1) {
+  if (!/^[^/]{1,256}$/.test(input.documentId))
+    throw new Error("올바르지 않은 문서 식별자입니다.");
+  if (!input.updatedBy.trim())
+    throw new Error("수정 사용자를 확인할 수 없습니다.");
+  if (
+    !Number.isInteger(input.expectedAnalysisRevision) ||
+    input.expectedAnalysisRevision < 1
+  ) {
     throw new Error("진단 정보 revision을 확인해주세요.");
   }
   if (input.diagnoses.length === 0 || input.diagnoses.length > 20) {
@@ -489,111 +858,166 @@ export async function updateDocumentDiagnoses(
   }
   const diagnoses = input.diagnoses.map((diagnosis) => ({
     name: diagnosis.name.trim(),
-    ...(diagnosis.code?.trim() ? { code: diagnosis.code.trim().toUpperCase() } : {}),
+    ...(diagnosis.code?.trim()
+      ? { code: diagnosis.code.trim().toUpperCase() }
+      : {}),
   }));
-  if (diagnoses.some((diagnosis) => !diagnosis.name || diagnosis.name.length > 100)) {
+  if (
+    diagnoses.some(
+      (diagnosis) => !diagnosis.name || diagnosis.name.length > 100,
+    )
+  ) {
     throw new Error("진단명을 확인해주세요.");
   }
 
-  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
-    const document = snapshot.documents.find((item) => item.id === input.documentId);
-    if (!document || document.documentType !== "진단서" || !document.analysis) {
-      throw new Error("수정할 진단서를 찾지 못했어요.");
-    }
-    if ((document.analysisRevision ?? 1) !== input.expectedAnalysisRevision) {
-      throw new Error("진단 정보가 변경됐어요. 최신 내용을 다시 확인해주세요.");
-    }
-    const {
-      diseaseInformation: _staleDiseaseInformation,
-      diseaseLookup: _staleDiseaseLookup,
-      ...analysisWithoutStaleLookup
-    } = document.analysis;
-    const nextDocument: ClinicalDocument = {
-      ...document,
-      status: "needs_review",
-      sourceLabel: "진단서 자동 추출 · 보호자 수정 후 확정 대기",
-      analysisRevision: (document.analysisRevision ?? 1) + 1,
-      analysis: {
-        ...analysisWithoutStaleLookup,
-        diagnoses,
-        findings: diagnoses.map((diagnosis) => ({
-          label: "확인된 진단명",
-          value: diagnosis.code ? `${diagnosis.name} (${diagnosis.code})` : diagnosis.name,
-        })),
-        extraction: { status: "complete", issues: [], missingFields: [] },
-      },
-    };
-    // Confirmation applies to the previous document revision, not the edited diagnoses.
-    const recipient = {
-      ...snapshot.recipient,
-      confirmedConditions: (snapshot.recipient.confirmedConditions ?? []).filter(
-        (condition) => condition.sourceDocumentId !== document.id,
-      ),
-    };
-    tx.set(ref, recipient);
-    tx.set(ref.collection("clinicalDocuments").doc(document.id), nextDocument);
-    return {
-      snapshot: {
-        ...snapshot,
-        recipient,
-        documents: snapshot.documents.map((item) => item.id === document.id ? nextDocument : item),
-      },
-      result: nextDocument,
-    };
-  }, { requiresConsent: true });
+  return mutateCare(
+    scope,
+    undefined,
+    async (tx, snapshot, ref) => {
+      const document = snapshot.documents.find(
+        (item) => item.id === input.documentId,
+      );
+      if (
+        !document ||
+        document.documentType !== "진단서" ||
+        !document.analysis
+      ) {
+        throw new Error("수정할 진단서를 찾지 못했어요.");
+      }
+      if ((document.analysisRevision ?? 1) !== input.expectedAnalysisRevision) {
+        throw new Error(
+          "진단 정보가 변경됐어요. 최신 내용을 다시 확인해주세요.",
+        );
+      }
+      const {
+        diseaseInformation: _staleDiseaseInformation,
+        diseaseLookup: _staleDiseaseLookup,
+        ...analysisWithoutStaleLookup
+      } = document.analysis;
+      const nextDocument: ClinicalDocument = {
+        ...document,
+        status: "needs_review",
+        sourceLabel: "진단서 자동 추출 · 보호자 수정 후 확정 대기",
+        analysisRevision: (document.analysisRevision ?? 1) + 1,
+        analysis: {
+          ...analysisWithoutStaleLookup,
+          diagnoses,
+          findings: diagnoses.map((diagnosis) => ({
+            label: "확인된 진단명",
+            value: diagnosis.code
+              ? `${diagnosis.name} (${diagnosis.code})`
+              : diagnosis.name,
+          })),
+          extraction: { status: "complete", issues: [], missingFields: [] },
+        },
+      };
+      // Confirmation applies to the previous document revision, not the edited diagnoses.
+      const recipient = {
+        ...snapshot.recipient,
+        confirmedConditions: (
+          snapshot.recipient.confirmedConditions ?? []
+        ).filter((condition) => condition.sourceDocumentId !== document.id),
+      };
+      tx.set(ref, recipient);
+      tx.set(
+        ref.collection("clinicalDocuments").doc(document.id),
+        nextDocument,
+      );
+      return {
+        snapshot: {
+          ...snapshot,
+          recipient,
+          documents: snapshot.documents.map((item) =>
+            item.id === document.id ? nextDocument : item,
+          ),
+        },
+        result: nextDocument,
+      };
+    },
+    { requiresConsent: true },
+  );
 }
 
 export async function confirmDocumentDiagnoses(
   scope: CareDataScope,
   documentId: string,
 ) {
-  if (!/^[^/]{1,256}$/.test(documentId)) throw new Error("올바르지 않은 문서 식별자입니다.");
-  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
-    const document = snapshot.documents.find((item) => item.id === documentId);
-    if (!document || document.documentType !== "진단서") {
-      throw new Error("확인할 진단서를 찾지 못했어요.");
-    }
-    const diagnoses = document.analysis?.diagnoses ?? [];
-    const confirmedAt = new Date().toISOString();
-    const additions = diagnoses.flatMap((diagnosis) => {
-      const condition = conditionFromDiagnosis(diagnosis, {
-        documentId,
-        sourceLabel: "진단서에서 확인 후 보호자가 확정",
-        confirmedAt,
+  if (!/^[^/]{1,256}$/.test(documentId))
+    throw new Error("올바르지 않은 문서 식별자입니다.");
+  return mutateCare(
+    scope,
+    undefined,
+    async (tx, snapshot, ref) => {
+      const document = snapshot.documents.find(
+        (item) => item.id === documentId,
+      );
+      if (!document || document.documentType !== "진단서") {
+        throw new Error("확인할 진단서를 찾지 못했어요.");
+      }
+      const diagnoses = document.analysis?.diagnoses ?? [];
+      const confirmedAt = new Date().toISOString();
+      const additions = diagnoses.flatMap((diagnosis) => {
+        const condition = conditionFromDiagnosis(diagnosis, {
+          documentId,
+          sourceLabel: "진단서에서 확인 후 보호자가 확정",
+          confirmedAt,
+        });
+        return condition ? [condition] : [];
       });
-      return condition ? [condition] : [];
-    });
-    if (additions.length === 0) throw new Error("MVP에서 지원하는 확정 질환을 찾지 못했어요.");
-    const existingIds = new Set((snapshot.recipient.confirmedConditions ?? []).map((condition) => condition.id));
-    if (document.status === "confirmed" && additions.every((condition) => existingIds.has(condition.id))) {
-      return { snapshot, result: additions, unchanged: true };
-    }
-    const merged = new Map(
-      [
-        ...(snapshot.recipient.confirmedConditions ?? []).filter((condition) => condition.sourceDocumentId !== documentId),
-        ...additions,
-      ].map((condition) => [condition.id, condition]),
-    );
-    const recipient = { ...snapshot.recipient, confirmedConditions: [...merged.values()], lastConfirmedAt: confirmedAt };
-    const confirmedDocument: ClinicalDocument = {
-      ...document,
-      status: "confirmed",
-      sourceLabel: "진단서 정보 · 보호자 원본 대조 완료",
-    };
-    tx.set(ref, recipient);
-    tx.set(ref.collection("clinicalDocuments").doc(document.id), confirmedDocument);
-    return {
-      snapshot: {
-        ...snapshot,
-        recipient,
-        documents: snapshot.documents.map((item) => item.id === document.id ? confirmedDocument : item),
-      },
-      result: additions,
-    };
-  }, { requiresConsent: true });
+      if (additions.length === 0)
+        throw new Error("MVP에서 지원하는 확정 질환을 찾지 못했어요.");
+      const existingIds = new Set(
+        (snapshot.recipient.confirmedConditions ?? []).map(
+          (condition) => condition.id,
+        ),
+      );
+      if (
+        document.status === "confirmed" &&
+        additions.every((condition) => existingIds.has(condition.id))
+      ) {
+        return { snapshot, result: additions, unchanged: true };
+      }
+      const merged = new Map(
+        [
+          ...(snapshot.recipient.confirmedConditions ?? []).filter(
+            (condition) => condition.sourceDocumentId !== documentId,
+          ),
+          ...additions,
+        ].map((condition) => [condition.id, condition]),
+      );
+      const recipient = {
+        ...snapshot.recipient,
+        confirmedConditions: [...merged.values()],
+        lastConfirmedAt: confirmedAt,
+      };
+      const confirmedDocument: ClinicalDocument = {
+        ...document,
+        status: "confirmed",
+        sourceLabel: "진단서 정보 · 보호자 원본 대조 완료",
+      };
+      tx.set(ref, recipient);
+      tx.set(
+        ref.collection("clinicalDocuments").doc(document.id),
+        confirmedDocument,
+      );
+      return {
+        snapshot: {
+          ...snapshot,
+          recipient,
+          documents: snapshot.documents.map((item) =>
+            item.id === document.id ? confirmedDocument : item,
+          ),
+        },
+        result: additions,
+      };
+    },
+    { requiresConsent: true },
+  );
 }
 
-export async function getTodayDailyCheckIn(scope: CareDataScope): Promise<DailyCheckIn | null> {
+export async function getTodayDailyCheckIn(
+  scope: CareDataScope,
+): Promise<DailyCheckIn | null> {
   return (await getCareSnapshot(scope)).todayCheckIn ?? null;
 }
 
@@ -602,7 +1026,7 @@ export async function getPatientQuestionSet(
   questionSetId: string,
 ): Promise<PatientQuestionSet | null> {
   assertValidScope(scope);
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   const document = await firestore
     .collection("careRecipients")
     .doc(scope.recipientId)
@@ -617,7 +1041,7 @@ export async function getPatientQuestionResponse(
   responseId: string,
 ): Promise<PatientQuestionResponse | null> {
   assertValidScope(scope);
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   const document = await firestore
     .collection("careRecipients")
     .doc(scope.recipientId)
@@ -635,19 +1059,52 @@ export async function saveDailyCheckIn(
   currentSnapshot?: CareSnapshot,
   expectedRevision?: number,
 ) {
-  if (input.questionResponse.subject_ref !== scope.recipientId) throw new Error("체크인 소유자가 일치하지 않습니다.");
-  await mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
-    const questionRef = ref.collection("questionSets").doc(input.questionResponse.question_set_id);
-    const question = await tx.get(questionRef);
-    if (!question.exists) throw new Error("질문을 다시 불러온 후 저장해 주세요.");
-    const update = applyDailyCheckInToSnapshot(snapshot, input);
-    await persistObservations(tx, ref, update.doseObservations, update.symptomObservations);
-    const checkIn: DailyCheckIn = { ...update.checkIn, questionSetId: input.questionResponse.question_set_id, questionResponseId: input.questionResponse.response_id };
-    tx.set(ref.collection("dailyCheckIns").doc(checkIn.id), checkIn);
-    tx.set(ref.collection("questionResponses").doc(input.questionResponse.response_id), input.questionResponse);
-    tx.set(questionRef, { response_status: "answered", answered_at: input.questionResponse.answered_at }, { merge: true });
-    return { snapshot: { ...update.nextSnapshot, todayCheckIn: checkIn }, result: undefined };
-  }, { requiresConsent: true, expectedRevision });
+  if (input.questionResponse.subject_ref !== scope.recipientId)
+    throw new Error("체크인 소유자가 일치하지 않습니다.");
+  await mutateCare(
+    scope,
+    currentSnapshot,
+    async (tx, snapshot, ref) => {
+      const questionRef = ref
+        .collection("questionSets")
+        .doc(input.questionResponse.question_set_id);
+      const question = await tx.get(questionRef);
+      if (!question.exists)
+        throw new Error("질문을 다시 불러온 후 저장해 주세요.");
+      const update = applyDailyCheckInToSnapshot(snapshot, input);
+      await persistObservations(
+        tx,
+        ref,
+        update.doseObservations,
+        update.symptomObservations,
+      );
+      const checkIn: DailyCheckIn = {
+        ...update.checkIn,
+        questionSetId: input.questionResponse.question_set_id,
+        questionResponseId: input.questionResponse.response_id,
+      };
+      tx.set(ref.collection("dailyCheckIns").doc(checkIn.id), checkIn);
+      tx.set(
+        ref
+          .collection("questionResponses")
+          .doc(input.questionResponse.response_id),
+        input.questionResponse,
+      );
+      tx.set(
+        questionRef,
+        {
+          response_status: "answered",
+          answered_at: input.questionResponse.answered_at,
+        },
+        { merge: true },
+      );
+      return {
+        snapshot: { ...update.nextSnapshot, todayCheckIn: checkIn },
+        result: undefined,
+      };
+    },
+    { requiresConsent: true, expectedRevision },
+  );
 }
 
 export async function saveWellbeingCheckIn(
@@ -656,17 +1113,30 @@ export async function saveWellbeingCheckIn(
   currentSnapshot?: CareSnapshot,
   expectedRevision?: number,
 ) {
-  await mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
-    const update = applyDailyCheckInToSnapshot(snapshot, {
-      ...input,
-      doseResponses: [],
-      scope: "wellbeing",
-      inputSource: "quick_wellbeing",
-    });
-    await persistObservations(tx, ref, update.doseObservations, update.symptomObservations);
-    tx.set(ref.collection("dailyCheckIns").doc(update.checkIn.id), update.checkIn);
-    return { snapshot: update.nextSnapshot, result: undefined };
-  }, { requiresConsent: true, expectedRevision });
+  await mutateCare(
+    scope,
+    currentSnapshot,
+    async (tx, snapshot, ref) => {
+      const update = applyDailyCheckInToSnapshot(snapshot, {
+        ...input,
+        doseResponses: [],
+        scope: "wellbeing",
+        inputSource: "quick_wellbeing",
+      });
+      await persistObservations(
+        tx,
+        ref,
+        update.doseObservations,
+        update.symptomObservations,
+      );
+      tx.set(
+        ref.collection("dailyCheckIns").doc(update.checkIn.id),
+        update.checkIn,
+      );
+      return { snapshot: update.nextSnapshot, result: undefined };
+    },
+    { requiresConsent: true, expectedRevision },
+  );
 }
 
 export async function saveDoseResponse(
@@ -675,11 +1145,16 @@ export async function saveDoseResponse(
   currentSnapshot?: CareSnapshot,
   expectedRevision?: number,
 ) {
-  await mutateCare(scope, currentSnapshot, async (_tx, snapshot, ref) => {
-    const update = applyDoseResponseObservation(snapshot, input);
-    await persistObservations(_tx, ref, update.doseObservations, []);
-    return { snapshot: update.nextSnapshot, result: undefined };
-  }, { requiresConsent: true, expectedRevision });
+  await mutateCare(
+    scope,
+    currentSnapshot,
+    async (_tx, snapshot, ref) => {
+      const update = applyDoseResponseObservation(snapshot, input);
+      await persistObservations(_tx, ref, update.doseObservations, []);
+      return { snapshot: update.nextSnapshot, result: undefined };
+    },
+    { requiresConsent: true, expectedRevision },
+  );
 }
 
 async function persistObservations(
@@ -689,34 +1164,54 @@ async function persistObservations(
   symptoms: SymptomObservation[],
 ) {
   const rows = [
-    ...doses.map((observation) => ({ collection: "doseObservations", observation })),
-    ...symptoms.map((observation) => ({ collection: "symptomObservations", observation })),
+    ...doses.map((observation) => ({
+      collection: "doseObservations",
+      observation,
+    })),
+    ...symptoms.map((observation) => ({
+      collection: "symptomObservations",
+      observation,
+    })),
   ];
   const writes: typeof rows = [];
   for (const row of rows) {
-    const document = await tx.get(recipientRef.collection(row.collection).doc(row.observation.id));
+    const document = await tx.get(
+      recipientRef.collection(row.collection).doc(row.observation.id),
+    );
     if (!document.exists) writes.push(row);
     else if (stableJson(document.data()) !== stableJson(row.observation)) {
       throw new Error("OBSERVATION_IDEMPOTENCY_CONFLICT");
     }
   }
-  for (const row of writes) tx.create(recipientRef.collection(row.collection).doc(row.observation.id), row.observation);
+  for (const row of writes)
+    tx.create(
+      recipientRef.collection(row.collection).doc(row.observation.id),
+      row.observation,
+    );
 }
 
 export async function getObservationHistory(scope: CareDataScope) {
   assertValidScope(scope);
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   await assertActiveDemoScope(scope, firestore);
   const ref = firestore.collection("careRecipients").doc(scope.recipientId);
   const [doses, symptoms] = await Promise.all([
     ref.collection("doseObservations").get(),
     ref.collection("symptomObservations").get(),
   ]);
-  const byRecordedAt = <T extends { id: string; recordedAt: string }>(left: T, right: T) =>
-    right.recordedAt.localeCompare(left.recordedAt) || right.id.localeCompare(left.id);
+  const byRecordedAt = <T extends { id: string; recordedAt: string }>(
+    left: T,
+    right: T,
+  ) =>
+    right.recordedAt.localeCompare(left.recordedAt) ||
+    right.id.localeCompare(left.id);
   return {
-    doseObservations: doses.docs.map((document) => document.data() as DoseObservation).sort(byRecordedAt),
-    symptomObservations: symptoms.docs.map((document) => document.data() as SymptomObservation).sort(byRecordedAt),
+    doseObservations: doses.docs
+      .map((document) => document.data() as DoseObservation)
+      .sort(byRecordedAt),
+    symptomObservations: symptoms.docs
+      .map((document) => document.data() as SymptomObservation)
+      .sort(byRecordedAt),
   };
 }
 
@@ -759,18 +1254,32 @@ export class MedicationDuplicateResolutionRequiredError extends Error {
   readonly candidates: MedicationDuplicateCandidate[];
 
   constructor(candidates: MedicationDuplicateCandidate[]) {
-    super("기존 복약과 겹치는 후보가 있어 병합 또는 별도 등록을 선택해야 합니다.");
+    super(
+      "기존 복약과 겹치는 후보가 있어 병합 또는 별도 등록을 선택해야 합니다.",
+    );
     this.name = "MedicationDuplicateResolutionRequiredError";
     this.candidates = candidates;
   }
 }
 
 function normalizedMedicationFingerprintPart(value: string) {
-  return value.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
 }
 
 export function medicationPlanFingerprint(
-  medication: Pick<MedicationPlan, "productName" | "ingredientName" | "doseAmount" | "frequency" | "timing" | "startDate" | "endDate">,
+  medication: Pick<
+    MedicationPlan,
+    | "productName"
+    | "ingredientName"
+    | "doseAmount"
+    | "frequency"
+    | "timing"
+    | "startDate"
+    | "endDate"
+  >,
 ) {
   return [
     medication.productName,
@@ -780,7 +1289,9 @@ export function medicationPlanFingerprint(
     medication.timing,
     medication.startDate,
     medication.endDate ?? "",
-  ].map(normalizedMedicationFingerprintPart).join("|");
+  ]
+    .map(normalizedMedicationFingerprintPart)
+    .join("|");
 }
 
 export function findMedicationDuplicateCandidates(
@@ -790,14 +1301,19 @@ export function findMedicationDuplicateCandidates(
   const existingByFingerprint = new Map<string, MedicationPlan[]>();
   for (const medication of existing) {
     const fingerprint = medicationPlanFingerprint(medication);
-    existingByFingerprint.set(fingerprint, [...(existingByFingerprint.get(fingerprint) ?? []), medication]);
+    existingByFingerprint.set(fingerprint, [
+      ...(existingByFingerprint.get(fingerprint) ?? []),
+      medication,
+    ]);
   }
   return incoming.flatMap((medication) => {
     const fingerprint = medicationPlanFingerprint(medication);
     return (existingByFingerprint.get(fingerprint) ?? []).map((matched) => ({
       incomingMedicationId: medication.id,
       existingMedicationPlanId: matched.id,
-      ...(matched.sourceDocumentId ? { existingDocumentId: matched.sourceDocumentId } : {}),
+      ...(matched.sourceDocumentId
+        ? { existingDocumentId: matched.sourceDocumentId }
+        : {}),
       productName: medication.productName,
       fingerprint,
     }));
@@ -820,8 +1336,8 @@ function createMedicationPlanDraft(
   analysis: ClinicalDocument["analysis"],
   now: Date,
 ): MedicationPlanDraft | null {
-  if (analysis?.documentType !== "처방전") return null;
-  const medications = analysis?.documentType === "처방전" ? analysis.medications ?? [] : [];
+  if (!analysis || analysis.documentType === "진단서") return null;
+  const medications = analysis.medications ?? [];
   const timestamp = now.toISOString();
   const id = medicationDraftId(documentId);
   const prescriptionDate = validCalendarDate(analysis?.prescriptionDate);
@@ -833,12 +1349,16 @@ function createMedicationPlanDraft(
     revision: 1,
     state: "needs_review",
     candidates: medications.map((medication, index) => {
-      const startDate = validCalendarDate(medication.startDate) ?? prescriptionDate ?? "";
+      const startDate =
+        validCalendarDate(medication.startDate) ?? prescriptionDate ?? "";
       const explicitEndDate = validCalendarDate(medication.endDate);
-      const supplyDays = validSupplyDays(medication.supplyDays) ?? totalSupplyDays;
-      const endDate = explicitEndDate ?? (startDate && supplyDays
-        ? addCalendarDays(startDate, supplyDays - 1)
-        : undefined);
+      const supplyDays =
+        validSupplyDays(medication.supplyDays) ?? totalSupplyDays;
+      const endDate =
+        explicitEndDate ??
+        (startDate && supplyDays
+          ? addCalendarDays(startDate, supplyDays - 1)
+          : undefined);
       const verifiedItemSeq = verifiedMedicationIdentity(medication).itemSeq;
       return {
         ...medication,
@@ -846,7 +1366,9 @@ function createMedicationPlanDraft(
         startDate,
         ...(endDate ? { endDate } : {}),
         id: `${id}-candidate-${index + 1}`,
-        included: medication.reviewStatus === "verified" && Boolean(startDate && endDate),
+        included:
+          medication.reviewStatus === "verified" &&
+          Boolean(startDate && endDate),
         state: "needs_review",
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -862,160 +1384,232 @@ function createMedicationPlanDraft(
   };
 }
 
-export async function registerDocument(scope: CareDataScope, input: RegisterDocumentInput) {
-  if (!/^[^/]{1,256}$/.test(input.contentHash)) throw new Error("올바르지 않은 문서 식별자입니다.");
-  const requestIdempotencyKey = input.requestIdempotencyKey ?? input.contentHash;
-  if (!/^[^/]{1,256}$/.test(requestIdempotencyKey)) throw new Error("올바르지 않은 요청 식별자입니다.");
-  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
-    const documentRef = ref.collection("clinicalDocuments").doc(input.contentHash);
-    const requestRef = ref.collection("documentImportRequests").doc(requestIdempotencyKey);
-    const reviewRef = ref.collection("documentImportReviews").doc(requestIdempotencyKey);
-    const analysisJobRef = input.analysisJobId
-      ? ref.collection("documentAnalysisJobs").doc(input.analysisJobId)
-      : null;
-    const [requestRecord, review, analysisJob] = await Promise.all([
-      tx.get(requestRef),
-      tx.get(reviewRef),
-      analysisJobRef ? tx.get(analysisJobRef) : null,
-    ]);
-    if (analysisJobRef && (!analysisJob?.exists || ["cancellation_requested", "cancelled"].includes(
-      (analysisJob.data() as { state?: string } | undefined)?.state ?? "",
-    ))) {
-      throw new DocumentAnalysisCancelledError();
-    }
-    if (requestRecord.exists) {
-      const recorded = requestRecord.data() as { contentHash?: string };
-      if (recorded.contentHash !== input.contentHash) {
-        throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
+export async function registerDocument(
+  scope: CareDataScope,
+  input: RegisterDocumentInput,
+) {
+  if (!/^[^/]{1,256}$/.test(input.contentHash))
+    throw new Error("올바르지 않은 문서 식별자입니다.");
+  const requestIdempotencyKey =
+    input.requestIdempotencyKey ?? input.contentHash;
+  if (!/^[^/]{1,256}$/.test(requestIdempotencyKey))
+    throw new Error("올바르지 않은 요청 식별자입니다.");
+  return mutateCare(
+    scope,
+    undefined,
+    async (tx, snapshot, ref) => {
+      const documentRef = ref
+        .collection("clinicalDocuments")
+        .doc(input.contentHash);
+      const requestRef = ref
+        .collection("documentImportRequests")
+        .doc(requestIdempotencyKey);
+      const reviewRef = ref
+        .collection("documentImportReviews")
+        .doc(requestIdempotencyKey);
+      const analysisJobRef = input.analysisJobId
+        ? ref.collection("documentAnalysisJobs").doc(input.analysisJobId)
+        : null;
+      const [requestRecord, review, analysisJob] = await Promise.all([
+        tx.get(requestRef),
+        tx.get(reviewRef),
+        analysisJobRef ? tx.get(analysisJobRef) : null,
+      ]);
+      if (
+        analysisJobRef &&
+        (!analysisJob?.exists ||
+          ["cancellation_requested", "cancelled"].includes(
+            (analysisJob.data() as { state?: string } | undefined)?.state ?? "",
+          ))
+      ) {
+        throw new DocumentAnalysisCancelledError();
       }
-    }
-
-    const existing = await tx.get(documentRef);
-    if (existing.exists) {
-      if (!requestRecord.exists) {
-        tx.create(requestRef, {
-          contentHash: input.contentHash,
-          documentId: documentRef.id,
-          status: "completed",
-          completedAt: new Date().toISOString(),
-        });
+      if (requestRecord.exists) {
+        const recorded = requestRecord.data() as { contentHash?: string };
+        if (recorded.contentHash !== input.contentHash) {
+          throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
+        }
       }
-      return { snapshot, result: existing.data() as ClinicalDocument & { size: number }, unchanged: true };
-    }
 
-    const now = new Date();
-    const revision = documentRevision(input);
-    const candidateMedications = medicationPlansFromPrescription({
-      id: documentRef.id,
-      documentType: input.documentType,
-      uploadedAt: now.toISOString(),
-      analysis: input.analysis,
-    });
-    const duplicateCandidates = findMedicationDuplicateCandidates(candidateMedications, snapshot.medications);
-    if (duplicateCandidates.length > 0 && !input.duplicateAction) {
-      throw new MedicationDuplicateResolutionRequiredError(duplicateCandidates);
-    }
-    if (duplicateCandidates.length === 0 && input.duplicateAction === "merge") {
-      throw new Error("병합할 기존 복약 계획을 찾을 수 없습니다.");
-    }
+      const existing = await tx.get(documentRef);
+      if (existing.exists) {
+        if (!requestRecord.exists) {
+          tx.create(requestRef, {
+            contentHash: input.contentHash,
+            documentId: documentRef.id,
+            status: "completed",
+            completedAt: new Date().toISOString(),
+          });
+        }
+        return {
+          snapshot,
+          result: existing.data() as ClinicalDocument & { size: number },
+          unchanged: true,
+        };
+      }
 
-    const requiresExtractionReview = input.analysis?.extraction?.status !== undefined &&
-      input.analysis.extraction.status !== "complete";
-    const prescriptionMedications = input.analysis?.medications ?? [];
-    const requiresMedicationReview = input.documentType === "처방전" &&
-      (prescriptionMedications.length === 0 ||
-        prescriptionMedications.some((medication) => medication.reviewStatus !== "verified"));
-    const draft = input.duplicateAction === "merge"
-      ? null
-      : createMedicationPlanDraft(documentRef.id, revision, input.analysis, now);
-    const document: ClinicalDocument & { size: number } = {
-      id: documentRef.id,
-      fileName: input.fileName,
-      contentHash: input.contentHash,
-      documentType: input.documentType,
-      uploadedAt: now.toISOString(),
-      status: draft || requiresExtractionReview ? "needs_review" : "confirmed",
-      redacted: input.isSample,
-      sourceLabel: input.duplicateAction === "merge"
-        ? "기존 복약과 병합 · 중복 일정 미생성"
-        : draft && requiresMedicationReview
-          ? "OCR·공식 정보 대조 필요 · 복약 초안"
-          : requiresExtractionReview
-            ? "자동 추출 일부 누락 · 원본 대조 필요"
-          : draft
-            ? "분석 초안 · 복약 일정 반영 전 검토 필요"
-            : input.analysis?.source === "api"
-              ? "API 분석 완료"
-              : input.analysis?.source === "openai"
-                ? "OpenAI 분석 완료"
-                : "비식별 데모 분석 · 원본과 확인 필요",
-      revision,
-      analysisRevision: 1,
-      ...(draft ? { medicationDraftId: draft.id } : {}),
-      size: input.size,
-      analysis: input.analysis,
-      requestIdempotencyKey,
-      ...(duplicateCandidates.length > 0 && input.duplicateAction
-        ? {
-            duplicateResolution: input.duplicateAction,
-            duplicateMedicationPlanIds: [...new Set(duplicateCandidates.map((candidate) => candidate.existingMedicationPlanId))],
-          }
-        : {}),
-    };
+      const now = new Date();
+      const revision = documentRevision(input);
+      const candidateMedications = medicationPlansFromPrescription({
+        id: documentRef.id,
+        documentType: input.documentType,
+        uploadedAt: now.toISOString(),
+        analysis: input.analysis,
+      });
+      const duplicateCandidates = findMedicationDuplicateCandidates(
+        candidateMedications,
+        snapshot.medications,
+      );
+      if (duplicateCandidates.length > 0 && !input.duplicateAction) {
+        throw new MedicationDuplicateResolutionRequiredError(
+          duplicateCandidates,
+        );
+      }
+      if (
+        duplicateCandidates.length === 0 &&
+        input.duplicateAction === "merge"
+      ) {
+        throw new Error("병합할 기존 복약 계획을 찾을 수 없습니다.");
+      }
 
-    tx.create(documentRef, document);
-    if (draft) tx.create(ref.collection("medicationPlanDrafts").doc(draft.id), draft);
-    const completedRequest = {
-      contentHash: input.contentHash,
-      documentId: document.id,
-      status: "completed",
-      completedAt: now.toISOString(),
-      duplicateResolution: input.duplicateAction ?? null,
-    };
-    if (requestRecord.exists) tx.set(requestRef, completedRequest);
-    else tx.create(requestRef, completedRequest);
-    if (review.exists) tx.set(reviewRef, { status: "resolved", resolvedAt: now.toISOString() }, { merge: true });
+      const requiresExtractionReview =
+        input.analysis?.extraction?.status !== undefined &&
+        input.analysis.extraction.status !== "complete";
+      const prescriptionMedications = input.analysis?.medications ?? [];
+      const requiresMedicationReview =
+        input.documentType !== "진단서" &&
+        (prescriptionMedications.length === 0 ||
+          prescriptionMedications.some(
+            (medication) => medication.reviewStatus !== "verified",
+          ));
+      const draft =
+        input.duplicateAction === "merge"
+          ? null
+          : createMedicationPlanDraft(
+              documentRef.id,
+              revision,
+              input.analysis,
+              now,
+            );
+      const document: ClinicalDocument & { size: number } = {
+        id: documentRef.id,
+        fileName: input.fileName,
+        contentHash: input.contentHash,
+        documentType: input.documentType,
+        uploadedAt: now.toISOString(),
+        status:
+          draft || requiresExtractionReview ? "needs_review" : "confirmed",
+        redacted: input.isSample,
+        sourceLabel:
+          input.duplicateAction === "merge"
+            ? "기존 복약과 병합 · 중복 일정 미생성"
+            : draft && requiresMedicationReview
+              ? "OCR·공식 정보 대조 필요 · 복약 초안"
+              : requiresExtractionReview
+                ? "자동 추출 일부 누락 · 원본 대조 필요"
+                : draft
+                  ? "분석 초안 · 복약 일정 반영 전 검토 필요"
+                  : input.analysis?.source === "api"
+                    ? "API 분석 완료"
+                    : input.analysis?.source === "openai"
+                      ? "OpenAI 분석 완료"
+                      : "비식별 데모 분석 · 원본과 확인 필요",
+        revision,
+        analysisRevision: 1,
+        ...(draft ? { medicationDraftId: draft.id } : {}),
+        size: input.size,
+        analysis: input.analysis,
+        requestIdempotencyKey,
+        ...(duplicateCandidates.length > 0 && input.duplicateAction
+          ? {
+              duplicateResolution: input.duplicateAction,
+              duplicateMedicationPlanIds: [
+                ...new Set(
+                  duplicateCandidates.map(
+                    (candidate) => candidate.existingMedicationPlanId,
+                  ),
+                ),
+              ],
+            }
+          : {}),
+      };
 
-    return {
-      snapshot: { ...snapshot, documents: [document, ...snapshot.documents] },
-      result: document,
-    };
-  }, { requiresConsent: true });
+      tx.create(documentRef, document);
+      if (draft)
+        tx.create(ref.collection("medicationPlanDrafts").doc(draft.id), draft);
+      const completedRequest = {
+        contentHash: input.contentHash,
+        documentId: document.id,
+        status: "completed",
+        completedAt: now.toISOString(),
+        duplicateResolution: input.duplicateAction ?? null,
+      };
+      if (requestRecord.exists) tx.set(requestRef, completedRequest);
+      else tx.create(requestRef, completedRequest);
+      if (review.exists)
+        tx.set(
+          reviewRef,
+          { status: "resolved", resolvedAt: now.toISOString() },
+          { merge: true },
+        );
+
+      return {
+        snapshot: { ...snapshot, documents: [document, ...snapshot.documents] },
+        result: document,
+      };
+    },
+    { requiresConsent: true },
+  );
 }
 
 export async function saveDocumentImportReview(
   scope: CareDataScope,
-  input: Omit<DocumentImportReview, "id" | "status" | "createdAt" | "expiresAt"> & {
+  input: Omit<
+    DocumentImportReview,
+    "id" | "status" | "createdAt" | "expiresAt"
+  > & {
     idempotencyKey: string;
     analysisJobId?: string;
   },
 ) {
   assertValidScope(scope);
-  if (!/^[^/]{1,256}$/.test(input.idempotencyKey)) throw new Error("올바르지 않은 요청 식별자입니다.");
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  if (!/^[^/]{1,256}$/.test(input.idempotencyKey))
+    throw new Error("올바르지 않은 요청 식별자입니다.");
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   await assertActiveDemoScope(scope, firestore);
   await assertHealthDataConsentConfirmed(firestore, scope.recipientId);
   await getOrCreateReadModel(firestore, scope);
   return firestore.runTransaction(async (tx) => {
     await assertTransactionScope(tx, firestore, scope);
-    const ref = firestore.collection("careRecipients").doc(scope.recipientId)
-      .collection("documentImportReviews").doc(input.idempotencyKey);
+    const ref = firestore
+      .collection("careRecipients")
+      .doc(scope.recipientId)
+      .collection("documentImportReviews")
+      .doc(input.idempotencyKey);
     const analysisJobRef = input.analysisJobId
-      ? firestore.collection("careRecipients").doc(scope.recipientId)
-        .collection("documentAnalysisJobs").doc(input.analysisJobId)
+      ? firestore
+          .collection("careRecipients")
+          .doc(scope.recipientId)
+          .collection("documentAnalysisJobs")
+          .doc(input.analysisJobId)
       : null;
     const [existing, analysisJob] = await Promise.all([
       tx.get(ref),
       analysisJobRef ? tx.get(analysisJobRef) : null,
     ]);
-    if (analysisJobRef && (!analysisJob?.exists || ["cancellation_requested", "cancelled"].includes(
-      (analysisJob.data() as { state?: string } | undefined)?.state ?? "",
-    ))) {
+    if (
+      analysisJobRef &&
+      (!analysisJob?.exists ||
+        ["cancellation_requested", "cancelled"].includes(
+          (analysisJob.data() as { state?: string } | undefined)?.state ?? "",
+        ))
+    ) {
       throw new DocumentAnalysisCancelledError();
     }
     if (existing.exists) {
       const review = existing.data() as DocumentImportReview;
-      if (review.contentHash !== input.contentHash) throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
+      if (review.contentHash !== input.contentHash)
+        throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
       return review;
     }
     const now = new Date();
@@ -1043,16 +1637,26 @@ export async function getDocumentImportReview(
   contentHash: string,
 ): Promise<DocumentImportReview | null> {
   assertValidScope(scope);
-  if (!/^[^/]{1,256}$/.test(idempotencyKey)) throw new Error("올바르지 않은 요청 식별자입니다.");
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  if (!/^[^/]{1,256}$/.test(idempotencyKey))
+    throw new Error("올바르지 않은 요청 식별자입니다.");
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   await assertActiveDemoScope(scope, firestore);
   await assertHealthDataConsentConfirmed(firestore, scope.recipientId);
-  const document = await firestore.collection("careRecipients").doc(scope.recipientId)
-    .collection("documentImportReviews").doc(idempotencyKey).get();
+  const document = await firestore
+    .collection("careRecipients")
+    .doc(scope.recipientId)
+    .collection("documentImportReviews")
+    .doc(idempotencyKey)
+    .get();
   if (!document.exists) return null;
   const review = document.data() as DocumentImportReview;
-  if (review.contentHash !== contentHash) throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
-  if (review.status !== "needs_resolution" || Date.parse(review.expiresAt) <= Date.now()) return null;
+  if (review.contentHash !== contentHash)
+    throw new Error("같은 요청 식별자가 다른 문서에 사용됐습니다.");
+  if (
+    review.status !== "needs_resolution" ||
+    Date.parse(review.expiresAt) <= Date.now()
+  )
+    return null;
   return review;
 }
 
@@ -1069,16 +1673,28 @@ export async function getMedicationPlanDrafts(
 ): Promise<Map<string, MedicationPlanDraft>> {
   assertValidScope(scope);
   const ids = [...new Set(draftIds)];
-  if (ids.length > MAX_DOCUMENTS || ids.some((draftId) => !/^[^/]{1,256}$/.test(draftId))) {
+  if (
+    ids.length > MAX_DOCUMENTS ||
+    ids.some((draftId) => !/^[^/]{1,256}$/.test(draftId))
+  ) {
     throw new Error("올바르지 않은 복약 초안 ID입니다.");
   }
   if (!ids.length) return new Map();
-  const firestore = scope.firestore ?? await getAdminFirestore();
+  const firestore = scope.firestore ?? (await getAdminFirestore());
   await assertActiveDemoScope(scope, firestore);
   await assertHealthDataConsentConfirmed(firestore, scope.recipientId);
-  const collection = firestore.collection("careRecipients").doc(scope.recipientId).collection("medicationPlanDrafts");
-  const drafts = await Promise.all(ids.map((draftId) => collection.doc(draftId).get()));
-  return new Map(drafts.filter((draft) => draft.exists).map((draft) => [draft.id, draft.data() as MedicationPlanDraft]));
+  const collection = firestore
+    .collection("careRecipients")
+    .doc(scope.recipientId)
+    .collection("medicationPlanDrafts");
+  const drafts = await Promise.all(
+    ids.map((draftId) => collection.doc(draftId).get()),
+  );
+  return new Map(
+    drafts
+      .filter((draft) => draft.exists)
+      .map((draft) => [draft.id, draft.data() as MedicationPlanDraft]),
+  );
 }
 
 export interface MedicationCandidateConfirmation {
@@ -1113,34 +1729,60 @@ export interface MedicationPlanConfirmationResult {
 }
 
 function assertValidConfirmationInput(input: ConfirmMedicationPlanDraftInput) {
-  if (!/^[^/]{1,256}$/.test(input.draftId)) throw new Error("올바르지 않은 복약 초안 ID입니다.");
-  if (!/^[A-Za-z0-9_-]{8,128}$/.test(input.idempotencyKey)) throw new Error("올바르지 않은 확정 요청 식별자입니다.");
-  if (!input.confirmedBy.trim()) throw new Error("확인 사용자를 확인할 수 없습니다.");
-  if (!Number.isInteger(input.revision) || input.revision < 1) throw new Error("복약 초안 revision을 확인해주세요.");
-  if (input.candidates.length === 0 || input.candidates.length > 50) throw new Error("확정할 복약 후보를 선택해주세요.");
-  if (new Set(input.candidates.map((candidate) => candidate.id)).size !== input.candidates.length) {
+  if (!/^[^/]{1,256}$/.test(input.draftId))
+    throw new Error("올바르지 않은 복약 초안 ID입니다.");
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(input.idempotencyKey))
+    throw new Error("올바르지 않은 확정 요청 식별자입니다.");
+  if (!input.confirmedBy.trim())
+    throw new Error("확인 사용자를 확인할 수 없습니다.");
+  if (!Number.isInteger(input.revision) || input.revision < 1)
+    throw new Error("복약 초안 revision을 확인해주세요.");
+  if (input.candidates.length === 0 || input.candidates.length > 50)
+    throw new Error("확정할 복약 후보를 선택해주세요.");
+  if (
+    new Set(input.candidates.map((candidate) => candidate.id)).size !==
+    input.candidates.length
+  ) {
     throw new Error("중복된 복약 후보가 있어요.");
   }
-  if (input.candidates.some((candidate) =>
-    !/^[^/]{1,256}$/.test(candidate.id) ||
-    (candidate.mfdsItemSeq !== undefined && !/^\d{0,20}$/.test(candidate.mfdsItemSeq)) ||
-    (candidate.insuranceCode !== undefined && !/^\d{0,20}$/.test(candidate.insuranceCode)) ||
-    (candidate.supplyDays !== undefined && !validSupplyDays(candidate.supplyDays)))) {
+  if (
+    input.candidates.some(
+      (candidate) =>
+        !/^[^/]{1,256}$/.test(candidate.id) ||
+        (candidate.mfdsItemSeq !== undefined &&
+          !/^\d{0,20}$/.test(candidate.mfdsItemSeq)) ||
+        (candidate.insuranceCode !== undefined &&
+          !/^\d{0,20}$/.test(candidate.insuranceCode)) ||
+        (candidate.supplyDays !== undefined &&
+          !validSupplyDays(candidate.supplyDays)),
+    )
+  ) {
     throw new Error("복약 후보의 코드 또는 투약일수를 확인해주세요.");
   }
 }
 
 function verifiedMedicationIdentity(
   original: PrescriptionMedication,
-  reviewed: Pick<PrescriptionMedication, "productName" | "ingredientName"> = original,
+  reviewed: Pick<
+    PrescriptionMedication,
+    "productName" | "ingredientName"
+  > = original,
 ): Pick<MedicationPlan, "itemSeq"> {
   const verification = original.verification;
   const itemSeq = verification?.officialItemCode?.trim();
   const identityText = (value: string) => value.normalize("NFC").trim();
-  if (original.reviewStatus !== "verified" || verification?.status !== "verified" ||
-      !Array.isArray(verification.warnings) || verification.warnings.length > 0 || !itemSeq || !/^\d{9}$/.test(itemSeq) ||
-      identityText(original.productName) !== identityText(reviewed.productName) ||
-      identityText(original.ingredientName) !== identityText(reviewed.ingredientName)) return {};
+  if (
+    original.reviewStatus !== "verified" ||
+    verification?.status !== "verified" ||
+    !Array.isArray(verification.warnings) ||
+    verification.warnings.length > 0 ||
+    !itemSeq ||
+    !/^\d{9}$/.test(itemSeq) ||
+    identityText(original.productName) !== identityText(reviewed.productName) ||
+    identityText(original.ingredientName) !==
+      identityText(reviewed.ingredientName)
+  )
+    return {};
   // OCR itemCode can be an insurance code. Only the server-verified official code is canonical.
   return { itemSeq };
 }
@@ -1152,11 +1794,20 @@ function confirmedMedicationPlan(
   confirmedBy: string,
   confirmedAt: string,
 ): MedicationPlan {
-  const required = [input.productName, input.doseAmount, input.frequency, input.timing, input.startDate, input.endDate];
-  if (required.some((value) => !value?.trim())) throw new Error("약 이름과 복용 기간을 포함한 일정 필수값을 확인해주세요.");
+  const required = [
+    input.productName,
+    input.doseAmount,
+    input.frequency,
+    input.timing,
+    input.startDate,
+    input.endDate,
+  ];
+  if (required.some((value) => !value?.trim()))
+    throw new Error("약 이름과 복용 기간을 포함한 일정 필수값을 확인해주세요.");
   const startDate = validCalendarDate(input.startDate);
   const endDate = validCalendarDate(input.endDate);
-  if (!startDate || startDate !== input.startDate) throw new Error("복용 시작일을 YYYY-MM-DD로 입력해주세요.");
+  if (!startDate || startDate !== input.startDate)
+    throw new Error("복용 시작일을 YYYY-MM-DD로 입력해주세요.");
   if (!endDate || endDate !== input.endDate || endDate < startDate) {
     throw new Error("복용 종료일을 시작일 이후로 입력해주세요.");
   }
@@ -1166,15 +1817,18 @@ function confirmedMedicationPlan(
     productName: input.productName.trim(),
     ingredientName: input.ingredientName.trim() || "성분 확인 필요",
     categoryPlain: "처방약",
-    purposePlain: candidate.purposePlain.trim() || "처방 목적을 의료진에게 확인해주세요.",
-    descriptionPlain: "처방전 분석 초안을 보호자가 검토하고 확정한 복용약이에요.",
+    purposePlain:
+      candidate.purposePlain.trim() || "처방 목적을 의료진에게 확인해주세요.",
+    descriptionPlain:
+      "처방전 분석 초안을 보호자가 검토하고 확정한 복용약이에요.",
     doseAmount: input.doseAmount.trim(),
     frequency: input.frequency.trim(),
     recurrence: normalizeMedicationRecurrence(input.frequency),
     timing: input.timing.trim(),
     startDate,
     endDate,
-    status: endDate < dateKeyInSeoul(new Date(confirmedAt)) ? "ended" : "active",
+    status:
+      endDate < dateKeyInSeoul(new Date(confirmedAt)) ? "ended" : "active",
     isNew: true,
     sourceLabel: "처방전 분석 초안 · 보호자 검토 완료",
     sourceDocumentId: draft.documentId,
@@ -1193,7 +1847,10 @@ function candidateChanged(
   return [
     [original.productName, reviewed.productName],
     [original.ingredientName, reviewed.ingredientName],
-    [original.mfdsItemSeq ?? original.itemCode ?? "", reviewed.mfdsItemSeq ?? ""],
+    [
+      original.mfdsItemSeq ?? original.itemCode ?? "",
+      reviewed.mfdsItemSeq ?? "",
+    ],
     [original.insuranceCode ?? "", reviewed.insuranceCode ?? ""],
     [original.doseAmount, reviewed.doseAmount],
     [original.frequency, reviewed.frequency],
@@ -1208,14 +1865,17 @@ function manualCandidate(
   input: MedicationCandidateConfirmation,
   timestamp: string,
 ): MedicationPlanCandidate {
-  if (!input.id.startsWith("manual-")) throw new Error("직접 추가한 약의 식별자가 올바르지 않아요.");
+  if (!input.id.startsWith("manual-"))
+    throw new Error("직접 추가한 약의 식별자가 올바르지 않아요.");
   return {
     id: input.id,
     included: input.included,
     isManual: true,
     productName: input.productName,
     ingredientName: input.ingredientName,
-    ...(input.mfdsItemSeq ? { mfdsItemSeq: input.mfdsItemSeq, itemCode: input.mfdsItemSeq } : {}),
+    ...(input.mfdsItemSeq
+      ? { mfdsItemSeq: input.mfdsItemSeq, itemCode: input.mfdsItemSeq }
+      : {}),
     ...(input.insuranceCode ? { insuranceCode: input.insuranceCode } : {}),
     doseAmount: input.doseAmount,
     frequency: input.frequency,
@@ -1226,7 +1886,9 @@ function manualCandidate(
     purposePlain: "처방 목적을 의료진에게 확인해주세요.",
     precautions: [],
     reviewStatus: "needs_review",
-    reviewReasons: [input.mfdsItemSeq ? "official_unavailable" : "missing_mfds_item_seq"],
+    reviewReasons: [
+      input.mfdsItemSeq ? "official_unavailable" : "missing_mfds_item_seq",
+    ],
     state: "needs_review",
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -1240,160 +1902,241 @@ export async function confirmMedicationPlanDraft(
 ): Promise<MedicationPlanConfirmationResult> {
   assertValidConfirmationInput(input);
   const now = options.now ?? new Date();
-  const result = await mutateCare<MedicationPlanConfirmationResult | { expiredDraft: MedicationPlanDraft }>(scope, undefined, async (tx, snapshot, ref) => {
-    const confirmationRef = ref.collection("medicationDraftConfirmations").doc(input.idempotencyKey);
-    const replay = await tx.get(confirmationRef);
-    if (replay.exists) {
-      const recorded = replay.data() as { draftId: string; medicationPlanIds: string[] };
-      if (recorded.draftId !== input.draftId) throw new Error("확정 요청 식별자가 다른 초안에 사용됐어요.");
-      const draftDoc = await tx.get(ref.collection("medicationPlanDrafts").doc(input.draftId));
-      if (!draftDoc.exists) throw new Error("복약 초안을 찾을 수 없어요.");
-      const medications = snapshot.medications.filter((medication) => recorded.medicationPlanIds.includes(medication.id));
-      return {
-        snapshot,
-        result: { draft: draftDoc.data() as MedicationPlanDraft, medications, idempotentReplay: true },
-        unchanged: true,
-      };
-    }
+  const result = await mutateCare<
+    MedicationPlanConfirmationResult | { expiredDraft: MedicationPlanDraft }
+  >(
+    scope,
+    undefined,
+    async (tx, snapshot, ref) => {
+      const confirmationRef = ref
+        .collection("medicationDraftConfirmations")
+        .doc(input.idempotencyKey);
+      const replay = await tx.get(confirmationRef);
+      if (replay.exists) {
+        const recorded = replay.data() as {
+          draftId: string;
+          medicationPlanIds: string[];
+        };
+        if (recorded.draftId !== input.draftId)
+          throw new Error("확정 요청 식별자가 다른 초안에 사용됐어요.");
+        const draftDoc = await tx.get(
+          ref.collection("medicationPlanDrafts").doc(input.draftId),
+        );
+        if (!draftDoc.exists) throw new Error("복약 초안을 찾을 수 없어요.");
+        const medications = snapshot.medications.filter((medication) =>
+          recorded.medicationPlanIds.includes(medication.id),
+        );
+        return {
+          snapshot,
+          result: {
+            draft: draftDoc.data() as MedicationPlanDraft,
+            medications,
+            idempotentReplay: true,
+          },
+          unchanged: true,
+        };
+      }
 
-    const draftRef = ref.collection("medicationPlanDrafts").doc(input.draftId);
-    const draftDoc = await tx.get(draftRef);
-    if (!draftDoc.exists) throw new Error("복약 초안을 찾을 수 없어요.");
-    const draft = draftDoc.data() as MedicationPlanDraft;
-    if (draft.state === "active") {
-      const medications = snapshot.medications.filter((medication) => draft.activeMedicationPlanIds?.includes(medication.id));
-      return { snapshot, result: { draft, medications, idempotentReplay: true }, unchanged: true };
-    }
-    if (draft.state === "cancelled") throw new Error("취소된 복약 초안은 확정할 수 없어요.");
-    if (Date.parse(draft.expiresAt) <= now.getTime()) {
+      const draftRef = ref
+        .collection("medicationPlanDrafts")
+        .doc(input.draftId);
+      const draftDoc = await tx.get(draftRef);
+      if (!draftDoc.exists) throw new Error("복약 초안을 찾을 수 없어요.");
+      const draft = draftDoc.data() as MedicationPlanDraft;
+      if (draft.state === "active") {
+        const medications = snapshot.medications.filter((medication) =>
+          draft.activeMedicationPlanIds?.includes(medication.id),
+        );
+        return {
+          snapshot,
+          result: { draft, medications, idempotentReplay: true },
+          unchanged: true,
+        };
+      }
+      if (draft.state === "cancelled")
+        throw new Error("취소된 복약 초안은 확정할 수 없어요.");
+      if (Date.parse(draft.expiresAt) <= now.getTime()) {
+        const timestamp = now.toISOString();
+        const expiredDraft: MedicationPlanDraft = {
+          ...draft,
+          revision: draft.revision + 1,
+          state: "expired",
+          updatedAt: timestamp,
+          transitionHistory: [
+            ...draft.transitionHistory,
+            { state: "expired", at: timestamp, by: "system" },
+          ],
+        };
+        tx.set(draftRef, expiredDraft);
+        return { snapshot, result: { expiredDraft } };
+      }
+      if (draft.revision !== input.revision)
+        throw new Error(
+          "복약 초안이 변경됐어요. 최신 내용을 다시 확인해주세요.",
+        );
+      const documentRef = ref
+        .collection("clinicalDocuments")
+        .doc(draft.documentId);
+      const documentDoc = await tx.get(documentRef);
+      if (!documentDoc.exists) throw new Error("근거 처방전을 찾을 수 없어요.");
+      const document = documentDoc.data() as ClinicalDocument;
+      if (document.revision !== draft.sourceDocumentRevision) {
+        throw new Error("근거 문서가 변경됐어요. 다시 분석하고 검토해주세요.");
+      }
+
       const timestamp = now.toISOString();
-      const expiredDraft: MedicationPlanDraft = {
+      const originalById = new Map(
+        draft.candidates.map((candidate) => [candidate.id, candidate]),
+      );
+      for (const candidate of input.candidates) {
+        if (!originalById.has(candidate.id)) {
+          if (!candidate.isManual)
+            throw new Error("초안에 없는 복약 후보가 포함됐어요.");
+          originalById.set(candidate.id, manualCandidate(candidate, timestamp));
+        }
+      }
+      const selected = input.candidates.filter(
+        (candidate) => candidate.included,
+      );
+      if (selected.length === 0)
+        throw new Error("활성화할 약을 하나 이상 선택해주세요.");
+      if (
+        selected.some((candidate) => {
+          const original = originalById.get(candidate.id)!;
+          return (
+            (original.reviewStatus !== "verified" ||
+              candidateChanged(original, candidate)) &&
+            !candidate.confirmedAgainstOriginal
+          );
+        })
+      ) {
+        throw new Error(
+          "검토가 필요한 약은 원본 처방전과 모든 필드를 대조한 뒤 확정해주세요.",
+        );
+      }
+      const medications = selected.map((candidate) =>
+        confirmedMedicationPlan(
+          draft,
+          originalById.get(candidate.id)!,
+          candidate,
+          input.confirmedBy,
+          timestamp,
+        ),
+      );
+      const medicationIds = new Set(
+        medications.map((medication) => medication.id),
+      );
+      const allCandidates = [
+        ...draft.candidates,
+        ...input.candidates.flatMap((candidate) =>
+          draft.candidates.some((item) => item.id === candidate.id)
+            ? []
+            : [originalById.get(candidate.id)!],
+        ),
+      ];
+      const nextCandidates = allCandidates.map((candidate) => {
+        const reviewed = input.candidates.find(
+          (item) => item.id === candidate.id,
+        );
+        if (!reviewed) return candidate;
+        const humanConfirmed =
+          reviewed.included &&
+          (candidate.reviewStatus !== "verified" ||
+            candidateChanged(candidate, reviewed));
+        const nextCandidate: MedicationPlanCandidate = {
+          ...candidate,
+          included: reviewed.included,
+          productName: reviewed.productName.trim(),
+          ingredientName: reviewed.ingredientName.trim(),
+          doseAmount: reviewed.doseAmount.trim(),
+          frequency: reviewed.frequency.trim(),
+          timing: reviewed.timing.trim(),
+          startDate: reviewed.startDate,
+          ...(reviewed.endDate ? { endDate: reviewed.endDate } : {}),
+          ...(reviewed.supplyDays ? { supplyDays: reviewed.supplyDays } : {}),
+          reviewStatus: humanConfirmed
+            ? ("human_confirmed" as const)
+            : candidate.reviewStatus,
+          ...(humanConfirmed
+            ? {
+                humanConfirmation: {
+                  confirmedBy: input.confirmedBy,
+                  confirmedAt: timestamp,
+                  documentRevision: draft.sourceDocumentRevision,
+                  reason: "checked_against_original" as const,
+                },
+              }
+            : {}),
+          state: reviewed.included
+            ? ("active" as const)
+            : ("cancelled" as const),
+          updatedAt: timestamp,
+        };
+        delete nextCandidate.itemCode;
+        delete nextCandidate.mfdsItemSeq;
+        delete nextCandidate.insuranceCode;
+        if (reviewed.mfdsItemSeq) {
+          nextCandidate.itemCode = reviewed.mfdsItemSeq;
+          nextCandidate.mfdsItemSeq = reviewed.mfdsItemSeq;
+        }
+        if (reviewed.insuranceCode)
+          nextCandidate.insuranceCode = reviewed.insuranceCode;
+        if (!reviewed.endDate) delete nextCandidate.endDate;
+        if (!reviewed.supplyDays) delete nextCandidate.supplyDays;
+        return nextCandidate;
+      });
+      const activeDraft: MedicationPlanDraft = {
         ...draft,
         revision: draft.revision + 1,
-        state: "expired",
+        state: "active",
+        candidates: nextCandidates,
         updatedAt: timestamp,
-        transitionHistory: [...draft.transitionHistory, { state: "expired", at: timestamp, by: "system" }],
+        confirmedBy: input.confirmedBy,
+        confirmedAt: timestamp,
+        activatedAt: timestamp,
+        confirmationIdempotencyKey: input.idempotencyKey,
+        activeMedicationPlanIds: [...medicationIds],
+        transitionHistory: [
+          ...draft.transitionHistory,
+          { state: "confirmed", at: timestamp, by: input.confirmedBy },
+          { state: "active", at: timestamp, by: input.confirmedBy },
+        ],
       };
-      tx.set(draftRef, expiredDraft);
-      return { snapshot, result: { expiredDraft } };
-    }
-    if (draft.revision !== input.revision) throw new Error("복약 초안이 변경됐어요. 최신 내용을 다시 확인해주세요.");
-    const documentRef = ref.collection("clinicalDocuments").doc(draft.documentId);
-    const documentDoc = await tx.get(documentRef);
-    if (!documentDoc.exists) throw new Error("근거 처방전을 찾을 수 없어요.");
-    const document = documentDoc.data() as ClinicalDocument;
-    if (document.revision !== draft.sourceDocumentRevision) {
-      throw new Error("근거 문서가 변경됐어요. 다시 분석하고 검토해주세요.");
-    }
-
-    const timestamp = now.toISOString();
-    const originalById = new Map(draft.candidates.map((candidate) => [candidate.id, candidate]));
-    for (const candidate of input.candidates) {
-      if (!originalById.has(candidate.id)) {
-        if (!candidate.isManual) throw new Error("초안에 없는 복약 후보가 포함됐어요.");
-        originalById.set(candidate.id, manualCandidate(candidate, timestamp));
-      }
-    }
-    const selected = input.candidates.filter((candidate) => candidate.included);
-    if (selected.length === 0) throw new Error("활성화할 약을 하나 이상 선택해주세요.");
-    if (selected.some((candidate) => {
-      const original = originalById.get(candidate.id)!;
-      return (original.reviewStatus !== "verified" || candidateChanged(original, candidate)) &&
-        !candidate.confirmedAgainstOriginal;
-    })) {
-      throw new Error("검토가 필요한 약은 원본 처방전과 모든 필드를 대조한 뒤 확정해주세요.");
-    }
-    const medications = selected.map((candidate) =>
-      confirmedMedicationPlan(draft, originalById.get(candidate.id)!, candidate, input.confirmedBy, timestamp));
-    const medicationIds = new Set(medications.map((medication) => medication.id));
-    const allCandidates = [
-      ...draft.candidates,
-      ...input.candidates.flatMap((candidate) =>
-        draft.candidates.some((item) => item.id === candidate.id)
-          ? []
-          : [originalById.get(candidate.id)!],
-      ),
-    ];
-    const nextCandidates = allCandidates.map((candidate) => {
-      const reviewed = input.candidates.find((item) => item.id === candidate.id);
-      if (!reviewed) return candidate;
-      const humanConfirmed = reviewed.included &&
-        (candidate.reviewStatus !== "verified" || candidateChanged(candidate, reviewed));
-      const nextCandidate: MedicationPlanCandidate = {
-        ...candidate,
-        included: reviewed.included,
-        productName: reviewed.productName.trim(),
-        ingredientName: reviewed.ingredientName.trim(),
-        doseAmount: reviewed.doseAmount.trim(),
-        frequency: reviewed.frequency.trim(),
-        timing: reviewed.timing.trim(),
-        startDate: reviewed.startDate,
-        ...(reviewed.endDate ? { endDate: reviewed.endDate } : {}),
-        ...(reviewed.supplyDays ? { supplyDays: reviewed.supplyDays } : {}),
-        reviewStatus: humanConfirmed ? "human_confirmed" as const : candidate.reviewStatus,
-        ...(humanConfirmed
-          ? {
-              humanConfirmation: {
-                confirmedBy: input.confirmedBy,
-                confirmedAt: timestamp,
-                documentRevision: draft.sourceDocumentRevision,
-                reason: "checked_against_original" as const,
-              },
-            }
-          : {}),
-        state: reviewed.included ? "active" as const : "cancelled" as const,
-        updatedAt: timestamp,
+      const confirmedDocument = {
+        ...document,
+        status: "confirmed" as const,
+        sourceLabel: "처방전 분석 · 보호자 검토 완료",
       };
-      delete nextCandidate.itemCode;
-      delete nextCandidate.mfdsItemSeq;
-      delete nextCandidate.insuranceCode;
-      if (reviewed.mfdsItemSeq) {
-        nextCandidate.itemCode = reviewed.mfdsItemSeq;
-        nextCandidate.mfdsItemSeq = reviewed.mfdsItemSeq;
-      }
-      if (reviewed.insuranceCode) nextCandidate.insuranceCode = reviewed.insuranceCode;
-      if (!reviewed.endDate) delete nextCandidate.endDate;
-      if (!reviewed.supplyDays) delete nextCandidate.supplyDays;
-      return nextCandidate;
-    });
-    const activeDraft: MedicationPlanDraft = {
-      ...draft,
-      revision: draft.revision + 1,
-      state: "active",
-      candidates: nextCandidates,
-      updatedAt: timestamp,
-      confirmedBy: input.confirmedBy,
-      confirmedAt: timestamp,
-      activatedAt: timestamp,
-      confirmationIdempotencyKey: input.idempotencyKey,
-      activeMedicationPlanIds: [...medicationIds],
-      transitionHistory: [
-        ...draft.transitionHistory,
-        { state: "confirmed", at: timestamp, by: input.confirmedBy },
-        { state: "active", at: timestamp, by: input.confirmedBy },
-      ],
-    };
-    const confirmedDocument = { ...document, status: "confirmed" as const, sourceLabel: "처방전 분석 · 보호자 검토 완료" };
-    for (const medication of medications) tx.set(ref.collection("medicationPlans").doc(medication.id), medication);
-    tx.set(draftRef, activeDraft);
-    tx.set(documentRef, confirmedDocument);
-    tx.create(confirmationRef, {
-      draftId: draft.id,
-      revision: input.revision,
-      medicationPlanIds: [...medicationIds],
-      confirmedBy: input.confirmedBy,
-      confirmedAt: timestamp,
-    });
-    const retainedMedications = snapshot.medications.filter((medication) => !medicationIds.has(medication.id));
-    return {
-      snapshot: {
-        ...snapshot,
-        medications: [...retainedMedications, ...medications],
-        documents: snapshot.documents.map((item) => item.id === document.id ? confirmedDocument : item),
-      },
-      result: { draft: activeDraft, medications, idempotentReplay: false },
-    };
-  }, { affectsMedications: true, requiresConsent: true });
+      for (const medication of medications)
+        tx.set(
+          ref.collection("medicationPlans").doc(medication.id),
+          medication,
+        );
+      tx.set(draftRef, activeDraft);
+      tx.set(documentRef, confirmedDocument);
+      tx.create(confirmationRef, {
+        draftId: draft.id,
+        revision: input.revision,
+        medicationPlanIds: [...medicationIds],
+        confirmedBy: input.confirmedBy,
+        confirmedAt: timestamp,
+      });
+      const retainedMedications = snapshot.medications.filter(
+        (medication) => !medicationIds.has(medication.id),
+      );
+      return {
+        snapshot: {
+          ...snapshot,
+          medications: [...retainedMedications, ...medications],
+          documents: snapshot.documents.map((item) =>
+            item.id === document.id ? confirmedDocument : item,
+          ),
+        },
+        result: { draft: activeDraft, medications, idempotentReplay: false },
+      };
+    },
+    { affectsMedications: true, requiresConsent: true },
+  );
   if ("expiredDraft" in result) {
     throw new Error("복약 초안이 만료됐어요. 문서를 다시 분석해주세요.");
   }
@@ -1406,27 +2149,40 @@ export async function cancelMedicationPlanDraft(
   cancelledBy: string,
 ) {
   if (!cancelledBy.trim()) throw new Error("취소 사용자를 확인할 수 없습니다.");
-  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
-    const draftRef = ref.collection("medicationPlanDrafts").doc(draftId);
-    const draftDoc = await tx.get(draftRef);
-    if (!draftDoc.exists) throw new Error("복약 초안을 찾을 수 없어요.");
-    const draft = draftDoc.data() as MedicationPlanDraft;
-    if (draft.state === "active" || draft.state === "confirmed") {
-      throw new Error("활성화된 복약 계획은 초안 취소로 되돌릴 수 없어요.");
-    }
-    if (draft.state === "cancelled") return { snapshot, result: draft, unchanged: true };
-    const timestamp = new Date().toISOString();
-    const cancelled: MedicationPlanDraft = {
-      ...draft,
-      revision: draft.revision + 1,
-      state: "cancelled",
-      updatedAt: timestamp,
-      candidates: draft.candidates.map((candidate) => ({ ...candidate, state: "cancelled", updatedAt: timestamp })),
-      transitionHistory: [...draft.transitionHistory, { state: "cancelled", at: timestamp, by: cancelledBy }],
-    };
-    tx.set(draftRef, cancelled);
-    return { snapshot, result: cancelled };
-  }, { requiresConsent: true });
+  return mutateCare(
+    scope,
+    undefined,
+    async (tx, snapshot, ref) => {
+      const draftRef = ref.collection("medicationPlanDrafts").doc(draftId);
+      const draftDoc = await tx.get(draftRef);
+      if (!draftDoc.exists) throw new Error("복약 초안을 찾을 수 없어요.");
+      const draft = draftDoc.data() as MedicationPlanDraft;
+      if (draft.state === "active" || draft.state === "confirmed") {
+        throw new Error("활성화된 복약 계획은 초안 취소로 되돌릴 수 없어요.");
+      }
+      if (draft.state === "cancelled")
+        return { snapshot, result: draft, unchanged: true };
+      const timestamp = new Date().toISOString();
+      const cancelled: MedicationPlanDraft = {
+        ...draft,
+        revision: draft.revision + 1,
+        state: "cancelled",
+        updatedAt: timestamp,
+        candidates: draft.candidates.map((candidate) => ({
+          ...candidate,
+          state: "cancelled",
+          updatedAt: timestamp,
+        })),
+        transitionHistory: [
+          ...draft.transitionHistory,
+          { state: "cancelled", at: timestamp, by: cancelledBy },
+        ],
+      };
+      tx.set(draftRef, cancelled);
+      return { snapshot, result: cancelled };
+    },
+    { requiresConsent: true },
+  );
 }
 
 function validCalendarDate(value: string | undefined) {
@@ -1445,28 +2201,36 @@ function validSupplyDays(value: number | undefined) {
 }
 
 export function medicationPlansFromPrescription(
-  document: Pick<ClinicalDocument, "id" | "documentType" | "uploadedAt" | "analysis">,
+  document: Pick<
+    ClinicalDocument,
+    "id" | "documentType" | "uploadedAt" | "analysis"
+  >,
   today = dateKeyInSeoul(),
 ): MedicationPlan[] {
-  if (document.documentType !== "처방전") return [];
+  if (document.documentType === "진단서") return [];
   const sourceMedications = document.analysis?.medications ?? [];
-  const prescriptionDate = validCalendarDate(document.analysis?.prescriptionDate);
+  const prescriptionDate = validCalendarDate(
+    document.analysis?.prescriptionDate,
+  );
   const totalSupplyDays = validSupplyDays(document.analysis?.totalSupplyDays);
 
   return sourceMedications
-    .filter((medication) =>
-      medication.reviewStatus === "verified" &&
-      medication.productName.trim() &&
-      medication.frequency.trim(),
+    .filter(
+      (medication) =>
+        medication.reviewStatus === "verified" &&
+        medication.productName.trim() &&
+        medication.frequency.trim(),
     )
     .flatMap((medication, index) => {
-      const startDate = validCalendarDate(medication.startDate) ?? prescriptionDate;
+      const startDate =
+        validCalendarDate(medication.startDate) ?? prescriptionDate;
       if (!startDate) return [];
       const explicitEndDate = validCalendarDate(medication.endDate);
-      const supplyDays = validSupplyDays(medication.supplyDays) ?? totalSupplyDays;
-      const endDate = explicitEndDate ?? (supplyDays
-        ? addCalendarDays(startDate, supplyDays - 1)
-        : undefined);
+      const supplyDays =
+        validSupplyDays(medication.supplyDays) ?? totalSupplyDays;
+      const endDate =
+        explicitEndDate ??
+        (supplyDays ? addCalendarDays(startDate, supplyDays - 1) : undefined);
       if (!endDate || endDate < startDate) return [];
       return {
         id: `rx-${document.id}-${index + 1}`,
@@ -1474,15 +2238,18 @@ export function medicationPlansFromPrescription(
         productName: medication.productName.trim(),
         ingredientName: medication.ingredientName.trim() || "성분 확인 필요",
         categoryPlain: "처방약",
-        purposePlain: medication.purposePlain.trim() || "처방 목적을 의료진에게 확인해주세요.",
-        descriptionPlain: "처방전에서 확인한 복용약이에요. 약 봉투와 원본 처방전을 함께 확인해주세요.",
+        purposePlain:
+          medication.purposePlain.trim() ||
+          "처방 목적을 의료진에게 확인해주세요.",
+        descriptionPlain:
+          "처방전에서 확인한 복용약이에요. 약 봉투와 원본 처방전을 함께 확인해주세요.",
         doseAmount: medication.doseAmount.trim() || "1회 복용량 확인 필요",
         frequency: medication.frequency.trim(),
         recurrence: normalizeMedicationRecurrence(medication.frequency),
         timing: medication.timing.trim() || "복용 시간 확인 필요",
         startDate,
         endDate,
-        status: endDate < today ? "ended" as const : "active" as const,
+        status: endDate < today ? ("ended" as const) : ("active" as const),
         isNew: true,
         sourceLabel: "처방전 분석에서 자동 등록 · 보호자 확인 필요",
         sourceDocumentId: document.id,
@@ -1491,111 +2258,204 @@ export function medicationPlansFromPrescription(
     });
 }
 
-export async function deleteDocument(scope: CareDataScope, documentId: string, currentSnapshot?: CareSnapshot) {
-  if (!/^[^/]{1,256}$/.test(documentId)) throw new Error("올바르지 않은 문서 식별자입니다.");
+export async function deleteDocument(
+  scope: CareDataScope,
+  documentId: string,
+  currentSnapshot?: CareSnapshot,
+) {
+  if (!/^[^/]{1,256}$/.test(documentId))
+    throw new Error("올바르지 않은 문서 식별자입니다.");
   const deletedAt = new Date().toISOString();
-  return mutateCare(scope, currentSnapshot, async (tx, snapshot, ref) => {
-    const receiptRef = ref.collection("documentDeletionReceipts").doc(documentId);
-    const [document, receipt, ...collections] = await Promise.all([
-      tx.get(ref.collection("clinicalDocuments").doc(documentId)),
-      tx.get(receiptRef),
-      ...DOCUMENT_DERIVED_COLLECTIONS.map((name) => tx.get(ref.collection(name))),
-    ]);
-    const rows = new Map(
-      DOCUMENT_DERIVED_COLLECTIONS.map((name, index) => [name, collections[index]!.docs]),
-    );
+  return mutateCare(
+    scope,
+    currentSnapshot,
+    async (tx, snapshot, ref) => {
+      const receiptRef = ref
+        .collection("documentDeletionReceipts")
+        .doc(documentId);
+      const [document, receipt, ...collections] = await Promise.all([
+        tx.get(ref.collection("clinicalDocuments").doc(documentId)),
+        tx.get(receiptRef),
+        ...DOCUMENT_DERIVED_COLLECTIONS.map((name) =>
+          tx.get(ref.collection(name)),
+        ),
+      ]);
+      const rows = new Map(
+        DOCUMENT_DERIVED_COLLECTIONS.map((name, index) => [
+          name,
+          collections[index]!.docs,
+        ]),
+      );
 
-    const questionSets = rows.get("questionSets")!.filter((item) =>
-      hasSourceDocument(item.data() as StoredRow, documentId));
-    const questionSetIds = new Set(questionSets.map((item) => item.id));
-    const questionResponses = rows.get("questionResponses")!.filter((item) =>
-      questionSetIds.has(String((item.data() as StoredRow).question_set_id ?? "")));
-    const questionResponseIds = new Set(questionResponses.map((item) => item.id));
-    const generations = rows.get("questionGenerations")!.filter((item) =>
-      hasSourceDocument(item.data() as StoredRow, documentId));
-    const generationIds = new Set(generations.map((item) => item.id));
-    const drafts = rows.get("medicationPlanDrafts")!.filter((item) =>
-      (item.data() as StoredRow).documentId === documentId);
-    const draftIds = new Set(drafts.map((item) => item.id));
+      const questionSets = rows
+        .get("questionSets")!
+        .filter((item) =>
+          hasSourceDocument(item.data() as StoredRow, documentId),
+        );
+      const questionSetIds = new Set(questionSets.map((item) => item.id));
+      const questionResponses = rows
+        .get("questionResponses")!
+        .filter((item) =>
+          questionSetIds.has(
+            String((item.data() as StoredRow).question_set_id ?? ""),
+          ),
+        );
+      const questionResponseIds = new Set(
+        questionResponses.map((item) => item.id),
+      );
+      const generations = rows
+        .get("questionGenerations")!
+        .filter((item) =>
+          hasSourceDocument(item.data() as StoredRow, documentId),
+        );
+      const generationIds = new Set(generations.map((item) => item.id));
+      const drafts = rows
+        .get("medicationPlanDrafts")!
+        .filter((item) => (item.data() as StoredRow).documentId === documentId);
+      const draftIds = new Set(drafts.map((item) => item.id));
 
-    const deletedRows = {
-      questionSets,
-      questionResponses,
-      careAnalyses: rows.get("careAnalyses")!.filter((item) => hasSourceDocument(item.data() as StoredRow, documentId)),
-      agentRuns: rows.get("agentRuns")!.filter((item) => hasSourceDocument(item.data() as StoredRow, documentId)),
-      questionGenerations: generations,
-      questionGenerationAttempts: rows.get("questionGenerationAttempts")!.filter((item) =>
-        generationIds.has(String((item.data() as StoredRow).generationId ?? ""))),
-      documentAnalysisJobs: rows.get("documentAnalysisJobs")!.filter((item) =>
-        documentAnalysisJobMatches(item.data() as StoredRow, documentId)),
-      documentImportRequests: rows.get("documentImportRequests")!.filter((item) => {
-        const row = item.data() as StoredRow;
-        return row.contentHash === documentId || row.documentId === documentId;
-      }),
-      documentImportReviews: rows.get("documentImportReviews")!.filter((item) =>
-        (item.data() as StoredRow).contentHash === documentId),
-      medicationPlanDrafts: drafts,
-      medicationDraftConfirmations: rows.get("medicationDraftConfirmations")!.filter((item) =>
-        draftIds.has(String((item.data() as StoredRow).draftId ?? ""))),
-      clinicianQuestions: rows.get("clinicianQuestions")!.filter((item) =>
-        questionSetIds.has(String((item.data() as StoredRow).sourceQuestionSetId ?? ""))),
-    };
-    const dailyCheckIns = rows.get("dailyCheckIns")!.flatMap((item) => {
-      const row = item.data() as DailyCheckIn;
-      if (!questionSetIds.has(row.questionSetId ?? "") && !questionResponseIds.has(row.questionResponseId ?? "")) return [];
-      const { questionSetId: _questionSetId, questionResponseId: _questionResponseId, ...retained } = row;
-      return [{ ref: item.ref, value: retained }];
-    });
-    const derivedTargets = Object.values(deletedRows).flat();
-    if (!document.exists && receipt.exists && derivedTargets.length === 0 && dailyCheckIns.length === 0) {
-      return { snapshot, result: snapshot, unchanged: true };
-    }
+      const deletedRows = {
+        questionSets,
+        questionResponses,
+        careAnalyses: rows
+          .get("careAnalyses")!
+          .filter((item) =>
+            hasSourceDocument(item.data() as StoredRow, documentId),
+          ),
+        agentRuns: rows
+          .get("agentRuns")!
+          .filter((item) =>
+            hasSourceDocument(item.data() as StoredRow, documentId),
+          ),
+        questionGenerations: generations,
+        questionGenerationAttempts: rows
+          .get("questionGenerationAttempts")!
+          .filter((item) =>
+            generationIds.has(
+              String((item.data() as StoredRow).generationId ?? ""),
+            ),
+          ),
+        documentAnalysisJobs: rows
+          .get("documentAnalysisJobs")!
+          .filter((item) =>
+            documentAnalysisJobMatches(item.data() as StoredRow, documentId),
+          ),
+        documentImportRequests: rows
+          .get("documentImportRequests")!
+          .filter((item) => {
+            const row = item.data() as StoredRow;
+            return (
+              row.contentHash === documentId || row.documentId === documentId
+            );
+          }),
+        documentImportReviews: rows
+          .get("documentImportReviews")!
+          .filter(
+            (item) => (item.data() as StoredRow).contentHash === documentId,
+          ),
+        medicationPlanDrafts: drafts,
+        medicationDraftConfirmations: rows
+          .get("medicationDraftConfirmations")!
+          .filter((item) =>
+            draftIds.has(String((item.data() as StoredRow).draftId ?? "")),
+          ),
+        clinicianQuestions: rows
+          .get("clinicianQuestions")!
+          .filter((item) =>
+            questionSetIds.has(
+              String((item.data() as StoredRow).sourceQuestionSetId ?? ""),
+            ),
+          ),
+      };
+      const dailyCheckIns = rows.get("dailyCheckIns")!.flatMap((item) => {
+        const row = item.data() as DailyCheckIn;
+        if (
+          !questionSetIds.has(row.questionSetId ?? "") &&
+          !questionResponseIds.has(row.questionResponseId ?? "")
+        )
+          return [];
+        const {
+          questionSetId: _questionSetId,
+          questionResponseId: _questionResponseId,
+          ...retained
+        } = row;
+        return [{ ref: item.ref, value: retained }];
+      });
+      const derivedTargets = Object.values(deletedRows).flat();
+      if (
+        !document.exists &&
+        receipt.exists &&
+        derivedTargets.length === 0 &&
+        dailyCheckIns.length === 0
+      ) {
+        return { snapshot, result: snapshot, unchanged: true };
+      }
 
-    const confirmedConditions = (snapshot.recipient.confirmedConditions ?? []).filter(
-      (condition) => condition.sourceDocumentId !== documentId,
-    );
-    const recipient = confirmedConditions.length === (snapshot.recipient.confirmedConditions ?? []).length
-      ? snapshot.recipient
-      : { ...snapshot.recipient, confirmedConditions };
-    const nextSnapshot: CareSnapshot = {
-      ...snapshot,
-      recipient,
-      medications: snapshot.medications.filter((item) => item.sourceDocumentId !== documentId),
-      documents: snapshot.documents.filter((item) => item.id !== documentId),
-      clinicianQuestions: snapshot.clinicianQuestions.filter((item) =>
-        !questionSetIds.has(item.sourceQuestionSetId ?? "")),
-      todayCheckIn: snapshot.todayCheckIn && (
-        questionSetIds.has(snapshot.todayCheckIn.questionSetId ?? "") ||
-        questionResponseIds.has(snapshot.todayCheckIn.questionResponseId ?? "")
-      )
-        ? (() => {
-            const {
-              questionSetId: _questionSetId,
-              questionResponseId: _questionResponseId,
-              ...retained
-            } = snapshot.todayCheckIn!;
-            return retained;
-          })()
-        : snapshot.todayCheckIn,
-    };
-    if (document.exists) tx.delete(document.ref);
-    if (recipient !== snapshot.recipient) tx.set(ref, recipient);
-    for (const medication of snapshot.medications) {
-      if (medication.sourceDocumentId === documentId) tx.delete(ref.collection("medicationPlans").doc(medication.id));
-    }
-    for (const target of derivedTargets) tx.delete(target.ref);
-    for (const checkIn of dailyCheckIns) tx.set(checkIn.ref, checkIn.value);
-    tx.set(receiptRef, {
-      schemaVersion: "document-deletion-receipt.v1",
-      status: "completed",
-      deletedAt,
-      deletedDocument: document.exists,
-      deletedCounts: Object.fromEntries(
-        Object.entries(deletedRows).map(([collection, targets]) => [collection, targets.length]),
-      ),
-      retainedCheckIns: dailyCheckIns.length,
-      retainedFields: ["medicationResponses", "symptoms", "severity", "note", "completedAt", "completedBy"],
-    });
-    return { snapshot: nextSnapshot, result: nextSnapshot };
-  }, { affectsMedications: true });
+      const confirmedConditions = (
+        snapshot.recipient.confirmedConditions ?? []
+      ).filter((condition) => condition.sourceDocumentId !== documentId);
+      const recipient =
+        confirmedConditions.length ===
+        (snapshot.recipient.confirmedConditions ?? []).length
+          ? snapshot.recipient
+          : { ...snapshot.recipient, confirmedConditions };
+      const nextSnapshot: CareSnapshot = {
+        ...snapshot,
+        recipient,
+        medications: snapshot.medications.filter(
+          (item) => item.sourceDocumentId !== documentId,
+        ),
+        documents: snapshot.documents.filter((item) => item.id !== documentId),
+        clinicianQuestions: snapshot.clinicianQuestions.filter(
+          (item) => !questionSetIds.has(item.sourceQuestionSetId ?? ""),
+        ),
+        todayCheckIn:
+          snapshot.todayCheckIn &&
+          (questionSetIds.has(snapshot.todayCheckIn.questionSetId ?? "") ||
+            questionResponseIds.has(
+              snapshot.todayCheckIn.questionResponseId ?? "",
+            ))
+            ? (() => {
+                const {
+                  questionSetId: _questionSetId,
+                  questionResponseId: _questionResponseId,
+                  ...retained
+                } = snapshot.todayCheckIn!;
+                return retained;
+              })()
+            : snapshot.todayCheckIn,
+      };
+      if (document.exists) tx.delete(document.ref);
+      if (recipient !== snapshot.recipient) tx.set(ref, recipient);
+      for (const medication of snapshot.medications) {
+        if (medication.sourceDocumentId === documentId)
+          tx.delete(ref.collection("medicationPlans").doc(medication.id));
+      }
+      for (const target of derivedTargets) tx.delete(target.ref);
+      for (const checkIn of dailyCheckIns) tx.set(checkIn.ref, checkIn.value);
+      tx.set(receiptRef, {
+        schemaVersion: "document-deletion-receipt.v1",
+        status: "completed",
+        deletedAt,
+        deletedDocument: document.exists,
+        deletedCounts: Object.fromEntries(
+          Object.entries(deletedRows).map(([collection, targets]) => [
+            collection,
+            targets.length,
+          ]),
+        ),
+        retainedCheckIns: dailyCheckIns.length,
+        retainedFields: [
+          "medicationResponses",
+          "symptoms",
+          "severity",
+          "note",
+          "completedAt",
+          "completedBy",
+        ],
+      });
+      return { snapshot: nextSnapshot, result: nextSnapshot };
+    },
+    { affectsMedications: true },
+  );
 }

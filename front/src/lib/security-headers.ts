@@ -15,6 +15,7 @@ export function contentSecurityPolicy(options: {
   development: boolean;
   nonce: string;
   upgradeInsecureRequests?: boolean;
+  samplePreviewPath?: string;
 }) {
   const directives = [
     "default-src 'self'",
@@ -33,7 +34,8 @@ export function contentSecurityPolicy(options: {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    options.samplePreviewPath === "/preview" || options.samplePreviewPath?.startsWith("/preview/")
+      ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
   ];
   if (options.upgradeInsecureRequests) directives.push("upgrade-insecure-requests");
   return `${directives.join("; ")};`;

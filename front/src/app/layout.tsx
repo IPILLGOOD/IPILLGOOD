@@ -11,7 +11,11 @@ import "@/styles/globals.css";
 import "@/styles/components.css";
 import "@/styles/pages.css";
 import "@/styles/landing.css";
+import "@/styles/landing-next.css";
+import "@/styles/not-found.css";
 import "@/styles/design-refresh.css";
+import "@/styles/experience-refresh.css";
+import "@/styles/approved-patterns.css";
 
 const notoSans = Noto_Sans_KR({
   variable: "--font-noto-sans",

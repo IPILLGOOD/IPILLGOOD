@@ -2,8 +2,26 @@ import { ChevronRight, Pill } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/Badge";
-import { daysSince } from "@/lib/presentation";
 import type { MedicationPlan } from "@care-atlas/backend";
+
+function seoulDateKey(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function daysSince(date: string, now = new Date()) {
+  const [startYear, startMonth, startDay] = seoulDateKey(date).split("-").map(Number);
+  const [endYear, endMonth, endDay] = seoulDateKey(now).split("-").map(Number);
+  const elapsed = Date.UTC(endYear!, endMonth! - 1, endDay!) - Date.UTC(startYear!, startMonth! - 1, startDay!);
+  return Math.max(1, Math.round(elapsed / 86_400_000) + 1);
+}
 
 export function MedicationSummaryList({ medications }: { medications: MedicationPlan[] }) {
   return (

@@ -26,19 +26,24 @@ export default async function CheckInPage() {
         snapshot,
       });
   const savedQuestionResponse = snapshot.todayCheckIn?.questionResponseId
-    ? await getPatientQuestionResponse(scope, snapshot.todayCheckIn.questionResponseId)
+    ? await getPatientQuestionResponse(
+        scope,
+        snapshot.todayCheckIn.questionResponseId,
+      )
     : null;
   return (
     <>
       <PageHeader
         eyebrow="오늘의 안부 확인"
         title="오늘 몸 상태는 어떠셨나요?"
-        description="최근 기록을 바탕으로 고른 질문에 답하며 오늘의 변화를 남겨주세요. 정답을 맞히는 질문이 아니에요."
+        description="오늘의 증상을 잊기 전에 남겨주세요. 정답을 맞히는 질문이 아니에요."
       />
       <div className="checkin-layout checkin-layout--single">
         <Card>
           <CheckInForm
-            questionSet={questions.status === "ready" ? questions.questionSet : null}
+            questionSet={
+              questions.status === "ready" ? questions.questionSet : null
+            }
             initialCheckIn={snapshot.todayCheckIn ?? null}
             initialQuestionResponse={savedQuestionResponse}
             revision={snapshot.revision}

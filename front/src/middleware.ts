@@ -30,6 +30,7 @@ export function middleware(request: NextRequest) {
   const policy = contentSecurityPolicy({
     development: process.env.NODE_ENV === "development",
     nonce,
+    samplePreviewPath: request.nextUrl.pathname,
     upgradeInsecureRequests: request.nextUrl.protocol === "https:",
   });
   const responseHeaderName = cspResponseHeaderName(process.env.CSP_MODE);
