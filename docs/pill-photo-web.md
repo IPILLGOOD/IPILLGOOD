@@ -6,7 +6,7 @@
 
 1. 브라우저가 JPEG·PNG를 디코딩하고 EXIF 방향을 반영한다. 원본은 한 장당 5MiB·2,500만 화소 이하만 받는다. 알약 전체가 사진 중앙 40% 정사각형 안에 들어오도록 안내한다.
 2. 기기에서 문맥 이미지(긴 변 최대 1024px), 중앙 확대(768px), 명암 대비 이미지, 각 이미지의 0/90/180/270도 회전본을 JPEG로 다시 만든다. 원본 EXIF·위치 정보·파일명은 전송하지 않는다. 전처리 버전은 `pill-web-canvas-jpeg-v1`이다. Node/Sharp 전처리와 픽셀 단위로 같다고 주장하지 않는다.
-3. 사용자가 OpenAI 전송에 동의한 뒤 `POST /api/pills/analyze`를 호출한다. 서버는 로그인·프로필 동의·동일 출처·요청 제한·전체 본문 6MiB·18장 구성·각 JPEG 512KiB·크기·중복 앞뒤 사진을 확인한다. 브라우저가 만든 이미지도 신뢰하지 않으며 모델 응답을 엄격히 검증한다.
+3. 사용자가 OpenAI 전송에 동의한 뒤 `POST /api/pills/analyze`를 호출한다. 서버는 로그인·프로필 동의·동일 출처·요청 제한·전체 본문 6MiB·18장 구성·각 JPEG 512KiB·크기·중복 앞뒤 사진을 확인한다. 브라우저가 만든 이미지도 신뢰하지 않으며 모델 응답을 엄격히 검증한다. Worker 한 인스턴스에서는 사진 분석을 하나씩 처리하고, 겹친 요청에는 429와 재시도 시간을 반환해 메모리 사용을 제한한다.
 4. 서버는 기존 Vision·양면 OCR·특징 결합 코드를 사용한다. 기본 모델은 `gpt-5.6-sol`, 각 면의 OCR 입력은 8장이다. `PILL_PHOTO_MODEL`로 서버에서만 모델을 선택한다. 세 요청을 병렬 실행하고 부분 실패를 후보로 내보내지 않는다. 모델에는 의약품 이름·품목코드·검색 후보를 넣지 않는다.
 5. 사진 쌍·훼손·재촬영 판정을 먼저 적용한다. 통과한 관찰을 공식 전체 목록의 모든 청크와 대조한다. 기존 검색과 같은 정렬·등급·보류·품목별 외형 묶음을 유지한다. 결과는 그룹별 최대 10개이며 전체 건수를 별도로 표시한다. 비교 외형이 3,000개를 넘으면 메모리 보호를 위해 후보를 내보내지 않고 재촬영을 안내한다.
 6. 앱은 사진과 결과를 Firestore·브라우저 저장소에 보관하지 않는다. API 응답은 `private, no-store`다. 이미지·추론 내용·원문 오류를 로그에 남기지 않는다. OpenAI 요청은 `store:false`이며 이것이 외부 제공자의 모든 보관 정책을 없앤다는 뜻은 아니다.
@@ -47,3 +47,5 @@ PILL_CATALOG_FILE=/absolute/path/catalog.json npm run cf:deploy --workspace @car
 `front/e2e/pill-photo.spec.ts`는 실제 브라우저 Canvas가 만든 18장의 JPEG를 서버 업로드 파서로 검사하고, 모바일 업로드·방향 보정·동의·결과·재촬영·오류·초기화·320px 200% 글자 크기를 확인한다. 이 UI 테스트의 분석 API 응답은 모의 응답이며 실제 의약품 식별 정확도를 뜻하지 않는다. 실 데이터/실 모델 점검 결과는 별도 검증 기록으로 남긴다.
 
 Cloudflare [Static Assets 바인딩](https://developers.cloudflare.com/workers/static-assets/binding/)과 [Worker 제한](https://developers.cloudflare.com/workers/platform/limits/)을 기준으로 대용량 목록을 코드 번들에서 분리했다.
+
+실제 workerd 오프라인 검사는 `node --experimental-strip-types scripts/pill-photo-worker-smoke.mjs`로 실행한다. 역사적 목록의 원래 시각을 보존하고 검사 전용 시계를 명시하며, 운영용 자료로 내보내지 않는다.

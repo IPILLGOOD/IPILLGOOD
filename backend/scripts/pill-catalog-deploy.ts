@@ -11,7 +11,7 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 let source = process.env.PILL_CATALOG_FILE?.trim();
 if (!source) {
   const result = await collectPillCatalogSnapshot({
-    beforeRequest: () => new Promise(resolve => setTimeout(resolve, 100)),
+    beforeRequest: () => new Promise(resolve => setTimeout(resolve, 250)),
     onProgress: progress => { if (progress.pageNo % 50 === 0) console.log(`Official catalog pass ${progress.pass}: ${progress.pageNo}/${progress.totalPages}`); },
   });
   if (result.status !== "collected") {

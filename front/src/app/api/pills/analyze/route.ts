@@ -9,12 +9,14 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { rateLimitResponse } from "@/lib/rate-limit-core";
 
 const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
+// Bound simultaneous image buffers inside one 128MiB Worker isolate.
+let activeAnalyses = 0;
 const unavailable = "공식 낱알 목록을 갱신하고 있어요. 잠시 후 다시 이용해주세요.";
 async function assetReader(request: Request) {
   try {
     const { env } = await getCloudflareContext({ async: true });
     const assets = (env as { ASSETS?: { fetch(request: Request): Promise<Response> } }).ASSETS;
-    if (assets) return (path: string) => assets.fetch(new Request(`https://assets.local${path}`));
+    if (assets) return (path: string) => assets.fetch(new Request(`https://assets.local${path}`, { signal: AbortSignal.timeout(10_000) }));
   } catch { /* Next.js local server has no Workers asset binding. */ }
   const local = new URL(request.url);
   if (!["127.0.0.1", "localhost", "[::1]"].includes(local.hostname)) throw new Error("catalog_unavailable");
@@ -40,6 +42,11 @@ export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
   if (!/^multipart\/form-data;\s*boundary=/i.test(contentType)
     || Number(request.headers.get("content-length")) > PILL_WEB_MAX_BODY_BYTES) return reply({ message: "사진 용량이 너무 크거나 파일 형식이 올바르지 않아요." }, 413);
+  if (activeAnalyses > 0) {
+    const response = reply({ message: "사진 분석 요청이 몰려 있어요. 잠시 후 다시 시도해주세요." }, 429);
+    response.headers.set("Retry-After", "15"); return response;
+  }
+  activeAnalyses++;
   let stage = "catalog";
   try {
     const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -67,5 +74,5 @@ export async function POST(request: Request) {
     return reply({ message: reason === "rate_limited" ? "분석 요청이 많아요. 잠시 후 다시 시도해주세요."
       : reason === "timeout" ? "분석 시간이 길어져 중단했어요. 잠시 후 다시 시도해주세요."
       : "사진 분석을 완료하지 못했어요. 잠시 후 다시 시도해주세요." }, reason === "rate_limited" ? 429 : 503);
-  }
+  } finally { activeAnalyses--; }
 }
