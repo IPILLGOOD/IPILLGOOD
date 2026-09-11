@@ -9,7 +9,10 @@
     "./nutrition-exploration": "./src/nutrition-exploration.ts",
     "./nutrition-search-errors": "./src/nutrition-search-errors.ts",
     "./ai/nutrition-exploration": "./src/ai/nutrition-exploration.ts",
-    "./pill-photo": "./src/pill-photo-analysis.ts"
+    "./pill-photo": "./src/pill-photo-analysis.ts",
+    "./pill-photo-web": "./src/pill-photo-web.ts",
+    "./pill-catalog-web": "./src/pill-catalog-web.ts",
+    "./pill-photo-web-contract": "./src/pill-photo-web-contract.ts"
   },
   "scripts": {
     "pill:local": "node ../scripts/run-pill-photo-local.mjs",

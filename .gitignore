@@ -16,3 +16,7 @@ test-results/
 playwright-report/
 verification-artifacts/
 local-pill-photos/
+
+# Generated live official catalog; exported only after two-pass integrity/freshness validation.
+/front/public/pill-catalog/
+/front/public/.pill-catalog-*/

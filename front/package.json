@@ -9,8 +9,8 @@
     "start": "next start",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy -- --keep-vars",
-    "cf:upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload -- --keep-vars",
+    "cf:deploy": "npm run pill:catalog:prepare && opennextjs-cloudflare build && opennextjs-cloudflare deploy -- --keep-vars",
+    "cf:upload": "npm run pill:catalog:prepare && opennextjs-cloudflare build && opennextjs-cloudflare upload -- --keep-vars",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "push:keys": "node scripts/generate-vapid-keys.mjs",
     "qa:functional": "node scripts/functional-qa.mjs",
@@ -20,7 +20,8 @@
     "qa:security-headers": "node scripts/security-headers-qa.mjs",
     "test": "node --experimental-strip-types --test test/*.test.mjs",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pill:catalog:prepare": "node --experimental-strip-types ../backend/scripts/pill-catalog-deploy.ts"
   },
   "dependencies": {
     "@care-atlas/backend": "*",
