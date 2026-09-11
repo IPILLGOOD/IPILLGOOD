@@ -4,8 +4,6 @@ import Link from "next/link";
 import { NotFoundAnimation } from "@/components/not-found/NotFoundAnimation";
 import { getSession } from "@/lib/auth/session";
 
-import "@/styles/not-found.css";
-
 export async function NotFoundPage() {
   const session = await getSession();
   const homeHref = session ? "/today" : "/";

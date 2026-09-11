@@ -47,7 +47,7 @@ export function MedicationSearchAdd({
       <div className="section-heading">
         <div>
           <h2 id="medication-search-add-title">약 검색해서 추가</h2>
-          <p>제품명을 검색한 뒤 실제 처방받은 복용법을 입력하세요.</p>
+          <p>제품명을 적힌 그대로 정확하게 입력해주세요.</p>
         </div>
       </div>
       <form
