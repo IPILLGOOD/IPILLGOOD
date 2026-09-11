@@ -296,7 +296,7 @@
   .experience-shell .card.profile-settings-group { padding: 1.25rem; }
   .account-settings-group > header { padding: 0 0 1rem; }
   .account-settings-row { grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 1.35rem 0; }
-  .account-settings-row .button { width: 100%; }
+  .account-settings-row .button { width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   .today-dose-progress { gap: .35rem; }
   .today-dose-progress > span { min-width: .7rem; height: .65rem; }
   .preview-toolbar { padding: 1rem; gap: .65rem; }
