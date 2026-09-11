@@ -10,7 +10,7 @@ export function TodayGettingStarted({ guide }: { guide: GettingStartedGuide }) {
       <div className="section-heading">
         <div>
           <h2 id="getting-started-title">돌봄 기록을 시작해 볼까요</h2>
-          <p>아직 등록된 문서와 복약 기록이 없어요. 아래 순서로 차근차근 시작해 주세요.</p>
+          <p>아직 등록된 문서와 복약·몸 상태 기록이 없어요. 아래 순서로 차근차근 시작해 주세요.</p>
         </div>
       </div>
       <ol className="getting-started__steps" aria-label="돌봄 기록 시작 순서">
@@ -45,7 +45,10 @@ export function TodayGettingStarted({ guide }: { guide: GettingStartedGuide }) {
           {guide.nextLabel} <ArrowRight size={18} aria-hidden="true" />
         </Link>
         {guide.consentConfirmed ? (
-          <Link className="button button--quiet" href="/profile">프로필 다시 확인</Link>
+          <>
+            <Link className="button button--quiet" href="/profile">프로필 다시 확인</Link>
+            <Link className="button button--quiet" href="/check-in">문서 없이 몸 상태 기록하기</Link>
+          </>
         ) : null}
       </div>
     </Card>

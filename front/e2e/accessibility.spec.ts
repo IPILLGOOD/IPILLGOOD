@@ -106,18 +106,12 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await expect(page).toHaveURL(/\/check-in$/);
   const form = page.getByRole("form", { name: "오늘의 안부 기록", exact: true });
   let answeredQuestions = 0;
-  for (let step = 0; step < 20; step++) {
-    const next = form.getByRole("button", { name: "다음 질문", exact: true });
-    if (!await next.isVisible()) break;
-    const radios = form.getByRole("radio");
-    if (await radios.count()) {
-      await tabTo(page, radios.first());
-      await page.keyboard.press("Space");
-      await expect(radios.first()).toBeChecked();
-      answeredQuestions++;
-    }
-    await tabTo(page, next);
-    await page.keyboard.press("Enter");
+  for (const question of await form.locator(".dynamic-question").all()) {
+    const radio = question.getByRole("radio").first();
+    await tabTo(page, radio);
+    await page.keyboard.press("Space");
+    await expect(radio).toBeChecked();
+    answeredQuestions++;
   }
   expect(answeredQuestions).toBeGreaterThan(1);
   await typeWithKeyboard(page, form.getByLabel("보호자 메모"), "접근성 키보드 검증");
@@ -131,13 +125,14 @@ test("core flows: accessible names, targets, keyboard, error and success states"
     await audit(page, `desktop-${path.slice(1)}`, info);
   }
   await page.goto("/documents");
+  await typeWithKeyboard(page, page.getByLabel("병명 *", { exact: true }), "고혈압");
   let releaseFailure!: () => void;
   const failureGate = new Promise<void>((resolve) => { releaseFailure = resolve; });
   await page.route("**/api/documents/analyze", async (route) => {
     await failureGate;
     await route.fulfill({ status: 503, json: { message: "문서를 분석하지 못했어요. 다시 시도해주세요." } });
   });
-  await tabTo(page, page.getByRole("button", { name: "비식별 샘플 처방전·약봉투로 체험" }));
+  await tabTo(page, page.getByRole("button", { name: "비식별 샘플 문서로 체험" }));
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "분석하는 중…" })).toBeDisabled();
   await audit(page, "desktop-document-pending", info);
@@ -145,7 +140,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await expect(page.getByRole("alert").filter({ hasText: "문서를 분석하지 못했어요" })).toBeVisible();
   await audit(page, "desktop-document-error", info);
   await page.unroute("**/api/documents/analyze");
-  await tabTo(page, page.getByRole("button", { name: "비식별 샘플 처방전·약봉투로 체험" }));
+  await tabTo(page, page.getByRole("button", { name: "비식별 샘플 문서로 체험" }));
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "기존 복약과 겹치는 항목이 있어요" })).toBeVisible();
   await audit(page, "desktop-document-success", info);
@@ -156,7 +151,6 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await page.keyboard.press("Space");
   await audit(page, "desktop-profile-consent", info);
   await page.keyboard.press("Space");
-  await page.getByText("기본 정보", { exact: true }).click();
   await typeWithKeyboard(page, page.getByLabel("화면에 표시할 이름"), " ");
   await typeWithKeyboard(page, page.getByLabel("나이", { exact: false }), "75");
   await tabTo(page, page.getByRole("button", { name: "프로필 저장", exact: true }));

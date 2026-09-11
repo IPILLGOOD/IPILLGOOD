@@ -1,0 +1,93 @@
+/* Styles for features added after new_work. Shared visual rules stay in refinement.css. */
+.medication-search-add {
+  margin-bottom: var(--space-6);
+}
+
+.medication-search-add__results {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.medication-search-add__item {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.medication-search-add__item header,
+.medication-search-add__item header span {
+  display: block;
+}
+
+.medication-search-add__item header strong {
+  color: var(--color-primary-900);
+}
+
+.medication-search-add__item header span {
+  margin-top: 0.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.medication-search-add__fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.medication-search-add__fields label,
+.medication-dose-field {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.medication-search-add__fields input,
+.medication-search-add__fields select {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.medication-search-add__instruction,
+.medication-calendar-note,
+.medication-search-add__help {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.medication-search-add__help {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 860px) {
+  .medication-search-add__fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .medication-search-add__fields { grid-template-columns: minmax(0, 1fr); }
+}
+
+.document-alternate-entry { display: inline-flex; margin-top: 1.5rem; min-height: 44px; align-items: center; color: var(--color-primary-700); }
+.medicine-cabinet__header { flex-wrap: wrap; }
+.medicine-cabinet__header > * { min-width: 0; }
+@media (max-width: 639px) {
+  .medicine-cabinet__tab { min-width: 0; }
+  .medicine-cabinet__tab-copy strong, .medicine-cabinet__tab-copy small { white-space: normal; overflow-wrap: anywhere; }
+  .medicine-cabinet__schedule { grid-template-columns: minmax(0, 1fr); }
+}

@@ -39,7 +39,7 @@ test("medication tabs retain explicit selection through scrolling and follow com
       await settled(rail);
       await expect(last).toHaveAttribute("aria-selected", "true");
       await expect(last).toBeFocused();
-      if (width <= 390) {
+      if (await rail.evaluate(element => getComputedStyle(element).scrollSnapType !== "none" && element.scrollWidth > element.clientWidth)) {
         // Scrolling the viewport exercises the same event path as a completed swipe.
         await rail.evaluate(element => element.scrollTo({ left: 0, behavior: "instant" }));
         await settled(rail);

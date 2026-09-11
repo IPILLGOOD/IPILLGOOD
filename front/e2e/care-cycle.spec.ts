@@ -102,9 +102,8 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       await recipient.collection("doseEvents").get()
     ).size;
     for (const documentType of ["처방전", "진단서"]) {
-      await page
-        .getByRole("radio", { name: new RegExp(`^${documentType}`) })
-        .check();
+      await page.goto(documentType === "진단서" ? "/documents?type=diagnosis" : "/documents");
+      if (documentType === "처방전") await page.getByLabel("병명 *", { exact: true }).fill("고혈압");
       if (documentType === "진단서") {
         await expect(
           page.getByRole("heading", { name: "처방전 분석 결과" }),
@@ -112,8 +111,8 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       }
       const sampleButtonName =
         documentType === "진단서"
-          ? "비식별 샘플 진단서로 체험"
-          : "비식별 샘플 처방전·약봉투로 체험";
+          ? "비식별 샘플 문서로 체험"
+          : "비식별 샘플 문서로 체험";
       await page.getByRole("button", { name: sampleButtonName }).click();
       if (documentType === "처방전") {
         await expect(
@@ -465,7 +464,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
     await page.goto("/documents");
     await expect(page.getByText("아직 등록한 문서가 없어요")).toBeVisible();
     await expect(
-      page.getByText("처방전·약봉투나 진단서를 첨부하고 분석해보세요."),
+      page.getByText("처방전 또는 약봉투를 첨부하고 분석해보세요."),
     ).toBeVisible();
     await expect(
       page.getByText("비식별 샘플로 안전하게 흐름을 체험할 수 있어요."),
@@ -492,9 +491,8 @@ test("documents: samples stay demo-only across API requests, uploads and account
       }
     }
     for (const documentType of ["처방전", "진단서"]) {
-      await page
-        .getByRole("radio", { name: new RegExp(`^${documentType}`) })
-        .check();
+      await page.goto(documentType === "진단서" ? "/documents?type=diagnosis" : "/documents");
+      if (documentType === "처방전") await page.getByLabel("병명 *", { exact: true }).fill("고혈압");
       await expect(
         page.getByRole("button", { name: /비식별 샘플 .*으로 체험/ }),
       ).toHaveCount(0);
@@ -590,7 +588,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
     ).sub;
     await page.goto("/documents");
     await expect(
-      page.getByRole("button", { name: "비식별 샘플 처방전·약봉투로 체험" }),
+      page.getByRole("button", { name: "비식별 샘플 문서로 체험" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "로그아웃" }).click();
     await expect(page).toHaveURL(/\/$/);
@@ -600,7 +598,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
       0,
     );
     await expect(
-      page.getByText("처방전·약봉투나 진단서를 첨부하고 분석해보세요."),
+      page.getByText("처방전 또는 약봉투를 첨부하고 분석해보세요."),
     ).toBeVisible();
   } finally {
     for (const id of [recipientId, demoRecipientId].filter((id): id is string =>

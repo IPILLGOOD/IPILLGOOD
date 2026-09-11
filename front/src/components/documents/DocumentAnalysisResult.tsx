@@ -40,17 +40,13 @@ export function DocumentAnalysisResult({
         ? "OpenAI 문서 분석"
         : "데모 분석 결과";
   const nutritionDiagnoses = supportedNutritionDiagnoses(analysis);
-  const medicationsNeedingReview =
-    analysis.medications?.filter(
-      (medication) => medication.reviewStatus !== "verified",
-    ).length ?? 0;
+  const medicationsNeedingReview = analysis.medications?.filter(
+    (medication) => medication.reviewStatus !== "verified",
+  ).length ?? 0;
   const requiresMedicationVerification = medicationsNeedingReview > 0;
 
   return (
-    <section
-      className="analysis-result"
-      aria-labelledby="analysis-result-title"
-    >
+    <section className="analysis-result" aria-labelledby="analysis-result-title">
       <div className="analysis-result__header">
         <span className="analysis-result__icon" aria-hidden="true">
           <BadgeCheck size={22} />
@@ -73,21 +69,12 @@ export function DocumentAnalysisResult({
         ))}
       </dl> : null}
 
-      {analysis.extraction?.status !== undefined &&
-      analysis.extraction.status !== "complete" ? (
-        <div
-          className="disease-lookup-status disease-lookup-status--failed"
-          role="status"
-        >
+      {analysis.extraction?.status !== undefined && analysis.extraction.status !== "complete" ? (
+        <div className="disease-lookup-status disease-lookup-status--failed" role="status">
           <TriangleAlert size={18} aria-hidden="true" />
           <p>
-            <strong>
-              {analysis.extraction.status === "failed"
-                ? "자동 추출 결과 없음"
-                : "일부 항목 확인 필요"}
-            </strong>
-            찾지 못한 값은 버리지 않고 검토 초안으로 남겼어요. 원본을 보며
-            수정하거나 직접 추가해주세요.
+            <strong>{analysis.extraction.status === "failed" ? "자동 추출 결과 없음" : "일부 항목 확인 필요"}</strong>
+            찾지 못한 값은 버리지 않고 검토 초안으로 남겼어요. 원본을 보며 수정하거나 직접 추가해주세요.
           </p>
         </div>
       ) : null}
@@ -97,13 +84,9 @@ export function DocumentAnalysisResult({
           className={`disease-lookup-status disease-lookup-status--${medicationRegistration === "pending" || requiresMedicationVerification ? "failed" : requiresPeriodReview ? "not_configured" : "official_match"}`}
           role="status"
         >
-          {medicationRegistration === "pending" ||
-          requiresMedicationVerification ||
-          requiresPeriodReview ? (
-            <TriangleAlert size={18} aria-hidden="true" />
-          ) : (
-            <CalendarCheck2 size={18} aria-hidden="true" />
-          )}
+          {medicationRegistration === "pending" || requiresMedicationVerification || requiresPeriodReview
+            ? <TriangleAlert size={18} aria-hidden="true" />
+            : <CalendarCheck2 size={18} aria-hidden="true" />}
           <p>
             <strong>
               {medicationRegistration === "merged"
@@ -185,35 +168,22 @@ export function DocumentAnalysisResult({
         />
       ) : null}
 
-      {analysis.documentType === "진단서" &&
-      documentId &&
-      nutritionDiagnoses.length > 0 ? (
-        <form
-          action={confirmDiagnosesAction}
-          className="diagnosis-confirmation"
-        >
+      {analysis.documentType === "진단서" && documentId && nutritionDiagnoses.length > 0 ? (
+        <form action={confirmDiagnosesAction} className="diagnosis-confirmation">
           <input type="hidden" name="documentId" value={documentId} />
           <div>
-            <strong>식사/영양 안내에 반영할까요?</strong>
+            <strong>식사·영양 안내에 반영할까요?</strong>
             <p>
-              {nutritionDiagnoses
-                .map((diagnosis) => diagnosis.name)
-                .join(" · ")}
-              을(를) 의료진에게 확인받은 질환으로 저장해요. 원본과 비교한 뒤
-              확정해주세요.
+              {nutritionDiagnoses.map((diagnosis) => diagnosis.name).join(" · ")}을(를)
+              의료진에게 확인받은 질환으로 저장해요. 원본과 비교한 뒤 확정해주세요.
             </p>
           </div>
-          <SubmitButton pendingText="확정하는 중…">
-            확정 질환으로 저장
-          </SubmitButton>
+          <SubmitButton pendingText="확정하는 중…">확정 질환으로 저장</SubmitButton>
         </form>
       ) : null}
 
       {analysis.diseaseInformation && analysis.diseaseInformation.length > 0 ? (
-        <section
-          className="disease-information"
-          aria-labelledby="disease-information-title"
-        >
+        <section className="disease-information" aria-labelledby="disease-information-title">
           <div className="disease-information__heading">
             <BookOpenText size={20} aria-hidden="true" />
             <div>
@@ -230,26 +200,18 @@ export function DocumentAnalysisResult({
               >
                 <header>
                   <div>
-                    <span className="disease-information__query">
-                      입력: {disease.query}
-                    </span>
+                    <span className="disease-information__query">입력: {disease.query}</span>
                     <h5>
                       {disease.matchedName}
                       {disease.code ? <small>{disease.code}</small> : null}
                     </h5>
                   </div>
-                  <Badge
-                    tone={
-                      disease.source === "official_api" ? "success" : "info"
-                    }
-                  >
+                  <Badge tone={disease.source === "official_api" ? "success" : "info"}>
                     {disease.sourceLabel}
                   </Badge>
                 </header>
 
-                <p className="disease-information__overview">
-                  {disease.overview}
-                </p>
+                <p className="disease-information__overview">{disease.overview}</p>
 
                 {disease.practicalPoints.length > 0 ? (
                   <div className="disease-information__points">
@@ -282,11 +244,7 @@ export function DocumentAnalysisResult({
                     <ul>
                       {disease.references.map((reference) => (
                         <li key={reference.url}>
-                          <a
-                            href={reference.url}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                          >
+                          <a href={reference.url} target="_blank" rel="noreferrer noopener">
                             {reference.title}
                             <ExternalLink size={13} aria-hidden="true" />
                           </a>

@@ -16,9 +16,9 @@ export function HealthDataResetCard({
   const [open, setOpen] = useState(reauthenticating);
   const trigger = useRef<HTMLButtonElement>(null);
   return (
-    <div className="account-settings-row health-data-reset-card" aria-labelledby="health-data-reset-title">
+    <section className="card account-deletion-card health-data-reset-card" aria-labelledby="health-data-reset-title">
       <div>
-        <h3 id="health-data-reset-title">건강정보 초기화</h3>
+        <h2 id="health-data-reset-title">건강정보 초기화</h2>
         <p>Google 로그인은 유지하고 저장된 돌봄 기록만 모두 삭제할 수 있어요.</p>
         <p className="field-hint">문서·복약·증상·안부·질문·Agent 기록과 보호자 연결, 알림을 삭제한 뒤 서버 잔존 여부를 확인해요.</p>
       </div>
@@ -30,6 +30,6 @@ export function HealthDataResetCard({
         email={email}
         onClose={() => { setOpen(false); trigger.current?.focus(); }}
       /> : null}
-    </div>
+    </section>
   );
 }

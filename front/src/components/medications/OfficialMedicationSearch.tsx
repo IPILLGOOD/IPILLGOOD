@@ -1,0 +1,180 @@
+import { Database, ShieldCheck } from "lucide-react";
+
+import { Badge } from "@/components/ui/Badge";
+import { Card } from "@/components/ui/Card";
+import { MedicationResultExplanation } from "@/components/medications/MedicationResultExplanation";
+import { MedicationSearchForm } from "@/components/medications/MedicationSearchForm";
+import type { OfficialMedicationLookupResult } from "@care-atlas/backend";
+
+export function OfficialMedicationSearch({
+  query,
+  result,
+  officialApiConfigured,
+}: {
+  query: string;
+  result: OfficialMedicationLookupResult | null;
+  officialApiConfigured: boolean;
+}) {
+  const badge = !result
+    ? officialApiConfigured
+      ? { tone: "neutral" as const, label: "공식 검색 설정됨" }
+      : { tone: "warning" as const, label: "공식 검색 미설정" }
+    : result.status === "connected"
+      ? result.productQueryStatus === "complete"
+        ? { tone: "success" as const, label: "식약처 공식 조회 완료" }
+        : { tone: "warning" as const, label: "공식 조회 일부 완료" }
+      : result.status === "not_configured"
+        ? { tone: "warning" as const, label: "공식 검색 미설정" }
+        : result.reason === "rate_limited"
+          ? { tone: "warning" as const, label: "잠시 후 재검색" }
+          : { tone: "warning" as const, label: "공식 조회 실패" };
+
+  return (
+    <Card className="official-drug-card" aria-labelledby="official-drug-title">
+      <div className="official-drug-card__header">
+        <div className="official-drug-card__title">
+          <span className="official-drug-card__icon" aria-hidden="true">
+            <Database size={21} />
+          </span>
+          <div>
+            <div className="medication-row__name">
+              <h2 id="official-drug-title">약 정보 검색</h2>
+              <Badge tone={badge.tone}>{badge.label}</Badge>
+            </div>
+            <p>제품명이나 성분명으로 식약처 허가정보와 소비자용 복약정보를 확인하세요.</p>
+          </div>
+        </div>
+      </div>
+
+      <MedicationSearchForm key={query} query={query}>
+
+      {!query ? (
+        <div className="official-drug-card__guide">
+          <ShieldCheck size={18} aria-hidden="true" />
+          <p>
+            {officialApiConfigured
+              ? "API 키가 설정되어 있어요. 실제 연결 여부는 검색 후 결과 상태로 확인하며, 검색만으로 현재 복용약이나 일정이 바뀌지 않아요."
+              : "공식 검색이 설정되지 않은 상태예요. 예시 데이터나 웹 검색 결과로 조용히 대체하지 않아요."}
+          </p>
+        </div>
+      ) : null}
+
+      {query && result?.status === "not_configured" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>공식 약 검색이 아직 설정되지 않았어요.</strong>
+          <p>{result.message} 검색어를 예시 정보나 웹 결과로 대체하지 않았어요.</p>
+        </div>
+      ) : null}
+
+      {query && result?.status === "unavailable" ? (
+        <div className="official-drug-message official-drug-message--error" role="alert">
+          <strong>
+            {result.reason === "rate_limited"
+              ? "검색 요청이 잠시 제한됐어요."
+              : "식약처 공식 조회에 실패했어요."}
+          </strong>
+          <p>{result.message}</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" && result.productQueryStatus === "partial" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>공식 검색 일부만 완료됐어요.</strong>
+          <p>제품명 또는 성분명 조회 중 하나가 일시적으로 실패했어요. 표시된 결과는 식약처에서 확인된 항목이에요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      result.consumerInformationStatus === "unavailable" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>상세 허가정보를 잠시 불러오지 못했어요.</strong>
+          <p>제품·성분은 확인했지만 효능·용법·주의사항 원문은 품목 상세 링크에서 확인해주세요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      result.consumerInformationStatus === "partial" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>일부 제품의 상세정보만 확인됐어요.</strong>
+          <p>공식 원문이 없는 결과에는 의약품안전나라 품목 상세 링크를 제공해요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      result.plainLanguageStatus === "not_configured" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>쉬운 설명 생성이 설정되지 않았어요.</strong>
+          <p>식약처 공식 원문은 그대로 표시하며 OpenAI 요약은 만들지 않았어요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      (result.plainLanguageStatus === "unavailable" || result.plainLanguageStatus === "partial") ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>쉬운 설명을 일부 만들지 못했어요.</strong>
+          <p>누락된 항목은 식약처 공식 원문으로 확인할 수 있어요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" &&
+      result.items.length > 0 &&
+      result.pharmacogenomicStatus === "unavailable" ? (
+        <div className="official-drug-message official-drug-message--warning" role="status">
+          <strong>약물유전정보를 잠시 불러오지 못했어요.</strong>
+          <p>제품·성분 허가정보는 정상적으로 확인했으며, 선택 보강 정보만 일부 없을 수 있어요.</p>
+        </div>
+      ) : null}
+
+      {query && result?.status === "connected" && result.items.length === 0 ? (
+        <div className="official-drug-message" role="status">
+          <strong>식약처에서 “{query}”와 일치하는 제품이나 성분을 찾지 못했어요.</strong>
+          <p>제품 포장이나 처방전에 적힌 제품명·성분명을 확인해 다시 검색해보세요.</p>
+        </div>
+      ) : null}
+
+      {result?.status === "connected" && result.items.length > 0 ? (
+        <div className="official-drug-results" aria-live="polite">
+          <p className="official-drug-results__count">
+            “{query}” 검색 결과 {result.totalCount.toLocaleString("ko-KR")}건
+          </p>
+          <ul>
+            {result.items.map((item, index) => (
+              <li key={item.itemSeq}>
+                <div className="official-drug-result__name">
+                  <h3>{item.productName}</h3>
+                  {item.englishName ? <p>{item.englishName}</p> : null}
+                  <dl className="official-drug-result__meta">
+                    <div>
+                      <dt>성분</dt>
+                      <dd>{item.ingredientName || "성분 정보 확인 필요"}</dd>
+                    </div>
+                    <div>
+                      <dt>업체</dt>
+                      <dd>{item.manufacturer || "업체 정보 확인 필요"}</dd>
+                    </div>
+                    <div>
+                      <dt>품목기준코드</dt>
+                      <dd>{item.itemSeq}</dd>
+                    </div>
+                  </dl>
+                </div>
+                <MedicationResultExplanation
+                  item={item}
+                  resultId={`official-drug-${index}`}
+                />
+              </li>
+            ))}
+          </ul>
+          <p className="official-drug-results__notice">
+            식약처 공식 데이터의 일반 정보이며 개인의 처방 목적이나 복용 지시가 아니에요. 처방전의 복용량·횟수·시간을 우선 확인하세요.
+          </p>
+        </div>
+      ) : null}
+      </MedicationSearchForm>
+    </Card>
+  );
+}

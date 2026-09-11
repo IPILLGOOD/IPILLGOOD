@@ -14,21 +14,11 @@ export default async function DashboardPage() {
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
   const medications = activeMedications(snapshot.medications);
-  const todayTasks = createMedicationSchedule(
-    snapshot.medications,
-    snapshot.doseEvents,
-  );
+  const todayTasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
   const calendarDoses = [
     ...snapshot.doseEvents,
     ...todayTasks
-      .filter(
-        (task) =>
-          !snapshot.doseEvents.some(
-            (event) =>
-              event.medicationPlanId === task.medicationPlanId &&
-              event.scheduledAt === task.scheduledAt,
-          ),
-      )
+      .filter((task) => !snapshot.doseEvents.some((event) => event.medicationPlanId === task.medicationPlanId && event.scheduledAt === task.scheduledAt))
       .map((task) => ({
         id: task.id,
         medicationPlanId: task.medicationPlanId,
