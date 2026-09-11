@@ -30,6 +30,9 @@ test.beforeEach(async ({ context }) => {
 });
 
 async function audit(page: Page, name: string, info: TestInfo) {
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished.catch(() => {})));
+  });
   await page.evaluate(axe.source);
   const results = await page.evaluate(async () => (window as unknown as { axe: typeof axe }).axe.run(document, {
     runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] },
@@ -84,31 +87,27 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await page.keyboard.press("Enter");
   await expect(page.getByRole("main")).toBeFocused();
   await expect(page.getByRole("main")).toHaveCSS("outline-style", "none");
-  await tabTo(page, page.getByRole("link", { name: /확인 시작/ }));
+  await tabTo(page, page.getByRole("link", { name: "안부 확인", exact: true }));
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/check-in$/);
-  const form = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
-  await typeWithKeyboard(page, form.getByLabel("보호자 메모"), "접근성 키보드 검증");
-  const doseQuestions = form.locator(".dose-question");
-  for (let index = 0; index < await doseQuestions.count(); index++) {
-    const question = doseQuestions.nth(index);
-    const selected = question.locator('input[type="radio"]:checked');
-    const first = question.locator('input[type="radio"]').first();
-    const completed = question.locator('input[type="radio"][value="completed"]');
-    await tabTo(page, await selected.count() > 0 ? selected : first);
-    for (let move = 0; move < await question.locator('input[type="radio"]').count() && !await completed.isChecked(); move++) {
-      await page.keyboard.press("ArrowLeft");
+  const form = page.getByRole("form", { name: "오늘의 안부 기록", exact: true });
+  let answeredQuestions = 0;
+  for (let step = 0; step < 20; step++) {
+    const next = form.getByRole("button", { name: "다음 질문", exact: true });
+    if (!await next.isVisible()) break;
+    const radios = form.getByRole("radio");
+    if (await radios.count()) {
+      await tabTo(page, radios.first());
+      await page.keyboard.press("Space");
+      await expect(radios.first()).toBeChecked();
+      answeredQuestions++;
     }
-    await expect(completed).toBeChecked();
+    await tabTo(page, next);
+    await page.keyboard.press("Enter");
   }
-  const questions = form.locator(".dynamic-question");
-  for (let index = 0; index < await questions.count(); index++) {
-    const firstAnswer = questions.nth(index).locator('input[type="radio"]').first();
-    await tabTo(page, firstAnswer);
-    await page.keyboard.press("Space");
-    await expect(firstAnswer).toBeChecked();
-  }
-  await info.attach("check-in-radio-keyboard", { body: JSON.stringify({ doseGroups: await doseQuestions.count(), dynamicQuestions: await questions.count() }), contentType: "application/json" });
+  expect(answeredQuestions).toBeGreaterThan(1);
+  await typeWithKeyboard(page, form.getByLabel("보호자 메모"), "접근성 키보드 검증");
+  await info.attach("check-in-radio-keyboard", { body: JSON.stringify({ answeredQuestions }), contentType: "application/json" });
   await tabTo(page, form.getByRole("button", { name: "오늘의 답변 저장" }));
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status")).toContainText("오늘의 복약과 몸 상태를 기록했어요.");
@@ -124,7 +123,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
     await failureGate;
     await route.fulfill({ status: 503, json: { message: "문서를 분석하지 못했어요. 다시 시도해주세요." } });
   });
-  await tabTo(page, page.getByRole("button", { name: "비식별 샘플 처방전으로 체험" }));
+  await tabTo(page, page.getByRole("button", { name: "비식별 샘플 처방전·약봉투로 체험" }));
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "분석하는 중…" })).toBeDisabled();
   await audit(page, "desktop-document-pending", info);
@@ -132,7 +131,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await expect(page.getByRole("alert").filter({ hasText: "문서를 분석하지 못했어요" })).toBeVisible();
   await audit(page, "desktop-document-error", info);
   await page.unroute("**/api/documents/analyze");
-  await tabTo(page, page.getByRole("button", { name: "비식별 샘플 처방전으로 체험" }));
+  await tabTo(page, page.getByRole("button", { name: "비식별 샘플 처방전·약봉투로 체험" }));
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "기존 복약과 겹치는 항목이 있어요" })).toBeVisible();
   await audit(page, "desktop-document-success", info);
@@ -143,6 +142,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await page.keyboard.press("Space");
   await audit(page, "desktop-profile-consent", info);
   await page.keyboard.press("Space");
+  await page.getByText("기본 정보", { exact: true }).click();
   await typeWithKeyboard(page, page.getByLabel("화면에 표시할 이름"), " ");
   await typeWithKeyboard(page, page.getByLabel("나이", { exact: false }), "75");
   await tabTo(page, page.getByRole("button", { name: "프로필 저장", exact: true }));
@@ -154,7 +154,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await typeWithKeyboard(page, page.getByLabel("나이", { exact: false }), "75");
   await tabTo(page, page.getByRole("button", { name: "프로필 저장", exact: true }));
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("status")).toContainText("어르신 프로필을 업데이트했어요.");
+  await expect(page.getByRole("status")).toContainText("이용자 프로필을 업데이트했어요.");
   await audit(page, "desktop-profile-success", info);
   await tabTo(page, page.getByRole("button", { name: "로그아웃" }));
   await page.keyboard.press("Enter");

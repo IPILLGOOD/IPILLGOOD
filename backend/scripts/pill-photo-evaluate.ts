@@ -13,13 +13,11 @@ import {
 } from "../test-support/pill-photo-evaluation-registry.ts";
 import { PILL_PHOTO_SCORE_SCHEMA_VERSION, type PillPhotoScoreInput } from "../test-support/pill-photo-score.ts";
 import { serializePillProfile } from "./profile-pill-catalog.ts";
+import { PILL_PHOTO_FAILURE_REASONS } from "../src/pill-photo-failures.ts";
 
 const OUTPUT = fileURLToPath(new URL("../../verification-artifacts/pill-photo-evaluation/", import.meta.url));
 const STOP_FAILURES = new Set(["invalid_request", "access_denied", "rate_limited", "provider_unavailable", "timeout", "network_error", "not_configured"]);
-const SCORE_FAILURES = new Set([
-  "invalid_photo", "refused", "incomplete_response", "invalid_response", "access_denied",
-  "rate_limited", "provider_unavailable", "timeout", "network_error", "ocr_failed", "fusion_failed",
-]);
+const SCORE_FAILURES: ReadonlySet<string> = new Set(PILL_PHOTO_FAILURE_REASONS);
 const HELP = `Reviewed evaluation photos (NOT a user-upload service):
   validation [--fixture v2|v3] --live --confirm-public-transfer
   validation --fixture v4 --live --confirm-reviewed-transfer

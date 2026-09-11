@@ -165,12 +165,43 @@ test("OCR 품목코드를 정확 일치 조건으로 식약처 허가정보에�
     },
   });
 
+  assert.match(requested?.pathname ?? "", /getDrugPrdtPrmsnDtlInq06$/);
   assert.equal(requested?.searchParams.get("item_seq"), "200001234");
   assert.equal(requested?.searchParams.has("item_name"), false);
   assert.equal(result.status, "matched");
   if (result.status === "matched") {
     assert.equal(result.item.itemSeq, "200001234");
     assert.match(result.item.productName, /노바스크/);
+  }
+});
+
+test("품목코드 재확인은 목록 API가 아닌 정확 필터를 지원하는 상세조회 API를 사용한다", async () => {
+  const requestedPaths: string[] = [];
+  const result = await verifyOfficialMedicationCode("200610660", {
+    apiKey: "official-key",
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      requestedPaths.push(url.pathname);
+      return officialResponse([productItem({
+        ITEM_SEQ: "200610660",
+        ITEM_NAME: "노바스크정5밀리그람(암로디핀베실산염)",
+        ITEM_INGR_NAME: undefined,
+        MAIN_INGR_ENG: "Amlodipine Besylate",
+        INGR_NAME: "첨가제 목록",
+        EE_DOC_DATA: "혈압을 낮추는 데 사용한다.",
+        UD_DOC_DATA: "의사의 처방에 따라 복용한다.",
+        NB_DOC_DATA: "복용 전 주의사항을 확인한다.",
+      })]);
+    },
+  });
+
+  assert.equal(requestedPaths.length, 1);
+  assert.match(requestedPaths[0] ?? "", /getDrugPrdtPrmsnDtlInq06$/);
+  assert.equal(result.status, "matched");
+  if (result.status === "matched") {
+    assert.equal(result.item.ingredientName, "Amlodipine Besylate");
+    assert.equal(result.item.consumerInfo?.source, "product_permit");
+    assert.match(result.item.consumerInfo?.efficacy ?? "", /혈압/);
   }
 });
 
@@ -410,6 +441,7 @@ test("e약은요가 없는 전문의약품은 상세 허가 원문을 사용해 
         plainExplanation: {
           categoryPlain: "혈압약",
           overview: "높은 혈압을 낮추는 데 사용하는 약이에요.",
+          commonEffects: ["어지럽게 느껴질 수 있어요."],
           usagePlain: "복용량은 처방전을 확인하세요.",
           safetyPlain: "어지러울 수 있어요.",
           genePlain: "",

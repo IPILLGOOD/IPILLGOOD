@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { migratePillObservationBodyV1, pillObservationBodySchema, pillObservationBodyV1Schema, searchPillCandidates, type PillCatalog } from "./pill-identification.ts";
+import { migratePillObservationBodyV1, pillObservationBodySchema, pillObservationBodyV1Schema, searchPillCandidates, tracePillCandidates, type PillCatalog, type PillSearchTrace } from "./pill-identification.ts";
 
 export const PILL_PHOTO_PROMPT_VERSION = "pill-photo-observation-v3-multiview";
 const photoObservationFields = {
@@ -52,6 +52,23 @@ This is visual feature extraction only, not a medication identification or a gua
 
 /** Pure adapter. Even schema-valid model outputs are untrusted observations, not verified facts. */
 export function comparePillPhotoFeatures(value: unknown, catalog: PillCatalog) {
+  return comparePhotoWithSearch(value, catalog, searchPillCandidates);
+}
+
+/** Internal/offline only. The ordinary comparison and its schema never contain this trace. */
+export function tracePillPhotoFeatures(value: unknown, catalog: PillCatalog): {
+  comparison: ReturnType<typeof comparePillPhotoFeatures>; trace: PillSearchTrace | null;
+} {
+  let trace: PillSearchTrace | null = null;
+  const comparison = comparePhotoWithSearch(value, catalog, (input, source) => {
+    const diagnostic = tracePillCandidates(input, source);
+    trace = diagnostic.trace;
+    return diagnostic.result;
+  });
+  return { comparison, trace };
+}
+
+function comparePhotoWithSearch(value: unknown, catalog: PillCatalog, search: typeof searchPillCandidates) {
   const parsed = pillPhotoFeaturesSchema.safeParse(value);
   if (!parsed.success) return { status: "invalid_features" as const, reason: "invalid_feature_schema", observation: null, search: null };
   const features = parsed.data;
@@ -62,5 +79,15 @@ export function comparePillPhotoFeatures(value: unknown, catalog: PillCatalog) {
   if (features.pairConsistency !== "consistent" || !features.bothSidesVisible) {
     return { status: "needs_retake" as const, reason: "unverified_photo_pair", observation, search: null };
   }
-  return { status: "searched" as const, reason: "features_compared", observation, search: searchPillCandidates(observation, catalog) };
+  return { status: "searched" as const, reason: "features_compared", observation, search: search(observation, catalog) };
+}
+
+/** One safety definition shared by scoring and private diagnostics, including held candidate exposure. */
+export function pillPhotoSafetyFacts(comparison: Pick<ReturnType<typeof comparePillPhotoFeatures>, "status" | "search">) {
+  const candidateItemSeqs = comparison.search?.candidates.map(candidate => candidate.itemSeq) ?? [];
+  const heldCandidateItemSeqs = comparison.search?.heldCandidates.map(candidate => candidate.itemSeq) ?? [];
+  const strongCandidateItemSeqs = comparison.search?.candidates.filter(candidate => candidate.grade === "strong").map(candidate => candidate.itemSeq) ?? [];
+  const needsRetake = comparison.status === "needs_retake" || comparison.search?.status === "needs_retake";
+  return { candidateItemSeqs, heldCandidateItemSeqs, strongCandidateItemSeqs, needsRetake,
+    retakeCandidateExposure: needsRetake && candidateItemSeqs.length + heldCandidateItemSeqs.length > 0 };
 }

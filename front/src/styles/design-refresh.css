@@ -320,42 +320,6 @@ h2 {
   gap: 0;
 }
 
-.today-card {
-  overflow: hidden;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--color-primary-50);
-  padding: var(--space-5) var(--space-6);
-}
-
-.today-card::after {
-  right: -5rem;
-  bottom: -6rem;
-  border-width: 1px;
-  border-color: var(--color-sage-200);
-  background: transparent;
-}
-
-.today-card__icon {
-  border-radius: 50%;
-  background: var(--color-surface);
-  color: var(--color-primary-700);
-}
-
-.today-card--completed {
-  border: 1px solid var(--color-sage-200);
-  background: var(--color-surface);
-  box-shadow: inset 0.25rem 0 0 var(--color-primary-600);
-}
-
-.today-card--completed::after {
-  display: none;
-}
-
-.today-card--completed .today-card__icon {
-  background: var(--color-primary-50);
-}
-
 .today-progress-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(10rem, 0.55fr);
@@ -392,7 +356,6 @@ h2 {
   padding-block: var(--space-4);
 }
 
-.today-task__medicine > span:first-child,
 .pill-mark {
   background: transparent;
 }
@@ -551,8 +514,8 @@ h2 {
 /* Dashboard and reports -------------------------------------------------- */
 
 .dashboard-grid {
-  grid-template-columns: minmax(0, 1.5fr) minmax(17rem, 0.62fr);
-  gap: var(--space-10);
+  grid-template-columns: minmax(0, 1.65fr) minmax(17rem, 0.55fr);
+  gap: var(--space-6);
 }
 
 .dashboard-main,
@@ -648,19 +611,6 @@ h2 {
 
 /* Medication information ------------------------------------------------- */
 
-.official-drug-card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  padding: var(--space-5);
-}
-
-.official-drug-card__icon {
-  border-radius: 50%;
-  background: var(--color-primary-50);
-  color: var(--color-primary-700);
-}
-
 .medication-cards {
   gap: 0;
 }
@@ -696,110 +646,6 @@ h2 {
 }
 
 /* Medication studio: search console + numbered medicine profiles -------- */
-
-.official-drug-card {
-  position: relative;
-  grid-template-columns: minmax(15rem, 0.72fr) minmax(20rem, 1.28fr);
-  align-items: start;
-  gap: var(--space-6) var(--space-10);
-  overflow: hidden;
-  border: 1px solid var(--color-sage-200);
-  border-radius: 1.25rem;
-  background:
-    radial-gradient(circle at 0 0, rgb(227 238 230 / 75%) 0, transparent 14rem),
-    var(--color-surface);
-  padding: var(--space-8);
-}
-
-.official-drug-card::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 4px;
-  background: var(--color-primary-600);
-  content: "";
-}
-
-.official-drug-card__header {
-  align-self: center;
-}
-
-.official-drug-card__title {
-  gap: var(--space-4);
-}
-
-.official-drug-card__title h2 {
-  font-size: 1.2rem;
-}
-
-.official-drug-card__title .medication-row__name {
-  align-items: center;
-}
-
-.official-drug-card__icon {
-  width: 3rem;
-  height: 3rem;
-  border: 1px solid var(--color-sage-200);
-  background: rgb(255 255 255 / 78%);
-}
-
-.official-drug-search .field > label {
-  font-size: 0.74rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.official-drug-search__controls {
-  position: relative;
-  gap: 0;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 999px;
-  background: var(--color-surface);
-  padding: 0.3rem;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.official-drug-search__controls:focus-within {
-  border-color: var(--color-primary-600);
-  box-shadow: 0 0 0 3px rgb(23 107 77 / 10%);
-}
-
-.official-drug-search__controls input {
-  height: 3rem;
-  border: 0;
-  background: transparent;
-  padding-left: var(--space-5);
-  box-shadow: none;
-}
-
-.official-drug-search__controls input:focus {
-  box-shadow: none;
-}
-
-.official-drug-search__controls .button {
-  min-height: 3rem;
-  border-radius: 999px;
-  padding-inline: var(--space-5);
-}
-
-.official-drug-search .field-hint {
-  margin-inline: var(--space-3);
-}
-
-.official-drug-card__guide,
-.official-drug-message,
-.official-drug-results,
-.official-drug-loading {
-  grid-column: 1 / -1;
-}
-
-.official-drug-card__guide {
-  border-top: 1px solid var(--color-border);
-  border-radius: 0;
-  background: transparent;
-  padding: var(--space-4) 0 0;
-}
 
 .medication-collection {
   margin-top: var(--space-10);
@@ -1063,17 +909,6 @@ h2 {
 }
 
 @media (max-width: 980px) {
-  .official-drug-card {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-5);
-  }
-
-  .official-drug-card__guide,
-  .official-drug-message,
-  .official-drug-results,
-  .official-drug-loading {
-    grid-column: auto;
-  }
 
   .medication-profile {
     grid-template-columns: 5.25rem minmax(0, 1fr);
@@ -1095,30 +930,6 @@ h2 {
 }
 
 @media (max-width: 639px) {
-  .official-drug-card {
-    border-radius: 1rem;
-    padding: var(--space-5);
-  }
-
-  .official-drug-search__controls {
-    display: grid;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    padding: 0;
-  }
-
-  .official-drug-search__controls input {
-    height: 3.25rem;
-    border: 1px solid var(--color-border-strong);
-    border-radius: 999px;
-    background: var(--color-surface);
-  }
-
-  .official-drug-search__controls .button {
-    width: 100%;
-    margin-top: var(--space-2);
-  }
 
   .medication-collection__header {
     display: block;
@@ -1196,71 +1007,6 @@ h2 {
 }
 
 /* Medication directory: flat list + key/value rows ---------------------- */
-
-.official-drug-card {
-  display: grid;
-  grid-template-columns: minmax(15rem, 0.7fr) minmax(20rem, 1.3fr);
-  gap: var(--space-6) var(--space-10);
-  overflow: visible;
-  border: 0;
-  border-block: 1px solid var(--color-border-strong);
-  border-radius: 0;
-  background: transparent;
-  padding: var(--space-6) 0;
-}
-
-.official-drug-card::before {
-  display: none;
-}
-
-.official-drug-card__title {
-  gap: var(--space-3);
-}
-
-.official-drug-card__icon {
-  width: auto;
-  height: auto;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.official-drug-search__controls {
-  display: flex;
-  gap: var(--space-2);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.official-drug-search__controls:focus-within {
-  border-color: transparent;
-  box-shadow: none;
-}
-
-.official-drug-search__controls input {
-  height: 3rem;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  padding-inline: var(--space-4);
-}
-
-.official-drug-search__controls input:focus {
-  border-color: var(--color-primary-600);
-  box-shadow: 0 0 0 3px rgb(23 107 77 / 10%);
-}
-
-.official-drug-search__controls .button {
-  min-height: 3rem;
-  border-radius: var(--radius-sm);
-}
-
-.official-drug-card__guide {
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-4);
-}
 
 .medication-collection {
   margin-top: var(--space-10);
@@ -1411,10 +1157,6 @@ h2 {
 }
 
 @media (max-width: 980px) {
-  .official-drug-card {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-5);
-  }
 
   .medication-profile__content {
     grid-template-columns: minmax(0, 1.2fr) minmax(13rem, 0.8fr);
@@ -1432,22 +1174,6 @@ h2 {
 }
 
 @media (max-width: 639px) {
-  .official-drug-card {
-    border-radius: 0;
-    padding: var(--space-5) 0;
-  }
-
-  .official-drug-search__controls {
-    display: grid;
-  }
-
-  .official-drug-search__controls input {
-    border-radius: var(--radius-sm);
-  }
-
-  .official-drug-search__controls .button {
-    margin-top: 0;
-  }
 
   .medication-collection__header {
     display: block;
@@ -1729,22 +1455,31 @@ h2 {
   font-weight: 700;
 }
 
-.medicine-cabinet__purpose strong {
-  display: block;
-  color: var(--color-primary-900);
-  font-size: 1.06rem;
-}
-
-.medicine-cabinet__purpose p {
-  margin: var(--space-2) 0 0;
+.medicine-cabinet__overview {
+  margin: 0;
   color: var(--color-text-secondary);
   font-size: 0.84rem;
   line-height: 1.7;
+  font-weight: 600;
+}
+
+.medicine-cabinet__explanation-note {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.medicine-cabinet__explanation-refresh {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 
 .medicine-cabinet__information {
   display: grid;
-  grid-template-columns: minmax(14rem, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(14rem, 30rem);
   gap: var(--space-8);
   border-top: 1px solid var(--color-border);
   margin-top: var(--space-8);
@@ -1779,28 +1514,6 @@ h2 {
   font-size: 0.88rem;
   font-weight: 800;
   text-align: right;
-}
-
-.medicine-cabinet__watch {
-  border-left: 1px solid var(--color-border);
-  padding-left: var(--space-6);
-}
-
-.medicine-cabinet__watch h4 {
-  margin: 0 0 var(--space-3);
-  color: var(--color-primary-900);
-  font-size: 0.82rem;
-}
-
-.medicine-cabinet__watch ul {
-  margin: 0;
-  padding-left: 1rem;
-  color: var(--color-text-secondary);
-  font-size: 0.8rem;
-}
-
-.medicine-cabinet__watch li + li {
-  margin-top: var(--space-2);
 }
 
 .medicine-cabinet__sources {
@@ -1883,13 +1596,6 @@ h2 {
 
   .medicine-cabinet__information {
     display: block;
-  }
-
-  .medicine-cabinet__watch {
-    border-top: 1px solid var(--color-border);
-    border-left: 0;
-    margin-top: var(--space-5);
-    padding: var(--space-5) 0 0;
   }
 
   .medicine-cabinet__sources {
@@ -2006,48 +1712,41 @@ h2 {
   padding: var(--space-4) 0 var(--space-4) var(--space-4);
 }
 
-.connection-card {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+.card.connection-card {
+  border: 1px solid var(--color-sage-200);
+  border-radius: 24px;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  background: var(--color-primary-50);
   box-shadow: none;
 }
-
 .connection-card__icon {
   border-radius: 50%;
-  background: var(--color-primary-50);
+  background: var(--color-primary-100);
   color: var(--color-primary-700);
   box-shadow: none;
 }
-
-.connection-stats div,
-.connection-empty {
-  border-width: 0 0 1px;
-  border-radius: 0;
-  background: transparent;
+.connection-card__title { min-width: 0; }
+.connection-card__title p { line-height: 1.7; }
+.connection-stats div, .connection-empty {
+  border: 0;
+  border-radius: 16px;
+  background: var(--color-sage-100);
+  padding: 1.25rem;
 }
-
-/* Nutrition already uses an editorial composition; only soften its color. */
-
-.nutrition-hero {
-  border-radius: var(--radius-md);
-  background: linear-gradient(115deg, #f4f8f2 0%, #fbfcfa 68%, #edf4ee 100%);
-  box-shadow: none;
-}
-
-.nutrition-context-strip {
-  border-radius: 0;
-  background: transparent;
-  border-block: 1px solid var(--color-border);
-}
-
-.nutrition-insight-panel {
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.nutrition-disease-groups > section + section {
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-8);
+.connection-empty__visual { flex-shrink: 0; }
+.connection-empty__visual > span { border-color: var(--color-primary-50); box-shadow: none; }
+.connection-steps { gap: 1rem; padding-block: .5rem; }
+.connection-steps li { align-items: center; }
+.connection-steps li > span { width: 2rem; height: 2rem; font-size: .85rem; }
+.connection-steps p, .connection-stats dt { font-size: .9rem; }
+.connection-steps strong, .connection-stats dd { font-size: 1rem; }
+.connection-card__footer p, .connection-card__security { font-size: .9rem; line-height: 1.7; align-items: flex-start; }
+.connection-card__security svg, .connection-card__footer p svg { flex-shrink: 0; margin-top: .2rem; }
+.connection-code { border-radius: 18px; box-shadow: none; }
+.connection-code__copy { min-height: 44px; }
+@media (max-width: 639px) {
+  .connection-empty { align-items: flex-start; flex-direction: column; }
+  .connection-card .form-actions, .connection-card .form-actions form, .connection-card .form-actions .button { width: 100%; }
 }
 
 /* Landing and login ------------------------------------------------------- */
@@ -2660,11 +2359,9 @@ input[type="checkbox"]:disabled {
   }
 
   .card--warning,
-  .today-card,
   .checkin-layout > .card,
   .document-layout > .card:first-child,
-  .profile-layout > .card:first-child,
-  .official-drug-card {
+  .profile-layout > .card:first-child {
     border-radius: var(--radius-sm);
     padding: var(--space-5);
   }
@@ -2707,4 +2404,71 @@ input[type="checkbox"]:disabled {
     border-color: #d8d8d8;
     background: white;
   }
+}
+
+/* Korean nutrition reading list */
+.nutrition-page { width: 100%; max-width: 1040px; margin-inline: auto; min-width: 0; }
+.nutrition-page__heading { position: relative; padding: 2rem; margin-bottom: 1.5rem; border-radius: 24px; background: var(--color-primary-50); }
+.nutrition-page__icon { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; border-radius: 50%; background: var(--color-primary-100); color: var(--color-primary-700); margin-bottom: 1rem; }
+.nutrition-page__heading h1 { font-size: clamp(1.65rem, 3vw, 2.3rem); margin: .5rem 0 .75rem; line-height: 1.35; }
+.nutrition-page__heading > p:last-child { color: var(--color-text-secondary); line-height: 1.7; margin: 0; }
+.nutrition-explorer { min-width: 0; display: grid; gap: 1.5rem; }
+.nutrition-explorer__search-panel { padding: 1.5rem; border: 1px solid var(--color-sage-200); border-radius: 20px; background: var(--color-surface-subtle); }
+.nutrition-explorer__intro h2 { margin: 0; font-size: 1.2rem; }
+.nutrition-explorer__intro p { margin: .5rem 0 1.25rem; color: var(--color-text-secondary); line-height: 1.7; }
+.nutrition-explorer__controls { display: flex; align-items: end; gap: 1rem; }
+.nutrition-explorer__controls label { display: grid; gap: .6rem; font-size: .95rem; font-weight: 700; flex: 1; min-width: 0; }
+.nutrition-explorer__controls select { min-height: 48px; width: 100%; padding: .75rem 2rem .75rem 1rem; border: 1px solid var(--color-border-strong); border-radius: 12px; background: var(--color-background); color: var(--color-text); font: inherit; }
+.nutrition-explorer__controls button { min-height: 48px; flex-shrink: 0; border-radius: 12px; }
+.nutrition-explorer__controls button:disabled { opacity: .65; cursor: wait; }
+.nutrition-search-status { color: var(--color-text-secondary); line-height: 1.7; border-radius: 12px; background: var(--color-sage-100); padding: 1rem; }
+.nutrition-search-status:empty { display: none; }
+.nutrition-search-status p { margin: 0; }
+.nutrition-resource-list { display: grid; gap: 1.25rem; }
+.nutrition-results-heading { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: .5rem; }
+.nutrition-results-heading h2 { margin: 0; font-size: 1.3rem; }
+.nutrition-results-heading > span { color: var(--color-text-muted); }
+.nutrition-resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.nutrition-resource { display: flex; flex-direction: column; min-width: 0; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: 20px; background: var(--color-surface-subtle); overflow-wrap: anywhere; }
+.nutrition-resource__format { padding: .35rem .7rem; border-radius: 999px; background: var(--color-primary-100); color: var(--color-primary-800); font-size: .85rem; font-weight: 700; }
+.nutrition-resource h2 { font-size: 1.2rem; line-height: 1.6; margin: 1rem 0 .6rem; }
+.nutrition-resource h2 a { color: var(--color-text); text-decoration: none; }
+.nutrition-resource h2 a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.nutrition-resource h2 svg { display: inline; vertical-align: middle; margin-left: .3rem; }
+.nutrition-resource p { color: var(--color-text-secondary); line-height: 1.8; margin: 0 0 1rem; }
+.nutrition-resource__open { min-height: 44px; display: inline-flex; align-items: center; align-self: flex-start; gap: .4rem; margin-top: auto; color: var(--color-primary-700); font-weight: 700; }
+.nutrition-resource-empty { display: grid; justify-items: center; gap: .75rem; text-align: center; color: var(--color-text-secondary); line-height: 1.8; padding: 2.5rem 1.5rem; border: 1px dashed var(--color-border-strong); border-radius: 20px; }
+.nutrition-resource-empty > svg { color: var(--color-primary-600); }
+.nutrition-resource-empty strong, .nutrition-resource-empty h2 { color: var(--color-text); font-size: 1.15rem; margin: 0; }
+.nutrition-resource-empty p { margin: 0; max-width: 38rem; }
+.nutrition-search-note { color: var(--color-text-muted); font-size: .9rem; line-height: 1.8; margin: 0; padding: 1rem 0; border-top: 1px solid var(--color-border); }
+.nutrition-search-note span { display: block; }
+.nutrition-page :is(button, select, a):focus-visible { outline: 3px solid var(--color-primary-600); outline-offset: 3px; }
+@media (max-width: 639px) {
+  .nutrition-page__heading { padding: 1.5rem; }
+  .nutrition-explorer__search-panel, .nutrition-resource { padding: 1.25rem; }
+  .nutrition-explorer__controls { align-items: stretch; flex-direction: column; }
+  .nutrition-resource-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* User-confirmed diagnoses: editable per-person records. */
+.confirmed-conditions { min-width: 0; border: 1px solid var(--color-sage-200); border-radius: 20px; padding: 1.5rem; background: var(--color-primary-50); }
+.confirmed-conditions legend { padding-inline: .4rem; font-weight: 700; }
+.confirmed-conditions__list { display: grid; gap: 1rem; }
+.confirmed-condition { min-width: 0; border-radius: 14px; padding: 1rem; background: var(--color-background); }
+.confirmed-condition__heading { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.confirmed-condition__fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: .75rem; margin-block: .5rem 1rem; }
+.confirmed-condition__fields label { display: block; min-width: 0; font-weight: 600; }
+.confirmed-condition__fields label > span { color: var(--color-text-muted); font-weight: 400; }
+.confirmed-condition__fields input { display: block; width: 100%; min-height: 44px; margin-top: .5rem; }
+.confirmed-condition__confirmation { display: flex; align-items: center; gap: .65rem; min-height: 44px; line-height: 1.6; }
+.confirmed-condition__confirmation input[type="checkbox"] { flex: 0 0 auto; width: 20px; height: 20px; min-height: 20px; padding: 0; accent-color: var(--color-primary-700); }
+.confirmed-condition .field-hint { overflow-wrap: anywhere; }
+.confirmed-conditions__add { justify-self: start; }
+.confirmed-conditions__empty { color: var(--color-text-secondary); line-height: 1.7; }
+.confirmed-conditions__undo { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; overflow-wrap: anywhere; }
+.confirmed-conditions button { min-height: 44px; }
+@media (max-width: 639px) {
+  .confirmed-conditions { padding: 1rem; }
+  .confirmed-condition__fields { grid-template-columns: minmax(0, 1fr); }
 }

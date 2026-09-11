@@ -235,6 +235,65 @@ test("높은 OCR 신뢰도와 식약처 품목코드·제품명이 일치하면 
   assert.deepEqual(result.analysis.medications?.[0]?.verification?.warnings, []);
 });
 
+test("높은 OCR 신뢰도여도 품목코드가 다른 약이면 원본을 보존하고 검토를 요구한다", async (context) => {
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
+  const previousApiKey = process.env.AI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  delete process.env.AI_ANALYSIS_ENDPOINT;
+  delete process.env.AI_API_KEY;
+  context.after(() => {
+    if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAiKey;
+    if (previousEndpoint === undefined) delete process.env.AI_ANALYSIS_ENDPOINT;
+    else process.env.AI_ANALYSIS_ENDPOINT = previousEndpoint;
+    if (previousApiKey === undefined) delete process.env.AI_API_KEY;
+    else process.env.AI_API_KEY = previousApiKey;
+  });
+
+  const result = await analyzeMedicationDocument(
+    {
+      documentType: "처방전",
+      fileName: "prescription.png",
+      contentType: "image/png",
+      contentBase64: "aW1hZ2U=",
+    },
+    {
+      async analyzeClinicalDocumentWithOpenAI() {
+        return {
+          documentType: "처방전",
+          summary: "처방전 분석",
+          findings: [],
+          carePoints: [],
+          questionsForProfessional: [],
+          disclaimer: "원본 확인",
+          source: "openai",
+          medications: [{
+            productName: "다른약정 5mg",
+            ingredientName: "암로디핀베실산염",
+            itemCode: "200001234",
+            doseAmount: "1정",
+            frequency: "하루 1회",
+            timing: "아침 식사 후",
+            startDate: "2026-08-12",
+            purposePlain: "혈압 관리",
+            precautions: [],
+            fieldEvidence: evidence(),
+          }],
+        };
+      },
+      async verifyOfficialMedicationCode() {
+        return matchedOfficialMedication;
+      },
+    },
+  );
+
+  assert.equal(result.analysis.medications?.[0]?.productName, "다른약정 5mg");
+  assert.equal(result.analysis.medications?.[0]?.reviewStatus, "needs_review");
+  assert.equal(result.analysis.medications?.[0]?.verification?.status, "mismatch");
+  assert.ok(result.analysis.medications?.[0]?.reviewReasons?.includes("official_mismatch"));
+});
+
 test("보험코드를 식약처 품목기준코드로 오인해 공식 조회하지 않는다", async (context) => {
   const previousOpenAiKey = process.env.OPENAI_API_KEY;
   const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
@@ -294,7 +353,7 @@ test("보험코드를 식약처 품목기준코드로 오인해 공식 조회하
   assert.equal(result.analysis.medications?.[0]?.reviewStatus, "needs_review");
 });
 
-test("낮은 OCR 신뢰도나 식약처 제품명 불일치는 확인 전 복약 활성화를 막는다", async (context) => {
+test("낮은 OCR 신뢰도와 다른 제품명은 원본을 보존하고 복약 활성화를 막는다", async (context) => {
   const previousOpenAiKey = process.env.OPENAI_API_KEY;
   const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
   const previousApiKey = process.env.AI_API_KEY;
@@ -328,7 +387,7 @@ test("낮은 OCR 신뢰도나 식약처 제품명 불일치는 확인 전 복약
           disclaimer: "원본 확인",
           source: "openai",
           medications: [{
-            productName: "다른약 5mg",
+            productName: "노바스그정 5mg",
             ingredientName: "다른성분",
             itemCode: "200001234",
             doseAmount: "1정",
@@ -348,6 +407,7 @@ test("낮은 OCR 신뢰도나 식약처 제품명 불일치는 확인 전 복약
   );
 
   const medication = result.analysis.medications?.[0];
+  assert.equal(medication?.productName, "노바스그정 5mg");
   assert.equal(medication?.reviewStatus, "needs_review");
   assert.equal(medication?.verification?.status, "mismatch");
   assert.ok(medication?.verification?.warnings.some((warning) => warning.includes("55%")));

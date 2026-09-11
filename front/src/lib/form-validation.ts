@@ -22,11 +22,26 @@ export const profileSchema = z.object({
   ),
   allergies: z.string(),
   conditions: z.string(),
-  confirmedConditionIds: z.array(z.enum([
-    "condition-hypertension",
-    "condition-hyperlipidemia",
-    "condition-knee-osteoarthritis",
-  ])).max(3).default([]),
+  confirmedConditions: z.preprocess((value) => {
+    if (typeof value !== "string") return value;
+    try { return JSON.parse(value); } catch { return null; }
+  }, z.array(z.object({
+    id: z.string().min(1).max(256).optional(),
+    standardName: z.string().trim().min(1, "질환명을 입력해주세요." ).max(120, "질환명은 120자 안으로 입력해주세요."),
+    code: z.string().trim().max(30, "질환 코드는 30자 안으로 입력해주세요."),
+    confirmed: z.literal(true, { error: "의료진에게 확인받은 질환인지 확인해주세요." }),
+  })).max(50, "질환은 최대 50개까지 등록할 수 있어요.").superRefine((items, ctx) => {
+    const names = new Set<string>();
+    const ids = new Set<string>();
+    for (const item of items) {
+      const name = item.standardName.normalize("NFKC").replace(/\s/g, "").toLowerCase();
+      if (names.has(name) || (item.id && ids.has(item.id))) {
+        ctx.addIssue({ code: "custom", message: "같은 질환을 중복 등록하지 않도록 목록을 확인해주세요." });
+      }
+      names.add(name);
+      if (item.id) ids.add(item.id);
+    }
+  })),
   mobilityNote: z.string().max(300, "300자 안으로 입력해주세요."),
   caregiverNote: z.string().max(500, "500자 안으로 입력해주세요."),
   consentConfirmed: z.literal("on", {
@@ -48,30 +63,29 @@ export function buildRecipientProfile(
   values: ProfileFormValues,
 ): CareRecipient {
   const confirmedAt = new Date().toISOString();
-  const conditionOptions = [
-    { id: "condition-hypertension", standardName: "고혈압", code: "I10" },
-    { id: "condition-hyperlipidemia", standardName: "고지혈증", code: "E78" },
-    { id: "condition-knee-osteoarthritis", standardName: "무릎 골관절염", code: "M17" },
-  ];
+  const confirmedConditions = values.confirmedConditions.map((condition) => {
+    const existing = condition.id
+      ? current.confirmedConditions?.find((item) => item.id === condition.id)
+      : undefined;
+    if (condition.id && !existing) throw new Error("현재 프로필에 없는 질환입니다. 최신 프로필을 다시 확인해주세요.");
+    const code = condition.code || "코드 미기재";
+    if (existing && existing.standardName === condition.standardName && existing.code === code) return existing;
+    // Edited diagnoses are newly confirmed profile entries, not unchanged document evidence.
+    return {
+      id: `condition-${crypto.randomUUID()}`,
+      standardName: condition.standardName,
+      code,
+      sourceLabel: "프로필에서 의료진 확인 정보로 사용자 확정",
+      confirmedAt,
+    };
+  });
   const recipient: CareRecipient = {
     ...current,
     displayName: values.displayName,
     ageBand: values.ageBand,
     allergies: listFromCommaSeparated(values.allergies),
     conditions: listFromCommaSeparated(values.conditions),
-    confirmedConditions: [
-      ...(current.confirmedConditions ?? []).filter((condition) => condition.sourceDocumentId),
-      ...conditionOptions
-      .filter((condition) => values.confirmedConditionIds.includes(condition.id as never))
-      .map((condition) => {
-        const existing = current.confirmedConditions?.find((item) => item.id === condition.id);
-        return existing ?? {
-          ...condition,
-          sourceLabel: "프로필에서 의료진 확인 정보로 보호자가 확정",
-          confirmedAt,
-        };
-      }),
-    ].filter((condition, index, items) => items.findIndex((item) => item.id === condition.id) === index),
+    confirmedConditions,
     mobilityNote: values.mobilityNote,
     caregiverNote: values.caregiverNote,
     consentConfirmed: true,

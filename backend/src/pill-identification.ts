@@ -482,6 +482,35 @@ function shapeEvidence(observed: string | null, item: OfficialPillItem): PillFea
 
 /** Pure candidate search: no image model, persistence, AI requests or medication activation. */
 export function searchPillCandidates(input: unknown, catalog?: PillCatalog, options: { limit?: number } = {}): PillSearchResult {
+  return executePillSearch(input, catalog, options);
+}
+
+/** Internal diagnostic output, deliberately NOT part of PillSearchResult or a request option. */
+export interface PillSearchTrace {
+  records: { catalogIndex: number; itemSeq: string;
+    outcome: "unsupported_official_form" | "imprint_incompatible" | "no_matching_evidence" | "candidate_variant" | "held_variant";
+    selectedVariant?: PillCandidateVariant }[];
+  candidatesBeforeLimit: PillCandidate[];
+  heldBeforeLimit: PillCandidate[];
+  matchingStarted: boolean;
+}
+
+export function tracePillCandidates(input: unknown, catalog?: PillCatalog, options: { limit?: number } = {}) {
+  const trace: PillSearchTrace = { records: [], candidatesBeforeLimit: [], heldBeforeLimit: [], matchingStarted: false };
+  const result = executePillSearch(input, catalog, options, trace);
+  return { result, trace };
+}
+
+/** Explains the existing comparator without inventing a second ranking/scoring algorithm. */
+export function explainPillVariantOrdering(a: PillCandidateVariant, b: PillCandidateVariant) {
+  const evidenceOrder = compareVariantEvidence(a, b);
+  const itemCodeOrder = compare(a.item.itemSeq, b.item.itemSeq);
+  const recordOrder = compare(stableJson(a.item), stableJson(b.item));
+  return { order: Math.sign(evidenceOrder || itemCodeOrder || recordOrder),
+    firstDifferentLevel: evidenceOrder ? "evidence" : itemCodeOrder ? "item_code_tie_break" : recordOrder ? "record_tie_break" : "equal" };
+}
+
+function executePillSearch(input: unknown, catalog: PillCatalog | undefined, options: { limit?: number }, trace?: PillSearchTrace): PillSearchResult {
   let imprintExpansion: PillImprintExpansionSummary | null = null;
   const metrics: PillSearchMetrics = {
     catalogRecords: 0, stages: [], candidateCount: 0, returnedCount: 0,
@@ -531,11 +560,19 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
   if (catalog.completeness !== "complete" || !catalog.version.trim() || catalog.totalCount !== catalog.items.length) return result("unavailable", "incomplete_catalog", "공식 데이터 수집이 완료되지 않아 후보 검색을 보류했어요.");
 
   metrics.catalogRecords = catalog.items.length;
-  const assessed = catalog.items.map((item) => ({ item, formAssessment: classifyPillForm(item.formName) }));
+  const assessed = catalog.items.map((item, catalogIndex) => ({ item, catalogIndex, formAssessment: classifyPillForm(item.formName) }));
   const allowImageApproximation = observation.source === "image_features";
   metrics.unsupportedCatalogRecords = assessed.filter((entry) => entry.formAssessment.status === "unsupported").length;
-  const records = assessed.filter((entry) => entry.formAssessment.status !== "unsupported")
-    .filter(({ item }) => matchingSides(prepared, item, false, allowImageApproximation).length > 0);
+  if (trace) trace.matchingStarted = true;
+  const records = assessed.filter((entry) => {
+    if (entry.formAssessment.status !== "unsupported") return true;
+    trace?.records.push({ catalogIndex: entry.catalogIndex, itemSeq: entry.item.itemSeq, outcome: "unsupported_official_form" });
+    return false;
+  }).filter(({ item, catalogIndex }) => {
+    const matched = matchingSides(prepared, item, false, allowImageApproximation).length > 0;
+    if (!matched) trace?.records.push({ catalogIndex, itemSeq: item.itemSeq, outcome: "imprint_incompatible" });
+    return matched;
+  });
   metrics.stages.push({ stage: "imprint", remaining: records.length });
   metrics.stages.push({ stage: "form", remaining: records.length });
   metrics.stages.push({ stage: "shape", remaining: records.length });
@@ -559,6 +596,9 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
     }).filter((choice) => choice.evidence.some((feature) => feature.match === "exact" || feature.match === "partial"))
       .sort(compareVariantEvidence);
     if (choices[0]) variants.push(choices[0]);
+    trace?.records.push({ catalogIndex: entry.catalogIndex, itemSeq: entry.item.itemSeq,
+      outcome: !choices[0] ? "no_matching_evidence" : choices[0].reviewReasons.length ? "held_variant" : "candidate_variant",
+      ...(choices[0] ? { selectedVariant: choices[0] } : {}) });
   }
   metrics.stages.push({ stage: "score_line", remaining: variants.length });
   // Stable code/record tie-breaks, not a fabricated probability or a clinical confidence score.
@@ -577,6 +617,10 @@ export function searchPillCandidates(input: unknown, catalog?: PillCatalog, opti
   metrics.candidateCount = grouped.size;
   metrics.heldCandidateCount = held.size;
   metrics.matchedItemCount = new Set([...grouped.keys(), ...held.keys()]).size;
+  if (trace) {
+    trace.candidatesBeforeLimit = [...grouped.values()];
+    trace.heldBeforeLimit = [...held.values()];
+  }
   const candidates = [...grouped.values()].slice(0, limit);
   const heldCandidates = [...held.values()].slice(0, limit);
   metrics.returnedCount = candidates.length;

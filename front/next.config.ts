@@ -14,8 +14,13 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/:path*",
+        source: "/((?!__/auth/).*)",
         headers: commonSecurityHeaders(process.env.NODE_ENV === "production"),
+      },
+      {
+        // Only the public synthetic workspace can appear in the device preview.
+        source: "/preview/:path*",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
       },
       {
         source: "/api/:path*",

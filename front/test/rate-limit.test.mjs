@@ -62,6 +62,8 @@ test("서로 다른 기능의 제한 카운터는 간섭하지 않는다", async
   }
   const checkIn = await consumeRateLimit("checkIn", identity, { memoryStore, now });
   assert.equal(checkIn.allowed, true);
+  const nutrition = await consumeRateLimit("nutritionSearch", identity, { memoryStore, now });
+  assert.equal(nutrition.allowed, true);
 });
 
 test("Cloudflare 원본 IP를 우선하고 제한 응답에 429와 재시도 시간을 제공한다", async () => {
