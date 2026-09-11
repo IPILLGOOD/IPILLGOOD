@@ -1,6 +1,7 @@
 // Node-only evaluation logic. This scores saved features after inference; it never calls a model or API.
 import { z } from "zod";
-import { comparePillPhotoFeatures, pillPhotoFeaturesSchema } from "../src/pill-photo-features.ts";
+import { comparePillPhotoFeatures, pillPhotoFeaturesSchema, pillPhotoSafetyFacts } from "../src/pill-photo-features.ts";
+import { PILL_PHOTO_FAILURE_REASONS } from "../src/pill-photo-failures.ts";
 import type { PillCatalog } from "../src/pill-identification.ts";
 export const PILL_PHOTO_SCORE_SCHEMA_VERSION = "pill-photo-score.v1";
 export const PILL_PHOTO_SCORE_POLICY_VERSION = "capture-candidate-recall-v2-minimum-sample";
@@ -17,10 +18,7 @@ const extractionSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("ok"), features: pillPhotoFeaturesSchema, usage: usageSchema.nullable() }).strict(),
   z.object({
     status: z.literal("failed"),
-    reason: z.enum([
-      "invalid_photo", "refused", "incomplete_response", "invalid_response", "access_denied",
-      "rate_limited", "provider_unavailable", "timeout", "network_error", "ocr_failed", "fusion_failed",
-    ]),
+    reason: z.enum(PILL_PHOTO_FAILURE_REASONS),
   }).strict(),
 ]);
 const scoreInputSchema = z.object({
@@ -172,11 +170,7 @@ export function scorePillPhotoEvaluation(
     }
     const comparison = comparePillPhotoFeatures(entry.extraction.features, catalog);
     const search = comparison.search;
-    const candidateItemSeqs = search?.candidates.map((candidate) => candidate.itemSeq) ?? [];
-    const heldCandidateItemSeqs = search?.heldCandidates.map((candidate) => candidate.itemSeq) ?? [];
-    const strongCandidateItemSeqs = search?.candidates
-      .filter((candidate) => candidate.grade === "strong")
-      .map((candidate) => candidate.itemSeq) ?? [];
+    const { candidateItemSeqs, heldCandidateItemSeqs, strongCandidateItemSeqs, needsRetake } = pillPhotoSafetyFacts(comparison);
     const expectedIndex = candidateItemSeqs.indexOf(fixtureCase.expectedItemSeq);
     return {
       id: fixtureCase.id,
@@ -192,7 +186,7 @@ export function scorePillPhotoEvaluation(
       heldCandidateItemSeqs,
       strongCandidateItemSeqs,
       strongWrongCandidateItemSeqs: strongCandidateItemSeqs.filter((itemSeq) => itemSeq !== fixtureCase.expectedItemSeq),
-      needsRetake: comparison.status === "needs_retake" || search?.status === "needs_retake",
+      needsRetake,
     };
   });
   const metrics = summarizePillPhotoCaseScores(rows);

@@ -12,6 +12,12 @@ import {
 } from "./pill-photo-phone-validation.ts";
 
 export const PILL_PHOTO_PHONE_EVALUATION_RECORD_VERSION = "pill-photo-phone-evaluation-record.v1";
+// Current requirements, separate from the immutable v1 ledger's misleading fullReplayRequirement field.
+export const PILL_PHOTO_REPRODUCTION_REQUIREMENTS = Object.freeze({
+  metadata: { apiKey: false, privatePhotos: false, savedFeatures: false },
+  savedFeatureReplay: { apiKey: false, privatePhotos: true, savedFeatures: true },
+  newInference: { apiKey: true, privatePhotos: true, explicitTransferApproval: true },
+});
 export const PILL_PHOTO_PHONE_EVALUATION_RECORD_PATH = fileURLToPath(
   new URL("./pill-photo-phone-evaluation/results-2026-09-02.json", import.meta.url),
 );

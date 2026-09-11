@@ -9,6 +9,9 @@ import { pillPhotoFeaturesSchema, type PillPhotoFeatures } from "./pill-photo-fe
 export const PILL_PHOTO_OCR_SCHEMA_VERSION = "pill-photo-imprint-ocr.v1";
 export const PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION = "pill-photo-imprint-ocr-side.v2";
 export const PILL_PHOTO_OCR_PROMPT_VERSION = "pill-photo-imprint-ocr-per-side-dual-view-v2";
+export const PILL_PHOTO_STROKE_OCR_PROMPT_VERSION = "pill-photo-imprint-ocr-stroke-check-v3";
+export type PillPhotoOcrPromptVersion = typeof PILL_PHOTO_OCR_PROMPT_VERSION | typeof PILL_PHOTO_STROKE_OCR_PROMPT_VERSION;
+export type PillPhotoOcrImageCount = 4 | 8;
 export const PILL_PHOTO_FUSION_VERSION = "pill-photo-vision-ocr-consensus-v1";
 
 const imprintCandidateSchema = z.string().max(80)
@@ -81,6 +84,30 @@ Preserve up to five plausible raw readings, strongest visual reading first. Keep
 Do not add generic character-confusion alternatives that are not visually supported. Do not treat a seam, score line, reflection, border or logo as a readable character.
 Set noImprintObserved true only when all usable views clearly show a surface without letters or digits. For failed reading use noImprintObserved false, no candidates and unreadable. A partial reading may have zero or more candidates.
 Return only the specified JSON. This is OCR evidence only, not medication identification or a safety guarantee.`;
+
+/** Experimental instructions only. The legacy instructions and all request parameters remain the default. */
+export const PILL_PHOTO_STROKE_OCR_INSTRUCTIONS = `${PILL_PHOTO_OCR_INSTRUCTIONS}
+
+For this experiment, verify the visible reading with these checks before selecting the final JSON candidates:
+1. Orientation: compare the supplied rotations to choose an upright reading direction supported by the visible character shapes. If more than one orientation remains plausible, retain only whole readings that the visible shapes actually support; do not choose an orientation from a familiar medicine name.
+2. Character strokes: inspect each character position for visible straight or curved strokes, junctions, open ends and enclosed spaces. Distinguish an actual raised, engraved or printed stroke from its neighboring shadow, the tablet edge, a score line or an unrelated mark. Do not manufacture missing stroke segments to complete a familiar letter, digit or word.
+3. Cross-view check: revisit that same position in its corresponding color and contrast views at the chosen orientation. A transformation may hide or exaggerate a stroke; use the complementary view to check it, not as another independent vote. Preserve defensible whole-string alternatives when the visible strokes do not separate them, strongest supported reading first, within the existing five-candidate limit.
+These checks do not relax the existing unreadable, partial or no-imprint rules and do not create evidence that is absent from the photograph. Do not report the checking procedure or add fields; return only the specified JSON.`;
+
+export function pillPhotoOcrInstructions(
+  version: PillPhotoOcrPromptVersion = PILL_PHOTO_OCR_PROMPT_VERSION,
+  imageCount: PillPhotoOcrImageCount = 8,
+): string {
+  if (imageCount !== 4 && imageCount !== 8) throw new Error("invalid_ocr_image_count");
+  const instructions = version === PILL_PHOTO_OCR_PROMPT_VERSION ? PILL_PHOTO_OCR_INSTRUCTIONS
+    : version === PILL_PHOTO_STROKE_OCR_PROMPT_VERSION ? PILL_PHOTO_STROKE_OCR_INSTRUCTIONS : null;
+  if (instructions === null) throw new Error("trial_unknown_ocr_prompt");
+  // Retain the historical eight-view prompt verbatim. Only describe the selected input layout differently.
+  return imageCount === 8 ? instructions : instructions.replace(
+    "each rotated 0, 90, 180 and 270 degrees. These eight images",
+    "each rotated 0 and 180 degrees. These four images",
+  );
+}
 
 const normalizeCandidate = (value: string) => value.normalize("NFKC").trim().toUpperCase().replace(/\s+/g, "");
 

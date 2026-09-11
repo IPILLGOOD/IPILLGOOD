@@ -1,5 +1,74 @@
 # #123 팀원 시작 안내 — 같은 자료로 알약 식별 개발하기
 
+## 직접 찍은 새 사진으로 로컬 테스트
+
+저장소 루트의 `local-pill-photos/input/`에 **같은 온전한 알약의 앞면 `front.jpg`, 뒷면 `back.jpg`**를 저장한다. 서로 다른 JPG/JPEG 두 장이 필요하며 각각 최대 5MiB / 2,500만 화소다. 현재 휴대폰 전처리는 사진 중앙을 확대하므로 알약을 중앙에 두고 촬영한다. HEIC나 PNG는 이번 로컬 입력에서 지원하지 않는다.
+
+```sh
+# 파일과 전처리만 확인: API 키 불필요, 외부 호출 없음
+npm run pill:local
+
+# 실제 Vision 1회 + 앞뒤 OCR 각 1회를 병렬 요청 → 특징 통합 → 전체 카탈로그 검색
+npm run pill:local -- --live
+
+# 같은 사진으로 기존 순차 방식과 시간 비교
+npm run pill:local -- --live --execution sequential
+
+# OCR 한 면당 4장 입력으로 비교 (기존 기본값은 8장)
+npm run pill:local -- --front local-pill-photos/input/front2.jpg --back local-pill-photos/input/back2.jpg --live --ocr-images 4
+
+# 파일명을 바꾸어 반복 테스트 (상대 경로는 항상 저장소 루트 기준)
+npm run pill:local -- --front local-pill-photos/input/a.jpg --back local-pill-photos/input/b.jpg --live
+```
+
+`--live`는 지정한 사진의 가공본을 AI API에 전송한다. `OPENAI_API_KEY` 환경 변수를 사용하며 없으면 `front/.env.local`에서 읽는다. API 호출은 자동 반복·재시도하지 않는다. 새 사진은 기존 평가 목록에 등록할 필요가 없으며, 기존 고정 평가·holdout에는 추가되지 않는다.
+
+로컬 명령의 기본 요청 방식은 `--execution parallel`이다. 전처리한 동일한 사진에서 세 요청을 동시에 시작하고 `Promise.allSettled()`로 모두 수집한 뒤, 세 응답의 형식과 성공 여부를 확인해야 특징을 결합한다. 응답 도착 순서는 앞뒤 면 배정에 영향을 주지 않는다. 하나가 실패해도 이미 시작한 나머지 요청의 종료/시간 제한까지 기다리며 부분 결과로 후보를 만들지 않는다. 성공 시 요청 수는 두 방식 모두 3회이며, 실패 시에는 순차 방식보다 요청 수가 늘 수 있다. 기존 고정 평가 도구의 순차 실행 조건은 유지한다.
+
+`--ocr-images 4|8`은 **OCR 요청 한 개당 첨부하는 이미지 수**다. 기본 8장은 컬러·대비 보정 각각 0·90·180·270도, 4장은 각각 0·180도이며 양면 OCR에는 총 8장을 첨부한다. 두 설정 모두 현재 전처리를 그대로 수행하고, OCR 첨부 이미지와 그 구성·순서 설명만 달라진다. Vision의 4장 입력과 모델·검색 규칙은 유지한다. 원래 비교 조건으로 실행하려면 `--ocr-images 8`을 사용한다. 결과의 `pipeline.ocrImageCount`와 터미널에 선택한 장수가 기록된다. 같은 사진으로 OCR·전체 시간과 상위 후보 유지 여부를 함께 비교하되, 정답쌍이 없으면 후보 일치를 정확도 유지로 표현하지 않는다.
+
+새 결과는 `pill-photo-local.v2` 형식으로 실행 방식, 전처리·카탈로그·분석·검색 시간을 기록한다. `analysisWallMs`는 분석 함수 진입부터 모든 요청·기록·특징 결합이 끝날 때까지의 실제 경과 시간이다. 병렬 요청별 `elapsedMs`를 더해 사용자 대기 시간으로 해석하면 안 된다. `requestTrace`의 `offsetMs`로 시작/종료의 겹침을 확인할 수 있으며, 같은 로그 파일에 쓰는 작업만 순서대로 처리한다. 순차/병렬 비교 시 같은 사진·모델·프롬프트·카탈로그를 고정하고 실행 순서를 번갈아 배치한다. 별도 지시 없이 사진 여러 쌍을 한꺼번에 병렬 전송하지 않는다.
+
+Node.js 24를 사용한다. 실행 명령은 현재 Node24 또는 Windows `C:/tools/node-v24.*-win-*/node.exe` 설치본을 찾아 실행한다. 다른 위치라면 `IPILLGOOD_NODE24` 환경 변수로 Node24 실행 파일의 절대 경로를 지정할 수 있다. 기본 Vision/OCR 모델은 최근 실험과 같은 `gpt-5.6-sol`, reasoning은 `low`다. 다른 모델은 `--model`, `--ocr-model`로 명시하며 프론트의 `OPENAI_MODEL` 설정은 기본값을 바꾸지 않는다.
+
+실행마다 `local-pill-photos/results/run-*/result.json`에 원관찰값, OCR, 통합 특징, 후보·보류·재촬영 결과, 요청 수와 소요 시간 및 사용 버전을 저장한다. 터미널에는 상위 후보 5개를 표시하고 전체 반환 후보는 JSON에 남긴다. 사진 파일이나 이전 결과를 덮어쓰지 않으며, 이 폴더 전체는 Git에서 제외한다. API 요청 본문·사진의 base64·인증 키는 결과에 저장하지 않는다.
+
+카탈로그는 Git에 있는 **2026-08-31 기준의 고정 로컬 테스트 스냅샷**이다. 실행마다 무결성을 검증하고 실제 날짜·버전을 표시하며, 최신 데이터라고 취급하거나 자동으로 새 카탈로그를 수집하지 않는다. 후보가 반환되는지 확인하는 도구이며, 알려진 정답이 없는 사진으로는 정답률을 계산하지 않는다. 서비스 배포 API와 UI를 추가하는 작업은 포함하지 않는다.
+
+후속 #141의 첫 작업으로 [휴대폰 validation 단계별 오프라인 진단](pill-photo-diagnostics.md)을 추가했다. `pill:diagnose`는 비공개 v4 validation의 저장 원신호를 재생하며, 기존 공개 fixture `pill:replay`와 달리 개인별 자료가 필요하다. 새 API 호출이나 정확도 개선 완료를 뜻하지 않는다.
+
+## 배포 연결을 위한 공통 분석 함수
+
+`@care-atlas/backend/pill-photo`의 `analyzePillPhotos()`는 앞뒤 사진 바이트를 받아 **전처리 → Vision·앞뒤 OCR → 특징 결합 → 후보 검색**까지 처리한다. 모델·검색 규칙과 4장 옵션은 로컬 명령과 공유하며, 기본값은 병렬 요청·OCR 한 면당 8장이다. 다음은 이미 업로드를 받은 Node.js 서버에서 호출하는 예시다.
+
+```ts
+import { analyzePillPhotos, type PillCatalog } from "@care-atlas/backend/pill-photo";
+
+async function analyzeUploadedPair(
+  front: Uint8Array,
+  back: Uint8Array,
+  catalog: PillCatalog,
+  apiKey: string,
+) {
+  return analyzePillPhotos({
+    front, back, catalog, apiKey,
+    model: "gpt-5.6-sol",
+    ocrModel: "gpt-5.6-sol",
+    allowExternalTransfer: true,
+    ocrImageCount: 8, // 4도 선택 가능
+    executionMode: "parallel",
+  });
+}
+```
+
+반환 형식은 `pill-photo-analysis.v1`이다. `ok: true`이면 `extraction`과 `comparison`을 확인한다. 분석 성공이 후보 존재나 약의 확정을 뜻하지 않으며, 재촬영 여부는 `comparison.status`, 검색 상태는 `comparison.search?.status`로 판단한다. 기존 후보·보류 후보(`heldCandidates`)·안내 문구를 그대로 보존한다. `ok: false`이면 `reason`으로 실패를 구분하고 후보 결과는 반환하지 않는다. `timings`에는 전처리·분석·검색 시간, `elapsedMs`에는 공통 함수 전체 시간이 들어가며 업로드·카탈로그 로딩 시간은 포함하지 않는다.
+
+공통 함수는 파일을 읽거나 저장하지 않고 환경 변수도 조회하지 않는다. 입력 사진과 가공본을 결과에 포함하지 않으므로 호출 측에서도 저장하지 않으면 파일로 남기지 않고 처리할 수 있다. 이는 메모리의 즉시 완전 삭제나 외부 AI 제공자의 보관 정책까지 보장한다는 뜻은 아니다. API 키와 카탈로그는 호출 측에서 전달하며, 카탈로그 저장 위치·로딩·재사용·갱신 정책은 배포 통합 시 결정한다. Git의 고정 테스트 카탈로그를 자동으로 운영용 최신 데이터로 취급하지 않는다.
+
+로컬 명령은 기존처럼 파일 읽기·고정 카탈로그 검증·결과 저장을 담당한다. 먼저 전처리와 저장 가능 여부를 확인한 뒤 `analyzePreparedPillPhotos()`로 동일한 분석·검색을 실행하므로 전처리를 두 번 하지 않는다. `--live` 없는 사전 확인도 유지한다. 테스트에는 `fetchImpl`, 요청 기록에는 `onRequestTrace`를 전달할 수 있으며 요청 기록은 이미지 본문 없이 단계별 메타데이터만 제공한다.
+
+**현재 공통 함수는 Node.js 24와 Sharp가 필요한 실행 경로다.** Sharp 0.35.3을 기존 버전 그대로 런타임 의존성으로 선언했다. `@care-atlas/backend` 기본 진입점에서 재수출하지 않아 기존 서버 코드가 이 경로를 자동으로 가져오지 않는다. 이 변경만으로 Cloudflare Workers에서 Sharp 전처리가 실행되지는 않는다. 실행 환경 또는 전처리 연결 방식을 배포 담당자가 결정해야 하며, 이번 변경은 HTTP API 경로·화면·배포 설정을 추가하지 않는다.
+
 ## 1. 준비와 첫 실행
 
 이 변경이 포함된 브랜치를 받은 뒤 **저장소 루트**에서 실행한다. PR 생성만으로 main에 들어가는 것은 아니므로, 머지 전에는 해당 작업 브랜치를 받아야 한다.

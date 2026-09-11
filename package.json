@@ -10,6 +10,7 @@
     "backend"
   ],
   "scripts": {
+    "pill:local": "node scripts/run-pill-photo-local.mjs",
     "verify": "node scripts/verify.mjs",
     "dev": "npm run dev --workspace @care-atlas/front",
     "dev:local": "node scripts/run-local-firebase.mjs dev",
