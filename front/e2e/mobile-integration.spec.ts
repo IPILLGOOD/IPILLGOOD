@@ -84,9 +84,14 @@ test("mobile: calendar records and corrections persist; removing a medication up
   await page.goto("/medications");
   const tabs = page.getByRole("tablist", { name: "복용약 선택" }).getByRole("tab");
   const before = await tabs.count();
+  await tabs.last().click();
+  await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
   const product = await page.getByRole("tabpanel").getByRole("heading", { level: 3 }).innerText();
   await page.getByRole("button", { name: `${product} 복용약에서 빼기`, exact: true }).click();
   await expect(tabs).toHaveCount(before - 1);
+  const selected = page.getByRole("tab", { selected: true });
+  await expect(selected).toHaveCount(1);
+  await expect(page.getByRole("tabpanel").getByRole("heading", { level: 3 })).toHaveText(await selected.locator("strong").innerText());
   await page.reload();
   await expect(tabs).toHaveCount(before - 1);
   await page.goto("/today");

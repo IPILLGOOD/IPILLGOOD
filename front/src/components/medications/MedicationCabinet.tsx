@@ -31,7 +31,8 @@ export type MedicationCabinetItem = {
 };
 
 export function MedicationCabinet({ medications, detailBase = "/medications", revision }: { medications: MedicationCabinetItem[]; detailBase?: string; revision?: number }) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedId, setSelectedId] = useState(() => medications[0]?.id);
+  const selectedIndex = Math.max(0, medications.findIndex((item) => item.id === selectedId));
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(scrollTimer.current), []);
@@ -41,7 +42,7 @@ export function MedicationCabinet({ medications, detailBase = "/medications", re
 
   const selectMedication = (index: number) => {
     clearTimeout(scrollTimer.current);
-    setSelectedIndex(index);
+    setSelectedId(medications[index]?.id);
     tabs.current[index]?.scrollIntoView({
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
       block: "nearest", inline: "center",
@@ -79,7 +80,7 @@ export function MedicationCabinet({ medications, detailBase = "/medications", re
         const distance = Math.abs(bounds.left + bounds.width / 2 - railCenter);
         if (distance < closestDistance) { closestIndex = index; closestDistance = distance; }
       });
-      setSelectedIndex(closestIndex);
+      setSelectedId(medications[closestIndex]?.id);
     }, 150);
   };
 
