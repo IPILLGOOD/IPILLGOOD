@@ -194,7 +194,7 @@ export async function fetchOfficialPillPage(
     endpoint.searchParams.set("numOfRows", String(parsed.data.numOfRows));
     if (parsed.data.itemSeq) endpoint.searchParams.set("item_seq", parsed.data.itemSeq);
     const response = await (options.fetcher ?? fetch)(endpoint, {
-      headers: { Accept: "application/json" }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(8_000),
+      headers: { Accept: "application/json" }, cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(8_000),
     });
     if (response.status === 401 || response.status === 403) return unavailable("access_denied");
     if (response.status === 429) return unavailable("rate_limited");

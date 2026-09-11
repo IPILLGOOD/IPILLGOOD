@@ -136,7 +136,7 @@ test("공식 최신 v03에만 키를 보내며 지원되지 않는 외형 파라
       assert.equal(url.searchParams.get("item_seq"), "209900001");
       assert.equal(url.searchParams.get("pageNo"), "2");
       assert.equal(url.searchParams.has("drug_shape"), false);
-      assert.equal(init?.redirect, "error");
+      assert.equal(init?.redirect, "manual");
       return new Response(pillEnvelope([pillRecord()], { pageNo: 2, numOfRows: 3, totalCount: 4 }), {
         headers: { "content-type": "application/json" },
       });
@@ -148,7 +148,7 @@ test("공식 최신 v03에만 키를 보내며 지원되지 않는 외형 파라
 test("미설정, 접근 거절, 제한, 통신·파싱 실패는 무결과와 분리한다", async () => {
   const none = await fetchOfficialPillPage({}, { apiKey: "", fetcher: async () => { throw new Error("must not fetch"); } });
   assert.equal(none.status, "not_configured");
-  for (const [status, reason] of [[403, "access_denied"], [429, "rate_limited"], [500, "api_error"]] as const) {
+  for (const [status, reason] of [[307, "api_error"], [403, "access_denied"], [429, "rate_limited"], [500, "api_error"]] as const) {
     const result = await fetchOfficialPillPage({}, { apiKey: "secret", fetcher: async () => new Response("secret reflected", { status }) });
     assert.equal(result.status, "unavailable");
     if (result.status === "unavailable") assert.equal(result.reason, reason);
