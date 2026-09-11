@@ -1,65 +1,45 @@
-import { Check, Clock3, HeartPulse, Sparkles } from "lucide-react";
+import { Check, ChevronRight, Clock3, MessageSquareText } from "lucide-react";
 
 const medicationTasks = [
-  { time: "08:30", label: "노바스크정 5mg", detail: "1정 · 아침 식후", done: true },
-  { time: "13:00", label: "뮤코펙트정", detail: "1정 · 점심 식후", done: false },
-  { time: "19:30", label: "뮤코펙트정", detail: "1정 · 저녁 식후", done: false },
+  { time: "08:00", label: "아침 약 3종", detail: "식후 30분", done: true },
+  { time: "13:00", label: "점심 약 1종", detail: "식후 30분", done: false },
+  { time: "20:00", label: "저녁 약 2종", detail: "식후 30분", done: false },
 ];
 
 export function CareDashboardPreview() {
-  const calendarDays = Array.from({ length: 35 }, (_, index) => index - 1);
   return (
-    <div className="launch-product-stage" aria-label="IPILLGOOD 오늘 화면 미리보기">
-      <div className="launch-orbit launch-orbit--one" aria-hidden="true" />
-      <div className="launch-orbit launch-orbit--two" aria-hidden="true" />
-      <div className="launch-float-card launch-float-card--document" aria-hidden="true">
-        <Sparkles size={15} />
-        <span><small>약봉투 정리</small><strong>3개 약 확인 완료</strong></span>
+    <div className="landing-preview" aria-label="IPILLGOOD 오늘의 돌봄 화면 예시">
+      <div className="landing-preview__topbar">
+        <span className="landing-preview__dots" aria-hidden="true"><i /><i /><i /></span>
+        <span>오늘의 돌봄</span>
+        <span className="landing-preview__date">8월 16일</span>
       </div>
-      <div className="launch-float-card launch-float-card--care" aria-hidden="true">
-        <HeartPulse size={15} />
-        <span><small>오늘의 기록</small><strong>가족과 공유 중</strong></span>
-      </div>
-      <div className="launch-calendar" aria-hidden="true">
-        <div className="launch-calendar__head"><span>2026. 09</span><strong>복약 캘린더</strong></div>
-        <div className="launch-calendar__week"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
-        <div className="launch-calendar__days">
-          {calendarDays.map((day, index) => (
-            <i className={day === 11 ? "is-today" : day > 0 && [3, 6, 9, 10, 14, 16, 18, 22, 25].includes(day) ? "has-record" : undefined} key={index}>
-              {day > 0 && day <= 30 ? day : ""}
-            </i>
+      <div className="landing-preview__body">
+        <div className="landing-preview__greeting">
+          <span>김○○ 어르신</span>
+          <strong>오늘도 천천히 확인해 볼까요?</strong>
+        </div>
+        <div className="landing-preview__progress">
+          <div><span>오늘 복약</span><strong>1 / 3 완료</strong></div>
+          <span>33%</span>
+          <progress aria-label="복약 일정 완료율" max="100" value="33" />
+        </div>
+        <ul className="landing-preview__tasks" aria-label="오늘 복약 일정">
+          {medicationTasks.map((task) => (
+            <li className={task.done ? "is-done" : undefined} key={task.time}>
+              <time>{task.time}</time>
+              <span className="landing-preview__task-state" aria-hidden="true">
+                {task.done ? <Check size={14} /> : <Clock3 size={14} />}
+              </span>
+              <span><strong>{task.label}</strong><small>{task.detail}</small></span>
+              <ChevronRight size={16} aria-hidden="true" />
+            </li>
           ))}
-        </div>
-      </div>
-      <div className="launch-device">
-        <div className="launch-device__bar">
-          <span>9:41</span>
-          <strong>오늘</strong>
-          <span>9월 11일</span>
-        </div>
-        <div className="launch-device__body">
-          <div className="launch-device__intro">
-            <span>좋은 아침이에요</span>
-            <strong>오늘 복용할 것</strong>
-            <p>시간순으로 확인하고 바로 기록하세요.</p>
-          </div>
-          <div className="launch-dose-progress">
-            <div><span>오늘 진행 상황</span><strong>1/3 완료</strong></div>
-            <div className="launch-dose-progress__track" aria-label="복약 일정 3개 중 1개 완료">
-              <i className="is-filled" /><i /><i />
-            </div>
-          </div>
-          <ul className="launch-dose-list" aria-label="오늘 복약 일정 예시">
-            {medicationTasks.map((task) => (
-              <li className={task.done ? "is-done" : undefined} key={`${task.time}-${task.label}`}>
-                <time>{task.time}</time>
-                <span><strong>{task.label}</strong><small>{task.detail}</small></span>
-                <i aria-label={task.done ? "복용 완료" : "복용 예정"}>
-                  {task.done ? <Check size={16} /> : <Clock3 size={16} />}
-                </i>
-              </li>
-            ))}
-          </ul>
+        </ul>
+        <div className="landing-preview__checkin">
+          <span className="landing-preview__checkin-icon" aria-hidden="true"><MessageSquareText size={18} /></span>
+          <span><strong>오늘 몸 상태는 어떠셨나요?</strong><small>1분 안부 확인으로 기록을 남겨보세요.</small></span>
+          <span className="landing-preview__checkin-button">확인하기</span>
         </div>
       </div>
     </div>

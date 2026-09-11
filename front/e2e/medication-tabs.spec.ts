@@ -27,6 +27,8 @@ test("medication tabs retain explicit selection through scrolling and follow com
       const tabs = rail.getByRole("tab");
       const last = tabs.last();
       const lastProduct = await last.locator("strong").innerText();
+      // A scrolling rail must retain room for the product name, rather than squeezing every tab into one row.
+      expect(await last.locator("strong").evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(50);
       await last.click();
       await settled(rail);
       await expect(last, `${width}px, motion: ${reducedMotion}`).toHaveAttribute("aria-selected", "true");
@@ -39,7 +41,7 @@ test("medication tabs retain explicit selection through scrolling and follow com
       await settled(rail);
       await expect(last).toHaveAttribute("aria-selected", "true");
       await expect(last).toBeFocused();
-      if (width <= 390) {
+      if (await rail.evaluate(element => getComputedStyle(element).scrollSnapType !== "none" && element.scrollWidth > element.clientWidth)) {
         // Scrolling the viewport exercises the same event path as a completed swipe.
         await rail.evaluate(element => element.scrollTo({ left: 0, behavior: "instant" }));
         await settled(rail);

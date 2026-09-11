@@ -1,4 +1,5 @@
-import { ShieldCheck, FileCheck2, FileClock, FileText } from "lucide-react";
+import Link from "next/link";
+import { FileCheck2, FileClock, FileText } from "lucide-react";
 
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
 import { DiagnosisDraftReview } from "@/components/documents/DiagnosisDraftReview";
@@ -16,70 +17,36 @@ import { supportedNutritionDiagnoses } from "@/lib/nutrition-presentation";
 
 export const dynamic = "force-dynamic";
 
-export default async function DocumentsPage() {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const diagnosis = (await searchParams).type === "diagnosis";
   const scope = await requireCareScope();
   const snapshot = await getCareSnapshot(scope);
-  const reviewDocuments = snapshot.documents.filter(
-    (document) =>
-      document.medicationDraftId && document.status === "needs_review",
-  );
-  const draftsById = await getMedicationPlanDrafts(
-    scope,
-    reviewDocuments.map((document) => document.medicationDraftId!),
-  );
-  const drafts = new Map(
-    reviewDocuments
-      .map((document) => {
-        const draft = draftsById.get(document.medicationDraftId!);
-        return draft &&
-          (draft.state === "draft" || draft.state === "needs_review")
-          ? ([document.id, draft] as const)
-          : null;
-      })
-      .filter((entry) => entry !== null),
-  );
+  const reviewDocuments = snapshot.documents.filter((document) => document.medicationDraftId && document.status === "needs_review");
+  const draftsById = await getMedicationPlanDrafts(scope, reviewDocuments.map((document) => document.medicationDraftId!));
+  const drafts = new Map(reviewDocuments.map((document) => {
+    const draft = draftsById.get(document.medicationDraftId!);
+    return draft && (draft.state === "draft" || draft.state === "needs_review")
+      ? [document.id, draft] as const
+      : null;
+  }).filter((entry) => entry !== null));
   return (
     <>
       <PageHeader
         eyebrow="문서 등록"
-        title="처방전·약봉투와 진단서를 쉬운 말로 확인해요"
-        description="문서의 중요한 내용을 정리해드려요. 원본과 대조해 확인한 뒤 내 돌봄 기록으로 저장하세요."
+        title={diagnosis ? "진단서 등록" : "처방전 또는 약봉투 등록"}
+        description={diagnosis ? "진단서를 등록하고 원본과 비교해 확인하세요." : "병명을 입력하고 처방전 또는 약봉투를 등록하세요."}
       />
 
-      <ol className="document-journey" aria-label="문서 등록 과정">
-        <li>
-          <span>01</span>
-          <div>
-            <strong>문서 올리기</strong>
-            <small>처방전·약봉투 또는 진단서</small>
-          </div>
-        </li>
-        <li>
-          <span>02</span>
-          <div>
-            <strong>내용 확인하기</strong>
-            <small>정리한 내용을 원본과 대조</small>
-          </div>
-        </li>
-        <li>
-          <span>03</span>
-          <div>
-            <strong>돌봄 기록에 저장</strong>
-            <small>확인한 정보를 일상으로</small>
-          </div>
-        </li>
-      </ol>
       <div className="document-layout">
         <Card>
           <div className="section-heading">
             <div>
               <h2>새 문서 등록</h2>
-              <p>
-                처방전·약봉투 또는 진단서를 선택하고 분석 결과를 확인하세요.
-              </p>
+              <p>{diagnosis ? "진단서를 첨부하고 분석 결과를 확인하세요." : "병명을 입력한 뒤 처방전 또는 약봉투를 첨부하세요."}</p>
             </div>
           </div>
-          <DocumentUploadForm allowSamples={scope.useDemoData === true} />
+          <DocumentUploadForm key={diagnosis ? "diagnosis" : "prescription"} allowSamples={scope.useDemoData === true} documentType={diagnosis ? "진단서" : "처방전 또는 약봉투"} />
+          <Link className="document-alternate-entry" href={diagnosis ? "/documents" : "/documents?type=diagnosis"}>{diagnosis ? "처방전 또는 약봉투 등록하기" : "진단서 등록하기"}</Link>
         </Card>
 
         <div className="document-aside-stack">
@@ -89,11 +56,7 @@ export default async function DocumentsPage() {
                 <h2>등록된 문서</h2>
                 <p>최근 문서부터 보여드려요.</p>
               </div>
-              <FileText
-                size={21}
-                color="var(--color-primary-700)"
-                aria-hidden="true"
-              />
+              <FileText size={21} color="var(--color-primary-700)" aria-hidden="true" />
             </div>
             {snapshot.documents.length > 0 ? (
               <ul className="document-list">
@@ -110,19 +73,12 @@ export default async function DocumentsPage() {
                       <div>
                         <strong>{document.fileName}</strong>
                         <small>
-                          {document.documentType} ·{" "}
-                          {formatDate(document.uploadedAt)} ·{" "}
+                          {document.documentType} · {formatDate(document.uploadedAt)} ·{" "}
                           {document.sourceLabel}
                         </small>
                       </div>
                       <Badge tone={confirmed ? "success" : "warning"}>
-                        {confirmed
-                          ? "분석 완료"
-                          : draft
-                            ? "복약 검토 필요"
-                            : needsReview
-                              ? "기간 확인 필요"
-                              : "분석 대기"}
+                        {confirmed ? "분석 완료" : draft ? "복약 검토 필요" : needsReview ? "기간 확인 필요" : "분석 대기"}
                       </Badge>
                       <DeleteDocumentButton
                         documentId={document.id}
@@ -134,8 +90,7 @@ export default async function DocumentsPage() {
                           <p>{document.analysis.summary}</p>
                           {document.analysis.diseaseLookup ? (
                             <p className="saved-analysis__lookup">
-                              질병 정보 조회:{" "}
-                              {document.analysis.diseaseLookup.message}
+                              질병 정보 조회: {document.analysis.diseaseLookup.message}
                             </p>
                           ) : null}
                           <dl>
@@ -155,27 +110,15 @@ export default async function DocumentsPage() {
                             />
                           ) : null}
                           {document.documentType === "진단서" &&
-                          supportedNutritionDiagnoses(document.analysis).some(
-                            (diagnosis) =>
-                              !snapshot.recipient.confirmedConditions?.some(
-                                (condition) =>
-                                  condition.sourceDocumentId === document.id &&
-                                  (condition.code === diagnosis.code ||
-                                    condition.standardName === diagnosis.name),
-                              ),
+                          supportedNutritionDiagnoses(document.analysis).some((diagnosis) =>
+                            !snapshot.recipient.confirmedConditions?.some((condition) =>
+                              condition.sourceDocumentId === document.id &&
+                              (condition.code === diagnosis.code || condition.standardName === diagnosis.name),
+                            ),
                           ) ? (
-                            <form
-                              action={confirmDiagnosesAction}
-                              className="saved-analysis__confirm"
-                            >
-                              <input
-                                type="hidden"
-                                name="documentId"
-                                value={document.id}
-                              />
-                              <SubmitButton pendingText="확정하는 중…">
-                                확정 질환으로 저장
-                              </SubmitButton>
+                            <form action={confirmDiagnosesAction} className="saved-analysis__confirm">
+                              <input type="hidden" name="documentId" value={document.id} />
+                              <SubmitButton pendingText="확정하는 중…">확정 질환으로 저장</SubmitButton>
                             </form>
                           ) : null}
                         </details>
@@ -197,21 +140,10 @@ export default async function DocumentsPage() {
                 <p>
                   {scope.useDemoData
                     ? "비식별 샘플로 안전하게 흐름을 체험할 수 있어요."
-                    : "처방전·약봉투나 진단서를 첨부하고 분석해보세요."}
+                    : "처방전 또는 약봉투를 첨부하고 분석해보세요."}
                 </p>
               </div>
             )}
-          </Card>
-
-          <Card tone="accent" className="privacy-note">
-            <ShieldCheck size={23} aria-hidden="true" />
-            <div>
-              <h2>보호자 권한과 동의가 먼저예요</h2>
-              <p>
-                가족이라는 이유만으로 자동 열람 권한이 생기지는 않아요. 이용자의
-                동의 또는 적법한 대리 권한이 있는 정보만 등록해주세요.
-              </p>
-            </div>
           </Card>
         </div>
       </div>
