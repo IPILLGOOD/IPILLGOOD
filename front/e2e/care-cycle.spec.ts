@@ -190,8 +190,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       }
     }
     await page.goto("/check-in");
-    await expect(page.getByRole("heading", { name: "오늘 안부에 이미 답변했어요" })).toBeVisible();
-    await page.getByRole("button", { name: "오늘 답변 수정", exact: true }).click();
+    await expect(page.getByRole("button", { name: "오늘의 답변 수정", exact: true })).toBeVisible();
     await openCheckInDetails(page);
     await expect(page.getByLabel("보호자 메모")).toHaveValue(
       "격리된 자동 검증 기록",
