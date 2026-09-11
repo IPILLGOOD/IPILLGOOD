@@ -2,7 +2,13 @@ import { test, expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dismissInstallPromptWhenShown } from "../test-support/browser-controls";
 
-test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+test.use({
+  viewport: { width: 390, height: 844 },
+  isMobile: true,
+  hasTouch: true,
+  // Keep this suite's demo logins separate from other suites sharing localhost.
+  extraHTTPHeaders: { "x-forwarded-for": "192.0.2.146" },
+});
 
 test.beforeEach(async ({ page }) => {
   await dismissInstallPromptWhenShown(page);
