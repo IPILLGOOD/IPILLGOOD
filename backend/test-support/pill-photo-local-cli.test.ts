@@ -12,6 +12,7 @@ import {
 import { loadLocalPillPhotoCatalog } from "./pill-photo-local-catalog.ts";
 import { PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION } from "../src/pill-photo-ocr.ts";
 import { type PillPhotoFeatures, pillPhotoFeaturesSchema } from "../src/pill-photo-features.ts";
+import { analyzePillPhotos } from "../src/pill-photo-analysis.ts";
 
 async function inputs() {
   const directory = await mkdtemp(join(tmpdir(), "ipillgood-photo-local-test-"));
@@ -54,14 +55,19 @@ test("local CLI resolves root-relative pairs, requires explicit live, keeps base
   assert.equal(parsed.model, "gpt-5.6-sol");
   assert.equal(parsed.ocrModel, "gpt-5.6-sol");
   assert.equal(parsed.executionMode, "parallel");
+  assert.equal(parsed.ocrImageCount, 8);
   assert.equal(parseLocalPillPhotoArgs(["--execution", "sequential"]).executionMode, "sequential");
+  assert.equal(parseLocalPillPhotoArgs(["--ocr-images", "4"]).ocrImageCount, 4);
+  assert.equal(parseLocalPillPhotoArgs(["--ocr-images", "8"]).ocrImageCount, 8);
   const custom = parseLocalPillPhotoArgs(["--front", "사진/앞.jpg", "--back", "사진/뒤.jpg", "--live", "--model", "test-vision"]);
   assert.equal(custom.front, resolve(PILL_PHOTO_LOCAL_ROOT, "사진/앞.jpg"));
   assert.equal(custom.live, true);
   assert.equal(custom.model, "test-vision");
   assert.equal(custom.ocrModel, "gpt-5.6-sol");
   for (const args of [["--front"], ["--live", "--live"], ["--unknown"], ["--front", "https://example.com/a.jpg"],
-    ["--model", "sk-fake-not-a-real-key"], ["--model", "bad model"], ["--back", "--live"], ["--execution", "invalid"]]) {
+    ["--model", "sk-fake-not-a-real-key"], ["--model", "bad model"], ["--back", "--live"], ["--execution", "invalid"],
+    ["--ocr-images"], ["--ocr-images", "2"], ["--ocr-images", "4.0"], ["--ocr-images", "04"],
+    ["--ocr-images", "4", "--ocr-images", "8"]]) {
     assert.throws(() => parseLocalPillPhotoArgs(args));
   }
 });
@@ -78,6 +84,7 @@ test("new JPEG pair preflight makes zero external requests and repeated runs pre
     assert.equal(first.report.status, "prepared");
     assert.equal(first.report.requestIntents, 0);
     assert.equal(first.report.extraction, null);
+    assert.equal(first.report.pipeline.ocrImageCount, 8);
     assert.equal(first.report.catalog.records, 25387);
     assert.equal(first.report.catalog.mode, "fixed_local_test_snapshot");
     assert.match(first.report.catalog.verifiedAt, /^2026-08-31T/);
@@ -87,14 +94,15 @@ test("new JPEG pair preflight makes zero external requests and repeated runs pre
     assert.deepEqual(JSON.parse(saved), first.report);
     assert.ok(!saved.includes("data:image") && !saved.includes("Authorization"));
     assert.match(formatLocalPillPhotoResult(first), /API는 호출하지 않았습니다/);
+    assert.match(formatLocalPillPhotoResult(first), /OCR 입력: 한 면당 8장/);
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 
-test("mocked live CLI runs actual preprocessing, Vision+both OCR, fusion and full catalog search, and records product candidates", async () => {
+for (const ocrImageCount of [8, 4] as const) test(`mocked live CLI forwards ${ocrImageCount} images per OCR side, searches full catalog and reports candidates`, async () => {
   const fixture = await inputs();
   try {
     const { features, itemSeq } = await matchingFeatures();
-    const requests: { model: string; text: { format: { name: string } }; input: unknown }[] = [];
+    const requests: { model: string; text: { format: { name: string } }; input: { content: { type: string }[] }[] }[] = [];
     const secret = "synthetic-test-key-never-real";
     const fetchImpl: typeof fetch = async (_url, init) => {
       const body = JSON.parse(String(init?.body));
@@ -106,23 +114,54 @@ test("mocked live CLI runs actual preprocessing, Vision+both OCR, fusion and ful
       void _scoreLine;
       return envelope({ schemaVersion: PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION, side });
     };
-    const result = await runLocalPillPhoto({ ...fixture.options, live: true }, {
+    const result = await runLocalPillPhoto({ ...fixture.options, live: true, ocrImageCount }, {
       outputRoot: join(fixture.directory, "results"), apiKey: secret, fetchImpl,
     });
     assert.equal(result.report.status, "complete");
     assert.equal(requests.length, 3);
     assert.deepEqual(requests.map((body) => body.text.format.name), ["pill_visible_features", "pill_imprint_ocr_side", "pill_imprint_ocr_side"]);
+    assert.deepEqual(requests.map(body => body.input.flatMap(message => message.content).filter(part => part.type === "input_image").length),
+      [4, ocrImageCount, ocrImageCount]);
+    assert.equal(result.report.pipeline.ocrImageCount, ocrImageCount);
     assert.equal(result.report.requestIntents, 3);
     assert.equal(result.report.requestTrace.length, 6);
     assert.equal(result.report.comparison?.search?.metrics.catalogRecords, 25387);
     assert.ok(result.report.comparison?.search?.candidates.some((candidate) => candidate.itemSeq === itemSeq));
     assert.ok(result.report.extraction?.ok && result.report.extraction.signals?.vision && result.report.extraction.signals?.ocr);
     assert.match(formatLocalPillPhotoResult(result), /상위 후보/);
+    assert.ok(formatLocalPillPhotoResult(result).includes(`OCR 입력: 한 면당 ${ocrImageCount}장`));
+    for (const file of ["input.json", "result.json"]) {
+      assert.equal(JSON.parse(await readFile(join(result.directory, file), "utf8")).pipeline.ocrImageCount, ocrImageCount);
+    }
     for (const file of await readdir(result.directory)) {
       const saved = await readFile(join(result.directory, file), "utf8");
       assert.ok(!saved.includes(secret) && !saved.includes("data:image") && !saved.includes("Authorization"));
     }
+    // The direct byte entry and the file adapter must produce identical provider inputs/results.
+    const localRequests = [...requests];
+    requests.length = 0;
+    const direct = await analyzePillPhotos({
+      front: fixture.front, back: fixture.back, catalog: (await loadLocalPillPhotoCatalog()).catalog,
+      model: fixture.options.model, ocrModel: fixture.options.ocrModel, ocrImageCount,
+      executionMode: result.report.pipeline.executionMode, allowExternalTransfer: true, apiKey: secret, fetchImpl,
+    });
+    assert.ok(direct.ok);
+    assert.deepEqual(requests, localRequests);
+    assert.deepEqual(direct.extraction, result.report.extraction);
+    assert.deepEqual(direct.comparison, result.report.comparison);
+    assert.deepEqual(direct.sourceSha256, result.report.inputs.sha256);
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test("invalid programmatic OCR image counts fail before reading photos or starting requests", async () => {
+  let requests = 0;
+  const base = parseLocalPillPhotoArgs(["--front", "missing-front.jpg", "--back", "missing-back.jpg", "--live"]);
+  for (const invalid of [0, 2, 6, 16, 4.5, "4", null]) {
+    await assert.rejects(runLocalPillPhoto({ ...base, ocrImageCount: invalid as 4 }, {
+      apiKey: "synthetic-key", fetchImpl: async () => { requests++; throw new Error("no network"); },
+    }), /local_invalid_arguments/);
+  }
+  assert.equal(requests, 0);
 });
 
 test("provider failure records a failed run, suppresses raw error body, and does not retry or search", async () => {

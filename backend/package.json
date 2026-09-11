@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./dates": "./src/dates.ts"
+    "./dates": "./src/dates.ts",
+    "./pill-photo": "./src/pill-photo-analysis.ts"
   },
   "scripts": {
     "pill:local": "node ../scripts/run-pill-photo-local.mjs",
@@ -17,7 +18,7 @@
     "pill:evaluate": "node --env-file=../front/.env.local --experimental-strip-types scripts/pill-photo-evaluate.ts",
     "pill:labels": "node --experimental-strip-types scripts/pill-photo-label-audit.ts",
     "pill:labels:live": "node --env-file=../front/.env.local --experimental-strip-types scripts/pill-photo-label-audit.ts --live",
-    "pill:verify": "node --experimental-strip-types --test test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts test-support/pill-photo-unseen-evaluation.test.ts test-support/pill-photo-phone-validation.test.ts test-support/pill-photo-phone-evaluation-record.test.ts test-support/pill-photo-evaluate.test.ts test-support/pill-photo-label-audit.test.ts test-support/pill-photo-preprocessing.test.ts test-support/pill-photo-score.test.ts test-support/pill-photo-diagnostics.test.ts test-support/pill-photo-trial.test.ts test-support/pill-photo-prompt-profiles.test.ts test-support/pill-photo-trial-comparison.test.ts test-support/pill-photo-signal-cross.test.ts test-support/pill-photo-vision-fields.test.ts test-support/pill-photo-stylized-probe.test.ts test-support/pill-photo-search-diagnostics.test.ts test-support/pill-photo-oracle.test.ts test-support/pill-photo-human-oracle.test.ts test-support/pill-photo-ocr-profiles.test.ts test-support/pill-photo-ocr-ab.test.ts test-support/pill-photo-lexicon.test.ts test-support/pill-photo-candidate-pool.test.ts test-support/pill-photo-candidate-review.test.ts test-support/pill-photo-candidate-transport.test.ts test-support/pill-photo-candidate-cli.test.ts test-support/pill-photo-local-cli.test.ts test-support/pill-photo-local-catalog.test.ts test-support/pill-photo-local-launcher.test.ts src/pill-photo-pipeline.test.ts",
+    "pill:verify": "node --experimental-strip-types --test test-support/pill-photo-local.test.ts test-support/pill-photo-fixture.test.ts test-support/pill-photo-evaluation.test.ts test-support/pill-photo-unseen-evaluation.test.ts test-support/pill-photo-phone-validation.test.ts test-support/pill-photo-phone-evaluation-record.test.ts test-support/pill-photo-evaluate.test.ts test-support/pill-photo-label-audit.test.ts test-support/pill-photo-preprocessing.test.ts test-support/pill-photo-score.test.ts test-support/pill-photo-diagnostics.test.ts test-support/pill-photo-trial.test.ts test-support/pill-photo-prompt-profiles.test.ts test-support/pill-photo-trial-comparison.test.ts test-support/pill-photo-signal-cross.test.ts test-support/pill-photo-vision-fields.test.ts test-support/pill-photo-stylized-probe.test.ts test-support/pill-photo-search-diagnostics.test.ts test-support/pill-photo-oracle.test.ts test-support/pill-photo-human-oracle.test.ts test-support/pill-photo-ocr-profiles.test.ts test-support/pill-photo-ocr-ab.test.ts test-support/pill-photo-lexicon.test.ts test-support/pill-photo-candidate-pool.test.ts test-support/pill-photo-candidate-review.test.ts test-support/pill-photo-candidate-transport.test.ts test-support/pill-photo-candidate-cli.test.ts test-support/pill-photo-local-cli.test.ts test-support/pill-photo-local-catalog.test.ts test-support/pill-photo-local-launcher.test.ts src/pill-photo-pipeline.test.ts src/pill-photo-analysis.test.ts",
     "verify:live": "node --experimental-strip-types scripts/verify-live-apis.mjs",
     "seed": "node scripts/seed-firestore.mjs",
     "deploy": "firebase deploy --only firestore:rules,firestore:indexes",
@@ -41,9 +42,7 @@
     "fast-xml-parser": "^5.11.0",
     "openai": "^7.4.0",
     "pdf-lib": "^1.17.1",
+    "sharp": "0.35.3",
     "zod": "4.4.3"
-  },
-  "devDependencies": {
-    "sharp": "0.35.3"
   }
 }

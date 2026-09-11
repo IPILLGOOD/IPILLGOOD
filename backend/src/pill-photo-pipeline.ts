@@ -9,6 +9,7 @@ import {
   PILL_PHOTO_OCR_PROMPT_VERSION, PILL_PHOTO_OCR_SCHEMA_VERSION, fusePillPhotoSignals,
   pillPhotoOcrInstructions, pillPhotoOcrFeaturesSchema, pillPhotoOcrSideResponseSchema,
   type PillPhotoFusionEvidence, type PillPhotoOcrFeatures, type PillPhotoOcrSideResponse, type PillPhotoOcrPromptVersion,
+  type PillPhotoOcrImageCount,
 } from "./pill-photo-ocr.ts";
 import {
   preparePhonePillPhotoVariants, preparePillPhotoOcrRotationViews,
@@ -24,6 +25,7 @@ export const PILL_PHOTO_TIMEOUT_MS = 90_000;
 type Usage = { inputTokens: number; outputTokens: number };
 export type PillPhotoRequestStage = "vision" | "ocrFront" | "ocrBack";
 export type PillPhotoExecutionMode = "sequential" | "parallel";
+export type { PillPhotoOcrImageCount } from "./pill-photo-ocr.ts";
 export type PillPhotoStageResult = { ok: true } | { ok: false; reason: PhotoFailure };
 export type PillPhotoRequestTrace = {
   phase: "started"; stage: PillPhotoRequestStage; requestSha256: string;
@@ -73,21 +75,25 @@ export function pillPhotoRequest(
   };
 }
 
-/** Imprint-only request for one surface, with color and contrast views at four cardinal rotations. */
+/** One surface, with both color/contrast views: four rotations by default, or just 0/180 for comparison. */
 export function pillPhotoOcrRequest(
   color: PillPhotoOcrRotationViews,
   contrast: PillPhotoOcrRotationViews,
   model: string,
   ocrPromptVersion: PillPhotoOcrPromptVersion = PILL_PHOTO_OCR_PROMPT_VERSION,
+  ocrImageCount: PillPhotoOcrImageCount = 8,
 ) {
+  const instructions = pillPhotoOcrInstructions(ocrPromptVersion, ocrImageCount);
+  const angles = ocrImageCount === 4 ? "0, 180" : "0, 90, 180, 270";
+  const select = (views: PillPhotoOcrRotationViews) => ocrImageCount === 4 ? [views[0], views[2]] : views;
   return {
     model, store: false, max_output_tokens: 1400, reasoning: { effort: "low" },
-    instructions: pillPhotoOcrInstructions(ocrPromptVersion),
+    instructions,
     input: [{ role: "user", content: [
-      { type: "input_text", text: "Color rotations of one surface in this exact order: 0, 90, 180, 270 degrees." },
-      ...color.map(inputImage),
-      { type: "input_text", text: "Contrast-enhanced rotations of that same surface in this exact order: 0, 90, 180, 270 degrees." },
-      ...contrast.map(inputImage),
+      { type: "input_text", text: `Color rotations of one surface in this exact order: ${angles} degrees.` },
+      ...select(color).map(inputImage),
+      { type: "input_text", text: `Contrast-enhanced rotations of that same surface in this exact order: ${angles} degrees.` },
+      ...select(contrast).map(inputImage),
     ] }],
     text: { format: { type: "json_schema", name: "pill_imprint_ocr_side", strict: true, schema: z.toJSONSchema(pillPhotoOcrSideResponseSchema) } },
   };
@@ -237,8 +243,13 @@ function requestsWithinLimit(requests: readonly unknown[]): boolean {
 export async function preparePillPhotoVariantRequests(
   photos: readonly [Uint8Array, Uint8Array],
   variants: readonly [PillPhotoPreprocessingVariants | PillPhonePhotoPreprocessingVariants, PillPhotoPreprocessingVariants | PillPhonePhotoPreprocessingVariants],
-  options: { model: string; ocrModel: string; visionPromptVersion?: PillPhotoVisionPromptVersion; ocrPromptVersion?: PillPhotoOcrPromptVersion },
+  options: { model: string; ocrModel: string; visionPromptVersion?: PillPhotoVisionPromptVersion;
+    ocrPromptVersion?: PillPhotoOcrPromptVersion; ocrImageCount?: PillPhotoOcrImageCount },
 ): Promise<PreparedPillPhotoRequests> {
+  if (options.ocrImageCount !== undefined && options.ocrImageCount !== 4 && options.ocrImageCount !== 8) {
+    throw new Error("invalid_ocr_image_count");
+  }
+  // Both comparison modes perform identical preprocessing; only the request attachments differ.
   const ocrViews = [];
   for (const variant of variants) {
     ocrViews.push({ color: await preparePillPhotoOcrRotationViews(variant.alignedColor),
@@ -248,16 +259,19 @@ export async function preparePillPhotoVariantRequests(
     preprocessing: variants.map((entry) => entry.metadata),
     requests: {
       vision: pillPhotoRequest(variants[0], variants[1], options.model, options.visionPromptVersion),
-      ocrFront: pillPhotoOcrRequest(ocrViews[0]!.color, ocrViews[0]!.contrast, options.ocrModel, options.ocrPromptVersion),
-      ocrBack: pillPhotoOcrRequest(ocrViews[1]!.color, ocrViews[1]!.contrast, options.ocrModel, options.ocrPromptVersion),
+      ocrFront: pillPhotoOcrRequest(ocrViews[0]!.color, ocrViews[0]!.contrast, options.ocrModel, options.ocrPromptVersion, options.ocrImageCount),
+      ocrBack: pillPhotoOcrRequest(ocrViews[1]!.color, ocrViews[1]!.contrast, options.ocrModel, options.ocrPromptVersion, options.ocrImageCount),
     } };
 }
 
 /** Explicit local input: validate new JPEG bytes without registering them in evaluation fixtures. */
 export async function preparePhonePillPhotoRequests(
   photos: readonly [Uint8Array, Uint8Array],
-  options: { model: string; ocrModel: string },
+  options: { model: string; ocrModel: string; ocrImageCount?: PillPhotoOcrImageCount },
 ): Promise<PreparedPillPhotoRequests | { ok: false; reason: PhotoFailure }> {
+  if (options.ocrImageCount !== undefined && options.ocrImageCount !== 4 && options.ocrImageCount !== 8) {
+    return { ok: false, reason: "invalid_request" };
+  }
   if (!Array.isArray(photos) || photos.length !== 2
     || photos.some((bytes) => !(bytes instanceof Uint8Array) || bytes.length < 1 || bytes.length > MAX_INPUT_BYTES)) {
     return { ok: false, reason: "invalid_photo" };

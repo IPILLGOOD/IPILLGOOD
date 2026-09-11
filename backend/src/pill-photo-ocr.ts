@@ -11,6 +11,7 @@ export const PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION = "pill-photo-imprint-ocr-side.v
 export const PILL_PHOTO_OCR_PROMPT_VERSION = "pill-photo-imprint-ocr-per-side-dual-view-v2";
 export const PILL_PHOTO_STROKE_OCR_PROMPT_VERSION = "pill-photo-imprint-ocr-stroke-check-v3";
 export type PillPhotoOcrPromptVersion = typeof PILL_PHOTO_OCR_PROMPT_VERSION | typeof PILL_PHOTO_STROKE_OCR_PROMPT_VERSION;
+export type PillPhotoOcrImageCount = 4 | 8;
 export const PILL_PHOTO_FUSION_VERSION = "pill-photo-vision-ocr-consensus-v1";
 
 const imprintCandidateSchema = z.string().max(80)
@@ -93,10 +94,19 @@ For this experiment, verify the visible reading with these checks before selecti
 3. Cross-view check: revisit that same position in its corresponding color and contrast views at the chosen orientation. A transformation may hide or exaggerate a stroke; use the complementary view to check it, not as another independent vote. Preserve defensible whole-string alternatives when the visible strokes do not separate them, strongest supported reading first, within the existing five-candidate limit.
 These checks do not relax the existing unreadable, partial or no-imprint rules and do not create evidence that is absent from the photograph. Do not report the checking procedure or add fields; return only the specified JSON.`;
 
-export function pillPhotoOcrInstructions(version: PillPhotoOcrPromptVersion = PILL_PHOTO_OCR_PROMPT_VERSION): string {
-  if (version === PILL_PHOTO_OCR_PROMPT_VERSION) return PILL_PHOTO_OCR_INSTRUCTIONS;
-  if (version === PILL_PHOTO_STROKE_OCR_PROMPT_VERSION) return PILL_PHOTO_STROKE_OCR_INSTRUCTIONS;
-  throw new Error("trial_unknown_ocr_prompt");
+export function pillPhotoOcrInstructions(
+  version: PillPhotoOcrPromptVersion = PILL_PHOTO_OCR_PROMPT_VERSION,
+  imageCount: PillPhotoOcrImageCount = 8,
+): string {
+  if (imageCount !== 4 && imageCount !== 8) throw new Error("invalid_ocr_image_count");
+  const instructions = version === PILL_PHOTO_OCR_PROMPT_VERSION ? PILL_PHOTO_OCR_INSTRUCTIONS
+    : version === PILL_PHOTO_STROKE_OCR_PROMPT_VERSION ? PILL_PHOTO_STROKE_OCR_INSTRUCTIONS : null;
+  if (instructions === null) throw new Error("trial_unknown_ocr_prompt");
+  // Retain the historical eight-view prompt verbatim. Only describe the selected input layout differently.
+  return imageCount === 8 ? instructions : instructions.replace(
+    "each rotated 0, 90, 180 and 270 degrees. These eight images",
+    "each rotated 0 and 180 degrees. These four images",
+  );
 }
 
 const normalizeCandidate = (value: string) => value.normalize("NFKC").trim().toUpperCase().replace(/\s+/g, "");

@@ -5,10 +5,14 @@ import sharp from "sharp";
 import { pillObservation } from "../test-support/pill-fixtures.ts";
 import { extractReviewedPillPhotoOcr, extractReviewedPillPhotos, prepareReviewedPillPhotoRequests } from "./pill-photo-experiment.ts";
 import { pillPhotoFeaturesSchema } from "./pill-photo-features.ts";
-import { fusePillPhotoSignals, PILL_PHOTO_OCR_SCHEMA_VERSION, PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION, pillPhotoOcrFeaturesSchema } from "./pill-photo-ocr.ts";
+import {
+  fusePillPhotoSignals, PILL_PHOTO_OCR_SCHEMA_VERSION, PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION,
+  PILL_PHOTO_OCR_INSTRUCTIONS, PILL_PHOTO_STROKE_OCR_PROMPT_VERSION,
+  pillPhotoOcrFeaturesSchema, pillPhotoOcrInstructions,
+} from "./pill-photo-ocr.ts";
 import {
   extractPreparedPillPhotos, pillPhotoOcrRequest, pillPhotoRequest, preparePhonePillPhotoRequests,
-  type PreparedPillPhotoRequests, type PillPhotoRequestTrace,
+  type PreparedPillPhotoRequests, type PillPhotoRequestTrace, type PillPhotoOcrImageCount,
 } from "./pill-photo-pipeline.ts";
 import { preparePillPhotoOcrRotationViews, prepareValidatedPhonePillPhotoVariants } from "./pill-photo-preprocessing.ts";
 
@@ -23,6 +27,56 @@ const preparedPromise = sourcesPromise.then(async (sources) => {
   const prepared = await preparePhonePillPhotoRequests(sources, models);
   assert.equal(prepared.ok, true);
   return prepared as PreparedPillPhotoRequests;
+});
+const fourPreparedPromise = sourcesPromise.then(async sources => {
+  const prepared = await preparePhonePillPhotoRequests(sources, { ...models, ocrImageCount: 4 });
+  assert.equal(prepared.ok, true);
+  return prepared as PreparedPillPhotoRequests;
+});
+
+test("OCR 4장은 컬러·대비 각 0/180도만 선택하고 설명도 실제 이미지 순서와 일치한다", () => {
+  // Distinct payloads ensure accidentally selecting 90/270 degrees cannot pass on symmetric pixels.
+  const color = [0, 90, 180, 270].map(angle => Buffer.from(`color-${angle}`)) as [Buffer, Buffer, Buffer, Buffer];
+  const contrast = [0, 90, 180, 270].map(angle => Buffer.from(`contrast-${angle}`)) as [Buffer, Buffer, Buffer, Buffer];
+  const eight = pillPhotoOcrRequest(color, contrast, models.ocrModel);
+  assert.equal(eight.instructions, PILL_PHOTO_OCR_INSTRUCTIONS);
+  assert.deepEqual(eight, pillPhotoOcrRequest(color, contrast, models.ocrModel, undefined, 8));
+  const four = pillPhotoOcrRequest(color, contrast, models.ocrModel, undefined, 4);
+  const content = four.input[0]!.content;
+  const imageLabels = content.flatMap(part => "image_url" in part
+    ? [Buffer.from(part.image_url.split(",")[1]!, "base64").toString()] : []);
+  assert.deepEqual(imageLabels, ["color-0", "color-180", "contrast-0", "contrast-180"]);
+  assert.deepEqual(content.filter(part => "text" in part).map(part => part.text), [
+    "Color rotations of one surface in this exact order: 0, 180 degrees.",
+    "Contrast-enhanced rotations of that same surface in this exact order: 0, 180 degrees.",
+  ]);
+  assert.equal(four.instructions, PILL_PHOTO_OCR_INSTRUCTIONS.replace(
+    "each rotated 0, 90, 180 and 270 degrees. These eight images",
+    "each rotated 0 and 180 degrees. These four images",
+  ));
+  assert.deepEqual({ ...four, input: eight.input, instructions: eight.instructions }, eight);
+  const stroke = pillPhotoOcrRequest(color, contrast, models.ocrModel, PILL_PHOTO_STROKE_OCR_PROMPT_VERSION, 4);
+  assert.match(stroke.instructions, /These four images/);
+  assert.doesNotMatch(stroke.instructions, /These eight images|90, 180 and 270/);
+  assert.match(stroke.instructions, /Character strokes:/);
+  assert.throws(() => pillPhotoOcrRequest(color, contrast, models.ocrModel, undefined, 6 as PillPhotoOcrImageCount), /invalid_ocr_image_count/);
+  assert.throws(() => pillPhotoOcrInstructions(undefined, 0 as PillPhotoOcrImageCount), /invalid_ocr_image_count/);
+});
+
+test("OCR 입력 수만 바꾸어도 원본 해시·전처리·Vision은 동일하고 두 면의 선택은 보존된다", async () => {
+  const eight = await preparedPromise;
+  const four = await fourPreparedPromise;
+  assert.deepEqual(four.sourceSha256, eight.sourceSha256);
+  assert.deepEqual(four.preprocessing, eight.preprocessing);
+  assert.deepEqual(four.requests.vision, eight.requests.vision);
+  for (const stage of ["ocrFront", "ocrBack"] as const) {
+    const images = (prepared: PreparedPillPhotoRequests) => prepared.requests[stage].input[0]!.content
+      .filter(part => "image_url" in part);
+    assert.equal(images(eight).length, 8);
+    assert.deepEqual(images(four), [0, 2, 4, 6].map(index => images(eight)[index]));
+  }
+  assert.deepEqual(await preparePhonePillPhotoRequests(await sourcesPromise, { ...models, ocrImageCount: 2 as PillPhotoOcrImageCount }),
+    { ok: false, reason: "invalid_request" });
 });
 
 function features() {

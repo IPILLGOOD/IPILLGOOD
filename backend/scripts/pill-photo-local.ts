@@ -3,12 +3,14 @@ import { appendFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { loadEnvFile } from "node:process";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { comparePillPhotoFeatures, PILL_PHOTO_PROMPT_VERSION } from "../src/pill-photo-features.ts";
+import { PILL_PHOTO_PROMPT_VERSION } from "../src/pill-photo-features.ts";
+import { analyzePreparedPillPhotos, type PillPhotoComparison } from "../src/pill-photo-analysis.ts";
 import { PILL_PHOTO_OCR_PROMPT_VERSION, PILL_PHOTO_FUSION_VERSION } from "../src/pill-photo-ocr.ts";
 import { PILL_PHONE_PHOTO_PREPROCESSING_VERSION } from "../src/pill-photo-preprocessing.ts";
 import {
-  preparePhonePillPhotoRequests, extractPreparedPillPhotos,
+  preparePhonePillPhotoRequests,
   type PhotoExtractionResult, type PillPhotoRequestTrace, type PillPhotoExecutionMode,
+  type PillPhotoOcrImageCount,
 } from "../src/pill-photo-pipeline.ts";
 import { loadLocalPillPhotoCatalog } from "../test-support/pill-photo-local-catalog.ts";
 import { readBoundedFixtureFile } from "../test-support/pill-photo-fixture.ts";
@@ -24,6 +26,7 @@ export const PILL_PHOTO_LOCAL_HELP = `IPILLGOOD 로컬 알약 사진 테스트 (
   npm run pill:local                          파일/전처리 확인만, API 호출 없음
   npm run pill:local -- --live                 Vision + 앞뒤 OCR 세 요청 병렬 실행
   npm run pill:local -- --live --execution sequential   기존 순차 실행과 비교
+  npm run pill:local -- --live --ocr-images 4   OCR 한 면당 4장 입력과 비교
   npm run pill:local -- --front local-pill-photos/input/a.jpg --back local-pill-photos/input/b.jpg --live
 
 기본 사진: local-pill-photos/input/front.jpg, back.jpg
@@ -34,6 +37,8 @@ export const PILL_PHOTO_LOCAL_HELP = `IPILLGOOD 로컬 알약 사진 테스트 (
 OPENAI_API_KEY를 사용하며, 없으면 front/.env.local에서 읽습니다.
 기본 Vision/OCR 모델은 ${DEFAULT_MODEL}, reasoning=low입니다.
 선택 사항: --model <Vision 모델>, --ocr-model <OCR 모델>
+OCR 입력: --ocr-images 8|4 (한 면당 장수, 기본값: 8)
+4장은 컬러·대비 보정 각각 0도·180도입니다. 전처리는 유지하고 첨부 이미지만 줄입니다.
 요청 방식: --execution parallel|sequential (로컬 명령 기본값: parallel)
 병렬 실행은 세 요청을 모두 수집하며, 하나라도 실패하면 후보를 검색하지 않습니다.
 OPENAI_MODEL / OPENAI_OCR_MODEL은 이 명령의 기본 모델을 바꾸지 않습니다.
@@ -51,13 +56,14 @@ export interface LocalPillPhotoOptions {
   model: string;
   ocrModel: string;
   executionMode?: PillPhotoExecutionMode;
+  ocrImageCount?: PillPhotoOcrImageCount;
 }
 
 export function parseLocalPillPhotoArgs(args: string[]): LocalPillPhotoOptions {
   const flags = new Map<string, string>();
   for (let index = 0; index < args.length; index++) {
     const flag = args[index]!;
-    if (!["--front", "--back", "--live", "--model", "--ocr-model", "--execution"].includes(flag) || flags.has(flag)) {
+    if (!["--front", "--back", "--live", "--model", "--ocr-model", "--execution", "--ocr-images"].includes(flag) || flags.has(flag)) {
       throw new Error("local_invalid_arguments");
     }
     const value = flag === "--live" ? "true" : args[++index];
@@ -68,6 +74,8 @@ export function parseLocalPillPhotoArgs(args: string[]): LocalPillPhotoOptions {
   const ocrModel = flags.get("--ocr-model") ?? DEFAULT_MODEL;
   const executionMode = flags.get("--execution") ?? "parallel";
   if (executionMode !== "parallel" && executionMode !== "sequential") throw new Error("local_invalid_arguments");
+  const ocrImages = flags.get("--ocr-images") ?? "8";
+  if (ocrImages !== "4" && ocrImages !== "8") throw new Error("local_invalid_arguments");
   if (![model, ocrModel].every((value) => /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,100}$/.test(value) && !/^sk-/i.test(value))) {
     throw new Error("local_invalid_model");
   }
@@ -75,11 +83,11 @@ export function parseLocalPillPhotoArgs(args: string[]): LocalPillPhotoOptions {
   if (paths.some((path) => /^(?:https?|file|data):/i.test(path) || path.includes("\0"))) throw new Error("local_invalid_arguments");
   return {
     front: resolve(PILL_PHOTO_LOCAL_ROOT, paths[0]!), back: resolve(PILL_PHOTO_LOCAL_ROOT, paths[1]!),
-    live: flags.has("--live"), model, ocrModel, executionMode,
+    live: flags.has("--live"), model, ocrModel, executionMode, ocrImageCount: ocrImages === "4" ? 4 : 8,
   };
 }
 
-type Comparison = ReturnType<typeof comparePillPhotoFeatures>;
+type Comparison = PillPhotoComparison;
 type CatalogMetadata = Awaited<ReturnType<typeof loadLocalPillPhotoCatalog>>["metadata"];
 type Preparation = Extract<Awaited<ReturnType<typeof preparePhonePillPhotoRequests>>, { ok: true }>;
 
@@ -91,7 +99,7 @@ export interface LocalPillPhotoReport {
   runtime: { node: string; platform: string; arch: string };
   inputs: { front: string; back: string; sha256: string[] };
   pipeline: { model: string; ocrModel: string; reasoning: "low"; preprocessing: string; visionPrompt: string; ocrPrompt: string; fusion: string;
-    executionMode: PillPhotoExecutionMode };
+    executionMode: PillPhotoExecutionMode; ocrImageCount: PillPhotoOcrImageCount };
   timings: { preprocessingMs: number; catalogMs: number; analysisWallMs: number; searchMs: number };
   catalog: CatalogMetadata;
   preprocessing: Preparation["preprocessing"];
@@ -177,10 +185,12 @@ export async function runLocalPillPhoto(options: LocalPillPhotoOptions, dependen
   // Programmatic callers and existing reviewed tools retain the sequential default.
   const executionMode = options.executionMode ?? "sequential";
   if (executionMode !== "sequential" && executionMode !== "parallel") throw new Error("local_invalid_arguments");
+  const ocrImageCount = options.ocrImageCount === undefined ? 8 : options.ocrImageCount;
+  if (ocrImageCount !== 4 && ocrImageCount !== 8) throw new Error("local_invalid_arguments");
   // Select and read these two files once. Later path changes cannot change uploaded bytes.
   const photos = await Promise.all([readPhoto(options.front), readPhoto(options.back)]) as [Buffer, Buffer];
   dependencies.onProgress?.("사진 형식 확인 및 전처리 중…");
-  const prepared = await preparePhonePillPhotoRequests(photos, { model: options.model, ocrModel: options.ocrModel });
+  const prepared = await preparePhonePillPhotoRequests(photos, { model: options.model, ocrModel: options.ocrModel, ocrImageCount });
   if (!prepared.ok) throw new Error(prepared.reason);
   if (dependencies.expectedInputSha256 && prepared.sourceSha256.some((hash, index) => hash !== dependencies.expectedInputSha256![index])) {
     throw new Error("local_input_changed");
@@ -202,7 +212,7 @@ export async function runLocalPillPhoto(options: LocalPillPhotoOptions, dependen
     runtime: { node: process.version, platform: process.platform, arch: process.arch },
     inputs: { front: options.front, back: options.back, sha256: prepared.sourceSha256 },
     pipeline: { model: options.model, ocrModel: options.ocrModel, reasoning: "low", preprocessing: PILL_PHONE_PHOTO_PREPROCESSING_VERSION,
-      visionPrompt: PILL_PHOTO_PROMPT_VERSION, ocrPrompt: PILL_PHOTO_OCR_PROMPT_VERSION, fusion: PILL_PHOTO_FUSION_VERSION, executionMode },
+      visionPrompt: PILL_PHOTO_PROMPT_VERSION, ocrPrompt: PILL_PHOTO_OCR_PROMPT_VERSION, fusion: PILL_PHOTO_FUSION_VERSION, executionMode, ocrImageCount },
     timings: { preprocessingMs, catalogMs, analysisWallMs: 0, searchMs: 0 },
     catalog: loaded.metadata, preprocessing: prepared.preprocessing, requestIntents: 0, requestTrace: [], extraction: null, comparison: null,
   };
@@ -225,21 +235,19 @@ export async function runLocalPillPhoto(options: LocalPillPhotoOptions, dependen
           dependencies.onProgress?.(`${stage} 응답 종료 (${completed}/3) · ${(event.elapsedMs / 1000).toFixed(1)}초`);
         }
       });
-      const analysisStarted = performance.now();
-      try {
-        report.extraction = await extractPreparedPillPhotos(prepared, {
-          allowExternalTransfer: true, apiKey, fetchImpl: dependencies.fetchImpl, executionMode,
-          onRequestTrace: event => record({ ...event, offsetMs: Math.round(performance.now() - started) }),
-        });
-      } finally { report.timings.analysisWallMs = Math.round(performance.now() - analysisStarted); }
-      if (report.extraction.ok) {
-        const searchStarted = performance.now();
-        report.comparison = comparePillPhotoFeatures(report.extraction.features, loaded.catalog);
-        report.timings.searchMs = Math.round(performance.now() - searchStarted);
+      const analysis = await analyzePreparedPillPhotos(prepared, loaded.catalog, {
+        allowExternalTransfer: true, apiKey, fetchImpl: dependencies.fetchImpl, executionMode,
+        onRequestTrace: event => record({ ...event, offsetMs: Math.round(performance.now() - started) }),
+      });
+      report.extraction = analysis.extraction;
+      report.comparison = analysis.comparison;
+      report.timings.analysisWallMs = analysis.timings.analysisWallMs;
+      report.timings.searchMs = analysis.timings.searchMs;
+      if (analysis.ok) {
         report.status = "complete";
       } else {
         report.status = "failed";
-        report.failureReason = report.extraction.reason;
+        report.failureReason = analysis.reason === "analysis_failed" ? "local_execution_failed" : analysis.reason;
       }
     }
   } catch {
@@ -259,6 +267,7 @@ export function formatLocalPillPhotoResult(result: { directory: string; report: 
     `고정 테스트 카탈로그: ${report.catalog.verifiedAt.slice(0, 10)} / ${report.catalog.records.toLocaleString("ko-KR")}개 기록`,
     `모델: Vision ${report.pipeline.model} / OCR ${report.pipeline.ocrModel}`,
     `요청 방식: ${report.pipeline.executionMode === "parallel" ? "병렬 (동시 최대 3개)" : "순차"}`,
+    `OCR 입력: 한 면당 ${report.pipeline.ocrImageCount}장 (컬러·대비 보정 각각 ${report.pipeline.ocrImageCount === 4 ? "0도·180도" : "0도·90도·180도·270도"})`,
   ];
   if (report.status === "prepared") lines.push("입력·전처리 확인 완료. API는 호출하지 않았습니다. 실제 분석은 --live로 실행하세요.");
   else if (report.status === "failed") lines.push(`분석 실패: ${localPillPhotoErrorMessage(report.failureReason ?? "")}`);
