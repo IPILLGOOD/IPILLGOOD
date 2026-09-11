@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
 
-test("mobile: landing, all care pages, medication details, navigation and narrow reflow", async ({ page }, info) => {
+test("mobile: landing, all care pages, medication details, quick actions and narrow reflow", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   // Dismiss through the UI before testing focus: a locator handler clicking
