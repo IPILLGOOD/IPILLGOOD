@@ -281,15 +281,16 @@
   .experience-shell .medicine-cabinet__panel { padding-inline: 0; margin-top: 1rem; }
   .experience-shell .medicine-cabinet__tabs { margin-inline: -1.25rem; padding: 0 1.25rem .25rem; gap: .75rem; background: transparent; border-bottom: 0; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .experience-shell .medicine-cabinet__tabs::-webkit-scrollbar { display: none; }
-  .experience-shell .medicine-cabinet__tab { min-width: calc(100% - 2.75rem); min-height: 6.5rem; scroll-snap-align: center; grid-template-columns: minmax(0, 1fr) auto; align-content: center; gap: .4rem 1rem; border: 1px solid #dfe3e1; border-radius: 5px; padding: 1rem; background: #fff; }
+  .experience-shell .medicine-cabinet__tab { flex: 0 0 100%; min-width: 0; min-height: 6.5rem; scroll-snap-align: center; grid-template-columns: minmax(0, 1fr); align-content: center; gap: .4rem 1rem; border: 1px solid #dfe3e1; border-radius: 5px; padding: 1rem; background: #fff; }
   .experience-shell .medicine-cabinet__tab--active { border-color: #82ad9d; background: #f1f7f4; box-shadow: inset 0 -3px #22745e; }
   .experience-shell .medicine-cabinet__tab-copy strong, .experience-shell .medicine-cabinet__tab-copy small { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
   .experience-shell .medicine-cabinet__tab-copy strong { font-size: .95rem; line-height: 1.35; }
   .experience-shell .medicine-cabinet__tab-copy small { margin-top: .35rem; line-height: 1.4; }
-  .experience-shell .medicine-cabinet__tab-time { align-self: start; white-space: nowrap; }
-  .medicine-cabinet__mobile-navigation { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .65rem; color: var(--color-text-muted); font-size: .72rem; }
-  .medicine-cabinet__pagination { display: flex; align-items: center; }
-  .medicine-cabinet__pagination button { position: relative; display: grid; width: 2.75rem; height: 2.75rem; min-height: 2.75rem; place-items: center; border: 0; padding: 0; background: transparent; cursor: pointer; }
+  .experience-shell .medicine-cabinet__tab-time { align-self: start; white-space: normal; }
+  .experience-shell .medicine-cabinet__schedule > div { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+  .medicine-cabinet__mobile-navigation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .65rem; color: var(--color-text-muted); font-size: .72rem; }
+  .medicine-cabinet__pagination { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+  .medicine-cabinet__pagination button { position: relative; display: grid; flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; place-items: center; border: 0; padding: 0; background: transparent; cursor: pointer; }
   .medicine-cabinet__pagination button::before { width: .45rem; height: .45rem; border-radius: 999px; background: #cfd5d2; content: ""; transition: width 150ms ease, background-color 150ms ease; }
   .medicine-cabinet__pagination button.is-current::before { width: 1.15rem; background: #22745e; }
   .experience-shell .card.account-settings-group { margin-top: 1rem; padding: 1.25rem; }
