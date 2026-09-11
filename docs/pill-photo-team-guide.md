@@ -8,14 +8,21 @@
 # 파일과 전처리만 확인: API 키 불필요, 외부 호출 없음
 npm run pill:local
 
-# 실제 Vision 1회 + 앞뒤 OCR 각 1회 → 특징 통합 → 전체 카탈로그 검색
+# 실제 Vision 1회 + 앞뒤 OCR 각 1회를 병렬 요청 → 특징 통합 → 전체 카탈로그 검색
 npm run pill:local -- --live
+
+# 같은 사진으로 기존 순차 방식과 시간 비교
+npm run pill:local -- --live --execution sequential
 
 # 파일명을 바꾸어 반복 테스트 (상대 경로는 항상 저장소 루트 기준)
 npm run pill:local -- --front local-pill-photos/input/a.jpg --back local-pill-photos/input/b.jpg --live
 ```
 
 `--live`는 지정한 사진의 가공본을 AI API에 전송한다. `OPENAI_API_KEY` 환경 변수를 사용하며 없으면 `front/.env.local`에서 읽는다. API 호출은 자동 반복·재시도하지 않는다. 새 사진은 기존 평가 목록에 등록할 필요가 없으며, 기존 고정 평가·holdout에는 추가되지 않는다.
+
+로컬 명령의 기본 요청 방식은 `--execution parallel`이다. 전처리한 동일한 사진에서 세 요청을 동시에 시작하고 `Promise.allSettled()`로 모두 수집한 뒤, 세 응답의 형식과 성공 여부를 확인해야 특징을 결합한다. 응답 도착 순서는 앞뒤 면 배정에 영향을 주지 않는다. 하나가 실패해도 이미 시작한 나머지 요청의 종료/시간 제한까지 기다리며 부분 결과로 후보를 만들지 않는다. 성공 시 요청 수는 두 방식 모두 3회이며, 실패 시에는 순차 방식보다 요청 수가 늘 수 있다. 기존 고정 평가 도구의 순차 실행 조건은 유지한다.
+
+새 결과는 `pill-photo-local.v2` 형식으로 실행 방식, 전처리·카탈로그·분석·검색 시간을 기록한다. `analysisWallMs`는 분석 함수 진입부터 모든 요청·기록·특징 결합이 끝날 때까지의 실제 경과 시간이다. 병렬 요청별 `elapsedMs`를 더해 사용자 대기 시간으로 해석하면 안 된다. `requestTrace`의 `offsetMs`로 시작/종료의 겹침을 확인할 수 있으며, 같은 로그 파일에 쓰는 작업만 순서대로 처리한다. 순차/병렬 비교 시 같은 사진·모델·프롬프트·카탈로그를 고정하고 실행 순서를 번갈아 배치한다. 별도 지시 없이 사진 여러 쌍을 한꺼번에 병렬 전송하지 않는다.
 
 Node.js 24를 사용한다. 실행 명령은 현재 Node24 또는 Windows `C:/tools/node-v24.*-win-*/node.exe` 설치본을 찾아 실행한다. 다른 위치라면 `IPILLGOOD_NODE24` 환경 변수로 Node24 실행 파일의 절대 경로를 지정할 수 있다. 기본 Vision/OCR 모델은 최근 실험과 같은 `gpt-5.6-sol`, reasoning은 `low`다. 다른 모델은 `--model`, `--ocr-model`로 명시하며 프론트의 `OPENAI_MODEL` 설정은 기본값을 바꾸지 않는다.
 

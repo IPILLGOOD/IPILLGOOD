@@ -161,3 +161,109 @@ test("마지막 OCR 요청이 한도를 넘으면 첫 Vision 요청 전부터 �
     { ok: false, reason: "invalid_photo" });
   assert.equal(calls, 0);
 });
+
+test("병렬 세 요청은 첫 응답 전에 모두 시작하고 역순 응답도 같은 본문·면·결합 결과를 유지한다", { timeout: 60_000 }, async () => {
+  const original = await preparedPromise;
+  const caller = structuredClone(original);
+  const bodies = Object.values(original.requests).map(value => JSON.stringify(value));
+  const outputs = [features(), side("T0"), side("10")];
+  const traces: PillPhotoRequestTrace[] = [];
+  const releases: ((response: Response) => void)[] = [];
+  let started = 0;
+  let signalStarted!: () => void;
+  const allStarted = new Promise<void>(resolve => { signalStarted = resolve; });
+  const execution = extractPreparedPillPhotos(caller, {
+    executionMode: "parallel", allowExternalTransfer: true, apiKey: "synthetic-key",
+    onRequestTrace: async event => { traces.push(event); },
+    fetchImpl: async (_url, init) => {
+      const index = bodies.indexOf(String(init?.body));
+      assert.notEqual(index, -1, "serialized request must match the sequential request exactly");
+      assert.equal(releases[index], undefined, "each stage is dispatched only once");
+      const response = new Promise<Response>(resolve => { releases[index] = resolve; });
+      if (++started === 3) signalStarted();
+      return response;
+    },
+  });
+  await allStarted;
+  assert.deepEqual(traces.map(event => event.phase), ["started", "started", "started"]);
+  caller.requests.vision.instructions = "caller mutation must not change in-flight requests";
+  for (const index of [2, 0, 1]) {
+    releases[index]!(Response.json(response(outputs[index])));
+    await new Promise<void>(resolve => setImmediate(resolve));
+  }
+  const parallel = await execution;
+  const sequential = await extractPreparedPillPhotos(original, {
+    allowExternalTransfer: true, apiKey: "synthetic-key",
+    fetchImpl: async (_url, init) => Response.json(response(outputs[bodies.indexOf(String(init?.body))])),
+  });
+  assert.ok(parallel.ok && sequential.ok);
+  assert.deepEqual(parallel.features, sequential.features);
+  assert.deepEqual(parallel.signals, sequential.signals);
+  assert.deepEqual(parallel.usage, sequential.usage);
+  assert.deepEqual(parallel.stageResults, { vision: { ok: true }, ocrFront: { ok: true }, ocrBack: { ok: true } });
+  assert.deepEqual(traces.filter(event => event.phase === "finished").map(event => event.stage), ["ocrBack", "vision", "ocrFront"]);
+});
+
+test("병렬 HTTP 실패와 OCR 형식 오류는 모두 수집하되 부분 성공을 검색 특징으로 승격하지 않는다", async () => {
+  const prepared = await preparedPromise;
+  const bodies = Object.values(prepared.requests).map(value => JSON.stringify(value));
+  for (const failedStage of [0, 1]) {
+    let calls = 0;
+    const traces: PillPhotoRequestTrace[] = [];
+    const result = await extractPreparedPillPhotos(prepared, {
+      allowExternalTransfer: true, executionMode: "parallel", apiKey: "synthetic-key",
+      onRequestTrace: async event => { traces.push(event); },
+      fetchImpl: async (_url, init) => {
+        calls++;
+        const index = bodies.indexOf(String(init?.body));
+        if (index === failedStage) return failedStage === 0
+          ? new Response("sensitive error body", { status: 429 })
+          : Response.json(response({ invalid: "sensitive error body" }));
+        return Response.json(response([features(), side("T0"), side("10")][index]));
+      },
+    });
+    assert.equal(calls, 3);
+    assert.equal(traces.length, 6);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.reason, failedStage === 0 ? "rate_limited" : "ocr_failed");
+    assert.equal(result.stageResults?.ocrBack.ok, true);
+    assert.equal(result.stageResults?.[failedStage === 0 ? "vision" : "ocrFront"].ok, false);
+    assert.ok(!("features" in result));
+    assert.doesNotMatch(JSON.stringify(result), /sensitive error body/);
+  }
+});
+
+test("병렬 기록 예외도 나머지 요청과 콜백 종료를 기다린 뒤 원문 없는 오류로 반환한다", async () => {
+  const prepared = await preparedPromise;
+  const bodies = Object.values(prepared.requests).map(value => JSON.stringify(value));
+  const finished: string[] = [];
+  await assert.rejects(extractPreparedPillPhotos(prepared, {
+    allowExternalTransfer: true, executionMode: "parallel", apiKey: "synthetic-key",
+    fetchImpl: async (_url, init) => {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      return Response.json(response([features(), side("T0"), side("10")][bodies.indexOf(String(init?.body))]));
+    },
+    onRequestTrace: async event => {
+      if (event.stage === "vision") throw new Error("private recording details");
+      if (event.phase === "finished") {
+        await new Promise<void>(resolve => setImmediate(resolve));
+        finished.push(event.stage);
+      }
+    },
+  }), { message: "photo_request_recording_failed" });
+  assert.deepEqual(finished.sort(), ["ocrBack", "ocrFront"]);
+});
+
+test("병렬도 동의·키·모드·세 요청 전체 크기를 먼저 검증해 잘못된 입력은 0회 전송한다", async () => {
+  let calls = 0;
+  const prepared = structuredClone(await preparedPromise);
+  const fetchImpl: typeof fetch = async () => { calls++; throw new Error("must not send"); };
+  const options = { executionMode: "parallel" as const, fetchImpl, allowExternalTransfer: true, apiKey: "synthetic-key" };
+  assert.equal((await extractPreparedPillPhotos(prepared, { ...options, allowExternalTransfer: false })).ok, false);
+  assert.equal((await extractPreparedPillPhotos(prepared, { ...options, apiKey: "" })).ok, false);
+  assert.equal((await extractPreparedPillPhotos(prepared, { ...options, executionMode: "invalid" as "parallel" })).ok, false);
+  prepared.requests.ocrBack.instructions = "x".repeat(32 * 1024 * 1024);
+  assert.equal((await extractPreparedPillPhotos(prepared, options)).ok, false);
+  assert.equal(calls, 0);
+});

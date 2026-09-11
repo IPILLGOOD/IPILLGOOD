@@ -23,6 +23,8 @@ const MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
 export const PILL_PHOTO_TIMEOUT_MS = 90_000;
 type Usage = { inputTokens: number; outputTokens: number };
 export type PillPhotoRequestStage = "vision" | "ocrFront" | "ocrBack";
+export type PillPhotoExecutionMode = "sequential" | "parallel";
+export type PillPhotoStageResult = { ok: true } | { ok: false; reason: PhotoFailure };
 export type PillPhotoRequestTrace = {
   phase: "started"; stage: PillPhotoRequestStage; requestSha256: string;
 } | {
@@ -40,9 +42,10 @@ export interface PhotoExtractionSignals {
   ocr: { features: PillPhotoOcrFeatures; usage: Usage | null };
   fusion: PillPhotoFusionEvidence;
 }
-export type PhotoExtractionResult =
+export type PhotoExtractionResult = (
   | { ok: true; features: PillPhotoFeatures; usage: Usage | null; signals?: PhotoExtractionSignals }
-  | { ok: false; reason: PhotoFailure };
+  | { ok: false; reason: PhotoFailure }
+) & { stageResults?: Record<PillPhotoRequestStage, PillPhotoStageResult> };
 
 const inputImage = (bytes: Buffer) => ({
   type: "input_image" as const,
@@ -311,21 +314,63 @@ export async function extractPreparedPillPhotoOcr(
 /** Vision + per-side OCR + deterministic fusion. Callers must explicitly authorize transmission. */
 export async function extractPreparedPillPhotos(
   prepared: PreparedPillPhotoRequests,
-  options: { allowExternalTransfer?: boolean; apiKey?: string; fetchImpl?: typeof fetch; onRequestTrace?: RequestObserver } = {},
+  options: { allowExternalTransfer?: boolean; apiKey?: string; fetchImpl?: typeof fetch; onRequestTrace?: RequestObserver;
+    executionMode?: PillPhotoExecutionMode } = {},
 ): Promise<PhotoExtractionResult> {
   if (options.allowExternalTransfer !== true) return { ok: false, reason: "transfer_not_confirmed" };
   if (!options.apiKey?.trim()) return { ok: false, reason: "not_configured" };
+  if (options.executionMode !== undefined && !["sequential", "parallel"].includes(options.executionMode)) {
+    return { ok: false, reason: "invalid_request" };
+  }
   // Isolate all three requests from caller mutation during asynchronous tracing and transmission.
   prepared = structuredClone(prepared);
   if (!requestsWithinLimit(Object.values(prepared.requests))) return { ok: false, reason: "invalid_photo" };
   const apiKey = options.apiKey;
   const fetchImpl = options.fetchImpl ?? fetch;
+  if (options.executionMode === "parallel") {
+    return extractParallelPreparedPillPhotos(prepared, apiKey, fetchImpl, options.onRequestTrace);
+  }
   const visionResponse = await requestPillPhotoProvider(prepared.requests.vision, apiKey, fetchImpl, "vision", options.onRequestTrace);
   if (!visionResponse.ok) return visionResponse;
   const vision = parsePillPhotoResponse(visionResponse.value);
   if (!vision.ok) return vision;
   const ocr = await requestPreparedPillPhotoOcr(prepared, apiKey, fetchImpl, options.onRequestTrace);
   if (!ocr.ok) return ocr;
+  return combinePillPhotoSignals(vision, ocr);
+}
+
+/** Fixed fan-out of three. Drain every request/observer before returning, including on recording errors. */
+async function extractParallelPreparedPillPhotos(
+  prepared: PreparedPillPhotoRequests, apiKey: string, fetchImpl: typeof fetch, observer?: RequestObserver,
+): Promise<PhotoExtractionResult> {
+  const stages = ["vision", "ocrFront", "ocrBack"] as const;
+  const settled = await Promise.allSettled(stages.map(stage =>
+    requestPillPhotoProvider(prepared.requests[stage], apiKey, fetchImpl, stage, observer)));
+  // Provider failures are tagged values; rejections indicate recording/implementation errors.
+  const responses = settled.map(result => {
+    if (result.status === "rejected") throw new Error("photo_request_recording_failed");
+    return result.value;
+  });
+  const vision = responses[0]!.ok ? parsePillPhotoResponse(responses[0]!.value) : responses[0]!;
+  const front = responses[1]!.ok ? parsePillPhotoOcrResponse(responses[1]!.value) : responses[1]!;
+  const back = responses[2]!.ok ? parsePillPhotoOcrResponse(responses[2]!.value) : responses[2]!;
+  const outcome = (result: { ok: boolean; reason?: PhotoFailure }): PillPhotoStageResult =>
+    result.ok ? { ok: true } : { ok: false, reason: result.reason! };
+  const stageResults = { vision: outcome(vision), ocrFront: outcome(front), ocrBack: outcome(back) };
+  // Select failures by stage, never by arrival order. Never fuse partial success.
+  if (!vision.ok) return { ...vision, stageResults };
+  if (!front.ok) return { ...front, stageResults };
+  if (!back.ok) return { ...back, stageResults };
+  const ocr: Extract<PhotoOcrExtractionResult, { ok: true }> = {
+    ok: true, features: pillPhotoOcrFeaturesSchema.parse({ schemaVersion: PILL_PHOTO_OCR_SCHEMA_VERSION,
+      front: front.features.side, back: back.features.side }), usage: totalUsage(front.usage, back.usage),
+  };
+  return { ...combinePillPhotoSignals(vision, ocr), stageResults };
+}
+
+function combinePillPhotoSignals(
+  vision: Extract<PhotoExtractionResult, { ok: true }>, ocr: Extract<PhotoOcrExtractionResult, { ok: true }>,
+): PhotoExtractionResult {
   try {
     const ocrFeatures = ocr.features;
     const ocrUsage = ocr.usage;

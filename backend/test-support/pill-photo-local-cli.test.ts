@@ -7,6 +7,7 @@ import sharp from "sharp";
 import {
   formatLocalPillPhotoResult, localPillPhotoErrorMessage, parseLocalPillPhotoArgs,
   PILL_PHOTO_LOCAL_ROOT, runLocalPillPhoto,
+  createLocalPillPhotoTraceWriter, type LocalPillPhotoTrace,
 } from "../scripts/pill-photo-local.ts";
 import { loadLocalPillPhotoCatalog } from "./pill-photo-local-catalog.ts";
 import { PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION } from "../src/pill-photo-ocr.ts";
@@ -52,13 +53,15 @@ test("local CLI resolves root-relative pairs, requires explicit live, keeps base
   assert.equal(parsed.live, false);
   assert.equal(parsed.model, "gpt-5.6-sol");
   assert.equal(parsed.ocrModel, "gpt-5.6-sol");
+  assert.equal(parsed.executionMode, "parallel");
+  assert.equal(parseLocalPillPhotoArgs(["--execution", "sequential"]).executionMode, "sequential");
   const custom = parseLocalPillPhotoArgs(["--front", "사진/앞.jpg", "--back", "사진/뒤.jpg", "--live", "--model", "test-vision"]);
   assert.equal(custom.front, resolve(PILL_PHOTO_LOCAL_ROOT, "사진/앞.jpg"));
   assert.equal(custom.live, true);
   assert.equal(custom.model, "test-vision");
   assert.equal(custom.ocrModel, "gpt-5.6-sol");
   for (const args of [["--front"], ["--live", "--live"], ["--unknown"], ["--front", "https://example.com/a.jpg"],
-    ["--model", "sk-fake-not-a-real-key"], ["--model", "bad model"], ["--back", "--live"]]) {
+    ["--model", "sk-fake-not-a-real-key"], ["--model", "bad model"], ["--back", "--live"], ["--execution", "invalid"]]) {
     assert.throws(() => parseLocalPillPhotoArgs(args));
   }
 });
@@ -148,6 +151,7 @@ test("missing, duplicate, disguised non-JPEG and oversized inputs fail before ex
     const dependencies = { outputRoot: join(fixture.directory, "results"), apiKey: "synthetic-key",
       fetchImpl: (async () => { requests++; throw new Error("no network"); }) as typeof fetch };
     const base = { ...fixture.options, live: true };
+    await assert.rejects(runLocalPillPhoto(base, { ...dependencies, expectedInputSha256: ["0".repeat(64), "0".repeat(64)] }), /local_input_changed/);
     await assert.rejects(runLocalPillPhoto({ ...base, front: join(fixture.directory, "missing.jpg") }, dependencies), /local_input_unreadable/);
     await assert.rejects(runLocalPillPhoto({ ...base, back: base.front }, dependencies), /duplicate_photo/);
     await writeFile(fixture.paths.front, "not a jpeg; do not transmit");
@@ -156,5 +160,91 @@ test("missing, duplicate, disguised non-JPEG and oversized inputs fail before ex
     await assert.rejects(runLocalPillPhoto(base, dependencies), /local_input_too_large/);
     assert.equal(requests, 0);
     assert.ok(!localPillPhotoErrorMessage("private secret path").includes("private secret path"));
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test("parallel CLI overlaps three requests, saves complete ordered trace and reports wall time", { timeout: 60_000 }, async () => {
+  const fixture = await inputs();
+  try {
+    const { features, itemSeq } = await matchingFeatures();
+    const payloads = [features, ...[features.observation.front!, features.observation.back!].map(observed => {
+      const { scoreLine: _scoreLine, ...side } = observed;
+      void _scoreLine;
+      return { schemaVersion: PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION, side };
+    })];
+    let signalStarted!: () => void;
+    const allStarted = new Promise<void>(resolve => { signalStarted = resolve; });
+    const releases: ((value: Response) => void)[] = [];
+    const execution = runLocalPillPhoto({ ...fixture.options, live: true, executionMode: "parallel" }, {
+      apiKey: "synthetic-key", outputRoot: join(fixture.directory, "results"),
+      fetchImpl: async () => {
+        const response = new Promise<Response>(resolve => { releases.push(resolve); });
+        if (releases.length === 3) signalStarted();
+        return response;
+      },
+    });
+    await allStarted;
+    for (const index of [2, 1, 0]) {
+      releases[index]!(envelope(payloads[index]));
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    const result = await execution;
+    const { report } = result;
+    assert.equal(report.status, "complete");
+    assert.equal(report.pipeline.executionMode, "parallel");
+    assert.equal(report.requestIntents, 3);
+    assert.deepEqual(report.requestTrace.slice(0, 3).map(event => event.phase), ["started", "started", "started"]);
+    assert.equal(report.requestTrace.length, 6);
+    assert.ok(report.timings.analysisWallMs >= 0 && report.timings.analysisWallMs <= report.elapsedMs);
+    assert.ok(report.requestTrace.every(event => event.offsetMs >= 0 && event.offsetMs <= report.elapsedMs));
+    const trace = (await readFile(join(result.directory, "requests.jsonl"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(trace, report.requestTrace);
+    assert.deepEqual(JSON.parse(await readFile(join(result.directory, "result.json"), "utf8")), report);
+    assert.ok(report.comparison?.search?.candidates.some(candidate => candidate.itemSeq === itemSeq));
+    assert.match(formatLocalPillPhotoResult(result), /병렬.*동시 최대 3개/);
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test("trace writes serialize and snapshot events; recording failure prevents subsequent writes", async () => {
+  const events: LocalPillPhotoTrace[] = ["vision", "ocrFront", "ocrBack"].map(stage => ({
+    phase: "started", stage: stage as "vision", requestSha256: "a".repeat(64), offsetMs: 0,
+  }));
+  let active = 0;
+  let peak = 0;
+  const written: string[] = [];
+  const writer = createLocalPillPhotoTraceWriter(async event => {
+    peak = Math.max(peak, ++active);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    written.push(event.stage);
+    active--;
+  });
+  const pending = events.map(writer);
+  events[0]!.stage = "ocrBack";
+  await Promise.all(pending);
+  assert.equal(peak, 1);
+  assert.deepEqual(written, ["vision", "ocrFront", "ocrBack"]);
+  let attempts = 0;
+  const broken = createLocalPillPhotoTraceWriter(async () => { attempts++; throw new Error("write failed"); });
+  const failures = await Promise.allSettled(events.map(broken));
+  assert.equal(attempts, 1);
+  assert.ok(failures.every(result => result.status === "rejected"));
+});
+
+test("parallel provider failure records all three outcomes and never searches or retries", async () => {
+  const fixture = await inputs();
+  try {
+    let calls = 0;
+    const { report } = await runLocalPillPhoto({ ...fixture.options, live: true, executionMode: "parallel" }, {
+      apiKey: "synthetic-key", outputRoot: join(fixture.directory, "results"),
+      fetchImpl: async () => { calls++; return new Response("private error", { status: 429 }); },
+    });
+    assert.equal(calls, 3);
+    assert.equal(report.requestTrace.length, 6);
+    assert.equal(report.status, "failed");
+    assert.equal(report.failureReason, "rate_limited");
+    assert.equal(report.comparison, null);
+    assert.deepEqual(report.extraction?.stageResults, {
+      vision: { ok: false, reason: "rate_limited" }, ocrFront: { ok: false, reason: "rate_limited" }, ocrBack: { ok: false, reason: "rate_limited" },
+    });
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
