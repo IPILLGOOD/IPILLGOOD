@@ -294,7 +294,7 @@ test("보험코드를 식약처 품목기준코드로 오인해 공식 조회하
   assert.equal(result.analysis.medications?.[0]?.reviewStatus, "needs_review");
 });
 
-test("낮은 OCR 신뢰도나 식약처 제품명 불일치는 확인 전 복약 활성화를 막는다", async (context) => {
+test("낮은 OCR 신뢰도는 확인 전 복약 활성화를 막고 식약처 제품명으로 자동 교정한다", async (context) => {
   const previousOpenAiKey = process.env.OPENAI_API_KEY;
   const previousEndpoint = process.env.AI_ANALYSIS_ENDPOINT;
   const previousApiKey = process.env.AI_API_KEY;
@@ -328,7 +328,7 @@ test("낮은 OCR 신뢰도나 식약처 제품명 불일치는 확인 전 복약
           disclaimer: "원본 확인",
           source: "openai",
           medications: [{
-            productName: "다른약 5mg",
+            productName: "노바스그정 5mg",
             ingredientName: "다른성분",
             itemCode: "200001234",
             doseAmount: "1정",
@@ -348,10 +348,11 @@ test("낮은 OCR 신뢰도나 식약처 제품명 불일치는 확인 전 복약
   );
 
   const medication = result.analysis.medications?.[0];
+  assert.equal(medication?.productName, "노바스크정 5mg");
   assert.equal(medication?.reviewStatus, "needs_review");
   assert.equal(medication?.verification?.status, "mismatch");
   assert.ok(medication?.verification?.warnings.some((warning) => warning.includes("55%")));
-  assert.ok(medication?.verification?.warnings.some((warning) => warning.includes("제품명")));
+  assert.equal(medication?.verification?.warnings.some((warning) => warning.includes("제품명")), false);
 });
 
 test("OpenAI 재시도 후에도 필수 정보가 없으면 누락 항목을 표시한 검토 초안을 반환한다", async (context) => {

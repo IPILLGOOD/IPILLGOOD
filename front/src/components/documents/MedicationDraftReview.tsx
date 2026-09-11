@@ -1,8 +1,9 @@
 "use client";
 
 import {
-  BellRing,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   LoaderCircle,
   Plus,
   TriangleAlert,
@@ -35,10 +36,22 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
     draft.candidates.map(editableCandidate),
   );
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const selected = candidates.filter((candidate) => candidate.included);
   const selectedCount = selected.length;
+  const currentCandidate = candidates[currentIndex];
+  const currentCandidateReady = currentCandidate
+    ? Boolean(
+        currentCandidate.productName.trim() &&
+        currentCandidate.doseAmount.trim() &&
+        currentCandidate.frequency.trim() &&
+        currentCandidate.timing.trim() &&
+        currentCandidate.startDate &&
+        currentCandidate.endDate,
+      ) && (currentCandidate.reviewStatus === "verified" || currentCandidate.confirmedAgainstOriginal)
+    : false;
   const selectionReady = selected.every(
     (candidate) =>
       Boolean(
@@ -77,9 +90,9 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
   }
 
   function addManualCandidate() {
-    setCandidates((current) => [
-      ...current,
-      {
+    setCandidates((current) => {
+      setCurrentIndex(current.length);
+      return [...current, {
         id: `manual-${crypto.randomUUID()}`,
         included: false,
         isManual: true,
@@ -95,13 +108,14 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
         supplyDays: undefined,
         reviewStatus: "needs_review",
         confirmedAgainstOriginal: false,
-      },
-    ]);
+      }];
+    });
     resetRequestState();
   }
 
   function removeManualCandidate(id: string) {
     setCandidates((current) => current.filter((candidate) => candidate.id !== id));
+    setCurrentIndex((current) => Math.max(0, current - 1));
     resetRequestState();
   }
 
@@ -123,7 +137,7 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
       if (!response.ok || !body.result) throw new Error(body.message ?? "복약 초안을 확정하지 못했어요.");
       setStatus("success");
       setMessage(body.message ?? "복약 일정에 반영했어요.");
-      router.refresh();
+      router.push("/dashboard");
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "복약 초안을 확정하지 못했어요.");
@@ -136,12 +150,32 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
     <section className="medication-draft-review" aria-labelledby="medication-draft-title">
       <div className="medication-draft-review__heading">
         <div>
-          <span>복약 후보 초안</span>
-          <h3 id="medication-draft-title">원본과 비교해 약과 일정을 검토하세요</h3>
-          <p>누락된 약은 직접 추가할 수 있어요. 확정하기 전에는 복약 일정과 알림에 반영되지 않아요.</p>
+          <span>복약 후보</span>
+          <h3 id="medication-draft-title">약을 하나씩 확인하세요</h3>
         </div>
-        <strong>{selectedCount}/{candidates.length}개 선택</strong>
       </div>
+
+      {candidates.length > 1 ? (
+        <ol className="medication-review-stepper" aria-label="약 확인 단계">
+          {candidates.map((candidate, index) => {
+            const completed = index < currentIndex;
+            const current = index === currentIndex;
+            return (
+              <li className={`${completed ? "is-complete" : ""}${current ? " is-current" : ""}`} key={candidate.id}>
+                <button
+                  type="button"
+                  aria-current={current ? "step" : undefined}
+                  aria-label={`약 ${index + 1}${completed ? " 확인 완료" : current ? " 확인 중" : " 확인 전"}`}
+                  disabled={disabled || index > currentIndex}
+                  onClick={() => setCurrentIndex(index)}
+                >
+                  {completed ? <CheckCircle2 size={18} aria-hidden="true" /> : index + 1}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
 
       {candidates.length === 0 ? (
         <div className="medication-draft-empty" role="status">
@@ -151,28 +185,36 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
       ) : null}
 
       <div className="medication-draft-review__list">
-        {candidates.map((candidate, index) => (
+        {currentCandidate ? (
           <MedicationDraftCandidate
-            candidate={candidate}
+            candidate={currentCandidate}
             disabled={disabled}
-            index={index}
-            key={candidate.id}
+            index={currentIndex}
+            key={currentCandidate.id}
             onRemove={removeManualCandidate}
             onUpdate={updateCandidate}
           />
-        ))}
+        ) : null}
       </div>
 
+      {candidates.length > 1 ? (
+        <div className="medication-draft-navigation">
+          <button className="button button--secondary" type="button" disabled={disabled || currentIndex === 0} onClick={() => setCurrentIndex((current) => Math.max(0, current - 1))}>
+            <ChevronLeft size={17} aria-hidden="true" /> 이전
+          </button>
+          {currentIndex < candidates.length - 1 ? (
+            <button className="button button--primary" type="button" disabled={disabled || !currentCandidateReady} onClick={() => setCurrentIndex((current) => Math.min(candidates.length - 1, current + 1))}>
+              다음 약 <ChevronRight size={17} aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <button className="button button--secondary medication-draft-add" type="button" disabled={disabled || candidates.length >= 50} onClick={addManualCandidate}>
-        <Plus size={17} aria-hidden="true" /> 원본에서 약 직접 추가
+        <Plus size={17} aria-hidden="true" /> 약 직접 추가
       </button>
 
-      <div className="medication-draft-summary">
-        <BellRing size={20} aria-hidden="true" />
-        <p>
-          <strong>확정 전 요약</strong>
-          선택한 약 {selectedCount}개가 활성 복약 계획과 오늘 일정에 반영되고, 알림을 사용 중이면 새 일정이 생성돼요.
-        </p>
+      <div className={`medication-draft-summary${currentIndex === candidates.length - 1 ? " is-visible" : ""}`}>
         <button className="button button--primary" type="button" disabled={selectedCount === 0 || !selectionReady || disabled} onClick={confirmDraft}>
           {status === "pending" ? <LoaderCircle className="spin" size={18} aria-hidden="true" /> : null}
           {status === "success" ? <CheckCircle2 size={18} aria-hidden="true" /> : null}

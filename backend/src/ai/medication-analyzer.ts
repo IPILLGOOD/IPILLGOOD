@@ -60,12 +60,6 @@ function normalizedMedicationIdentity(value: string) {
   return value.toLocaleLowerCase("ko-KR").replace(/[^0-9a-z가-힣]/g, "");
 }
 
-function medicationNamesOverlap(first: string, second: string) {
-  const a = normalizedMedicationIdentity(first);
-  const b = normalizedMedicationIdentity(second);
-  return Boolean(a && b && (a.includes(b) || b.includes(a)));
-}
-
 function lowConfidenceWarnings(medication: PrescriptionMedication) {
   return requiredMedicationEvidence.flatMap((field) => {
     const evidence = medication.fieldEvidence?.find((candidate) => candidate.field === field);
@@ -119,18 +113,7 @@ function officialVerificationWarnings(
     return ["식약처 의약품 코드 조회를 일시적으로 완료하지 못했어요."];
   }
 
-  const warnings: string[] = [];
-  if (!medicationNamesOverlap(medication.productName, official.item.productName)) {
-    warnings.push(`제품명이 식약처 정보(${official.item.productName})와 일치하지 않아요.`);
-  }
-  if (
-    medication.ingredientName.trim() &&
-    official.item.ingredientName.trim() &&
-    !medicationNamesOverlap(medication.ingredientName, official.item.ingredientName)
-  ) {
-    warnings.push(`성분명이 식약처 정보(${official.item.ingredientName})와 일치하지 않아요.`);
-  }
-  return warnings;
+  return [];
 }
 
 async function enrichMedicationVerification(
@@ -182,6 +165,10 @@ async function enrichMedicationVerification(
       const officialReason = officialReviewReason(official, officialWarnings);
       return {
         ...medication,
+        ...(matched ? {
+          productName: official.item.productName,
+          ingredientName: official.item.ingredientName || medication.ingredientName,
+        } : {}),
         mfdsItemSeq,
         itemCode: mfdsItemSeq,
         reviewStatus: verified ? "verified" as const : "needs_review" as const,

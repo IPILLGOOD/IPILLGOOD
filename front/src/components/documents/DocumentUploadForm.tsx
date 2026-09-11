@@ -1,6 +1,6 @@
 "use client";
 
-import { FileImage, FlaskConical, GitMerge, Layers3, LoaderCircle, LockKeyhole, RotateCcw, Square, TriangleAlert } from "lucide-react";
+import { FileImage, FlaskConical, GitMerge, Layers3, LoaderCircle, RotateCcw, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -51,6 +51,7 @@ function copyFormData(source: FormData) {
 export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) {
   const router = useRouter();
   const documentType: ClinicalDocumentType = "처방전 또는 약봉투";
+  const [diagnosisName, setDiagnosisName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -68,6 +69,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   const [retryable, setRetryable] = useState(false);
   const retryFormData = useRef<FormData | null>(null);
   const requestController = useRef<AbortController | null>(null);
+  const medicationReviewRef = useRef<HTMLDivElement | null>(null);
   const previewUrl = useMemo(
     () => (file?.type.startsWith("image/") ? URL.createObjectURL(file) : null),
     [file],
@@ -78,6 +80,11 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
+
+  useEffect(() => {
+    if (!draft) return;
+    medicationReviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [draft]);
 
   const applyCompletedResponse = useCallback((body: AnalysisResponse) => {
     sessionStorage.removeItem(activeJobStorageKey);
@@ -94,7 +101,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     }
     if (!body.analysis) return;
     setStatus("success");
-    setMessage(body.message ?? "문서 분석을 마쳤어요.");
+    setMessage("");
     setAnalysis(body.analysis);
     setDocumentId(body.document?.id ?? null);
     setAnalysisRevision(body.document?.analysisRevision ?? 1);
@@ -238,8 +245,14 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
   }
 
   async function handleSample() {
+    if (!diagnosisName.trim()) {
+      setStatus("error");
+      setMessage("병명을 입력해주세요.");
+      return;
+    }
     const formData = new FormData();
     formData.set("documentType", documentType);
+    formData.set("diagnosisName", diagnosisName.trim());
     formData.set("sample", "true");
     await requestAnalysis(formData);
   }
@@ -250,22 +263,6 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
     formData.set("duplicateAction", action);
     formData.set("jobId", crypto.randomUUID());
     await requestAnalysis(formData);
-  }
-
-  async function cancelAnalysis() {
-    if (!activeJobId) return;
-    setMessage("취소 요청을 보내고 있어요.");
-    const response = await fetch(`/api/documents/analyze/jobs/${encodeURIComponent(activeJobId)}`, {
-      method: "DELETE",
-    });
-    const body = (await response.json()) as { message?: string; job?: DocumentAnalysisJob };
-    if (!response.ok) {
-      setStatus("error");
-      setMessage(body.message ?? "취소 요청을 보내지 못했어요.");
-      return;
-    }
-    requestController.current?.abort();
-    setMessage(body.message ?? "취소 요청을 접수했어요.");
   }
 
   async function retryAnalysis() {
@@ -285,9 +282,18 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
       <form onSubmit={handleSubmit}>
         <input name="documentType" type="hidden" value={documentType} />
         <div className="field">
-          <label htmlFor="diagnosis-name">병명</label>
-          <input id="diagnosis-name" name="diagnosisName" type="text" maxLength={100} placeholder="예: 고혈압" autoComplete="off" />
-          <p className="field-hint">문서에서 병명을 추측하지 않아요. 알고 있는 병명이 있을 때 직접 입력해주세요.</p>
+          <label htmlFor="diagnosis-name">병명 *</label>
+          <input
+            id="diagnosis-name"
+            name="diagnosisName"
+            type="text"
+            value={diagnosisName}
+            maxLength={100}
+            placeholder="예: 고혈압"
+            autoComplete="off"
+            required
+            onChange={(event) => setDiagnosisName(event.target.value)}
+          />
         </div>
 
         <label className="upload-dropzone" htmlFor="document">
@@ -304,7 +310,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
             <span>
               <FileImage size={34} aria-hidden="true" />
               <strong>{documentType} 사진 또는 PDF를 선택하세요</strong>
-              <p>이름·주민번호·주소는 가린 뒤 올려주세요. 최대 5MB</p>
+              <p>최대 5MB</p>
             </span>
           )}
           <input
@@ -324,24 +330,11 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
           </p>
         ) : null}
 
-        <div className="privacy-note upload-privacy">
-          <LockKeyhole size={20} aria-hidden="true" />
-          <p>
-            원본 파일은 저장하지 않고 분석 요청에만 사용해요. 분석 결과는 반드시 원본과
-            비교해서 확인해주세요.
-          </p>
-        </div>
-
         <div className="form-actions">
           <button className="button button--primary" type="submit" disabled={pending}>
             {pending ? <LoaderCircle className="spin" size={18} aria-hidden="true" /> : null}
             {pending ? "분석하는 중…" : `${documentType} 첨부하고 분석하기`}
           </button>
-          {pending && activeJobId ? (
-            <button className="button button--secondary" type="button" onClick={cancelAnalysis}>
-              <Square size={16} aria-hidden="true" /> 분석 취소
-            </button>
-          ) : null}
           {status === "error" && retryable ? (
             <button className="button button--secondary" type="button" onClick={retryAnalysis}>
               <RotateCcw size={17} aria-hidden="true" /> 같은 작업 다시 시도
@@ -367,7 +360,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         </>
       ) : null}
 
-      {status !== "idle" ? (
+      {status !== "idle" && status !== "pending" && message ? (
         <p
           className={`analysis-status analysis-status--${status}`}
           role={status === "error" ? "alert" : "status"}
@@ -378,7 +371,7 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
         </p>
       ) : null}
 
-      {analysis ? (
+      {analysis?.documentType === "진단서" ? (
         <div className="document-verification-layout">
           <figure className="document-verification-original">
             <figcaption>
@@ -410,7 +403,11 @@ export function DocumentUploadForm({ allowSamples }: { allowSamples: boolean }) 
           />
         </div>
       ) : null}
-      {draft ? <MedicationDraftReview draft={draft} /> : null}
+      {draft ? (
+        <div ref={medicationReviewRef}>
+          <MedicationDraftReview draft={draft} />
+        </div>
+      ) : null}
 
       {duplicateCandidates.length > 0 ? (
         <section className="duplicate-resolution" aria-labelledby="duplicate-resolution-title">

@@ -12,6 +12,7 @@ import "@/styles/components.css";
 import "@/styles/pages.css";
 import "@/styles/landing.css";
 import "@/styles/design-refresh.css";
+import "@/styles/refinement.css";
 
 const notoSans = Noto_Sans_KR({
   variable: "--font-noto-sans",

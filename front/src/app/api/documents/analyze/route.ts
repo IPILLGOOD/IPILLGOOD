@@ -117,6 +117,10 @@ export async function POST(request: Request) {
       return Response.json({ message: "처방전 또는 약봉투를 선택해주세요." }, { status: 400 });
     }
 
+    if (!diagnosisName) {
+      return Response.json({ message: "병명을 입력해주세요." }, { status: 400 });
+    }
+
     const file = formData.get("document");
     if (!isSample && (!(file instanceof File) || file.size === 0)) {
       return Response.json(

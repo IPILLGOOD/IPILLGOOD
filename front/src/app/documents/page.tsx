@@ -1,4 +1,4 @@
-import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
+import { FileCheck2, FileClock, FileText } from "lucide-react";
 
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
 import { DiagnosisDraftReview } from "@/components/documents/DiagnosisDraftReview";
@@ -31,8 +31,8 @@ export default async function DocumentsPage() {
     <>
       <PageHeader
         eyebrow="문서 등록"
-        title="처방전 또는 약봉투를 쉬운 말로 확인해요"
-        description="병명을 입력하고 문서를 첨부하면 약 이름과 복용법을 정리해요."
+        title="처방전 또는 약봉투 등록"
+        description="병명을 입력하고 처방전 또는 약봉투를 등록하세요."
       />
 
       <div className="document-layout">
@@ -141,17 +141,6 @@ export default async function DocumentsPage() {
                 </p>
               </div>
             )}
-          </Card>
-
-          <Card tone="accent" className="privacy-note">
-            <ShieldCheck size={23} aria-hidden="true" />
-            <div>
-              <h2>보호자 권한과 동의가 먼저예요</h2>
-              <p>
-                가족이라는 이유만으로 자동 열람 권한이 생기지는 않아요. 어르신의 동의 또는
-                적법한 대리 권한이 있는 정보만 등록해주세요.
-              </p>
-            </div>
           </Card>
         </div>
       </div>
