@@ -27,6 +27,8 @@ test("medication tabs retain explicit selection through scrolling and follow com
       const tabs = rail.getByRole("tab");
       const last = tabs.last();
       const lastProduct = await last.locator("strong").innerText();
+      // A scrolling rail must retain room for the product name, rather than squeezing every tab into one row.
+      expect(await last.locator("strong").evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(50);
       await last.click();
       await settled(rail);
       await expect(last, `${width}px, motion: ${reducedMotion}`).toHaveAttribute("aria-selected", "true");

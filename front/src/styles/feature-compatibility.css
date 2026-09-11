@@ -87,7 +87,7 @@
 .medicine-cabinet__header { flex-wrap: wrap; }
 .medicine-cabinet__header > * { min-width: 0; }
 @media (max-width: 639px) {
-  .medicine-cabinet__tab { min-width: 0; }
+  .medicine-cabinet__tab { flex: 0 0 min(100%, 15rem); min-width: 0; }
   .medicine-cabinet__tab-copy strong, .medicine-cabinet__tab-copy small { white-space: normal; overflow-wrap: anywhere; }
   .medicine-cabinet__schedule { grid-template-columns: minmax(0, 1fr); }
 }

@@ -521,7 +521,8 @@ test("documents: samples stay demo-only across API requests, uploads and account
       ).status(),
     ).toBe(400);
 
-    await page.getByRole("radio", { name: /^처방전/ }).check();
+    await page.goto("/documents");
+    await page.getByLabel("병명 *", { exact: true }).fill("고혈압");
     await page.locator('input[name="document"]').setInputFiles(upload);
     const analysisResponse = page.waitForResponse(
       (response) =>
