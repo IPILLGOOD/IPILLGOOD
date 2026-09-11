@@ -18,11 +18,19 @@ test.beforeEach(async ({ page }) => {
 test("mobile: landing, all care pages, medication details, quick actions and narrow reflow", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  // Dismiss through the UI before testing focus: a locator handler clicking
+  // the install prompt during toBeFocused() would itself move the focus.
+  const installClose = page.getByRole("button", { name: "PWA 설치 안내 닫기", exact: true });
+  await page.removeLocatorHandler(installClose);
   mkdirSync("verification-artifacts/mobile", { recursive: true });
   for (const width of [320, 390, 428, 768]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    if (width === 320) {
+      await installClose.click();
+      await expect(installClose).toBeHidden();
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({ path: `verification-artifacts/mobile/landing-${width}.png`, fullPage: true });
   }
@@ -57,7 +65,9 @@ test("mobile: landing, all care pages, medication details, quick actions and nar
     await expect(dialog).toHaveCount(0);
   }
   await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "무엇을 기록할까요?" })).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "무엇을 기록할까요?" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "빠른 기록", exact: true })).toBeFocused();
   await info.attach("mobile-runtime-errors", { body: JSON.stringify(errors), contentType: "application/json" });
   expect(errors).toEqual([]);
