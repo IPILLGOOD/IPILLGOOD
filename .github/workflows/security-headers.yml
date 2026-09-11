@@ -22,6 +22,8 @@ jobs:
       - run: npm run build
       - name: Verify Cloudflare bundle
         run: npm run cf:build --workspace @care-atlas/front
+      - name: Verify pill pipeline on actual Workers runtime (offline historical catalog)
+        run: node --experimental-strip-types scripts/pill-photo-worker-smoke.mjs
       - name: Verify final response headers
         env:
           SESSION_SECRET: CI-only-random-session-secret-6PmwK7w4sR2bV9xQ

@@ -510,7 +510,34 @@ export function explainPillVariantOrdering(a: PillCandidateVariant, b: PillCandi
     firstDifferentLevel: evidenceOrder ? "evidence" : itemCodeOrder ? "item_code_tie_break" : recordOrder ? "record_tie_break" : "equal" };
 }
 
+type CatalogDescriptor = Omit<PillCatalog, "items">;
+
 function executePillSearch(input: unknown, catalog: PillCatalog | undefined, options: { limit?: number }, trace?: PillSearchTrace): PillSearchResult {
+  const source = catalog && catalog.items.length !== catalog.totalCount ? { ...catalog, completeness: "partial" as const } : catalog;
+  const engine = pillSearchEngine(input, source, options, trace);
+  let step = engine.next();
+  if (!step.done) step = engine.next(catalog?.items ?? []);
+  if (!step.done) step = engine.next(null);
+  if (!step.done) throw new Error("unfinished_pill_search");
+  return step.value;
+}
+
+/** Scan every verified chunk before exposing any result. A failed/partial stream never returns candidates. */
+export async function searchPillCandidateChunks(input: unknown, catalog: CatalogDescriptor,
+  chunks: AsyncIterable<readonly OfficialPillItem[]>, options: { limit?: number; maxVariants?: number } = {}): Promise<PillSearchResult> {
+  const engine = pillSearchEngine(input, catalog, options);
+  let step = engine.next();
+  if (step.done) return step.value;
+  for await (const chunk of chunks) {
+    step = engine.next(chunk);
+    if (step.done) return step.value;
+  }
+  step = engine.next(null);
+  if (!step.done) throw new Error("unfinished_pill_search");
+  return step.value;
+}
+
+function* pillSearchEngine(input: unknown, catalog: CatalogDescriptor | undefined, options: { limit?: number; maxVariants?: number }, trace?: PillSearchTrace): Generator<void, PillSearchResult, readonly OfficialPillItem[] | null> {
   let imprintExpansion: PillImprintExpansionSummary | null = null;
   const metrics: PillSearchMetrics = {
     catalogRecords: 0, stages: [], candidateCount: 0, returnedCount: 0,
@@ -557,50 +584,61 @@ function executePillSearch(input: unknown, catalog: PillCatalog | undefined, opt
     && (observation.quality !== "clear" || !allObservedSurfacesClear);
   imprintExpansion = { front: prepared.front.summary, back: prepared.back.summary };
   if (!catalog) return result("not_configured", "catalog_not_configured", "공식 낱알 카탈로그가 아직 연결되지 않았어요.");
-  if (catalog.completeness !== "complete" || !catalog.version.trim() || catalog.totalCount !== catalog.items.length) return result("unavailable", "incomplete_catalog", "공식 데이터 수집이 완료되지 않아 후보 검색을 보류했어요.");
+  if (catalog.completeness !== "complete" || !catalog.version.trim() || !Number.isSafeInteger(catalog.totalCount) || catalog.totalCount < 0) return result("unavailable", "incomplete_catalog", "공식 데이터 수집이 완료되지 않아 후보 검색을 보류했어요.");
 
-  metrics.catalogRecords = catalog.items.length;
-  const assessed = catalog.items.map((item, catalogIndex) => ({ item, catalogIndex, formAssessment: classifyPillForm(item.formName) }));
   const allowImageApproximation = observation.source === "image_features";
-  metrics.unsupportedCatalogRecords = assessed.filter((entry) => entry.formAssessment.status === "unsupported").length;
-  if (trace) trace.matchingStarted = true;
-  const records = assessed.filter((entry) => {
-    if (entry.formAssessment.status !== "unsupported") return true;
-    trace?.records.push({ catalogIndex: entry.catalogIndex, itemSeq: entry.item.itemSeq, outcome: "unsupported_official_form" });
-    return false;
-  }).filter(({ item, catalogIndex }) => {
-    const matched = matchingSides(prepared, item, false, allowImageApproximation).length > 0;
-    if (!matched) trace?.records.push({ catalogIndex, itemSeq: item.itemSeq, outcome: "imprint_incompatible" });
-    return matched;
-  });
-  metrics.stages.push({ stage: "imprint", remaining: records.length });
-  metrics.stages.push({ stage: "form", remaining: records.length });
-  metrics.stages.push({ stage: "shape", remaining: records.length });
-  metrics.stages.push({ stage: "color", remaining: records.length });
   const variants: PillCandidateVariant[] = [];
-  for (const entry of records) {
-    const visualEvidence = [
-      formEvidence(observation.form, entry.formAssessment),
-      shapeEvidence(observation.shape, entry.item),
-      colorEvidence(observation.colors, entry.item),
-    ];
-    const choices = matchingSides(prepared, entry.item, true, allowImageApproximation).map((choice) => {
-      const evidence = [...visualEvidence, ...choice.evidence];
-      const conflicts = evidence.filter((feature) => feature.match === "mismatch");
-      const reviewReasons: PillReviewReason[] = [];
-      if (entry.formAssessment.status !== "supported") reviewReasons.push("unknown_official_form");
-      if (imprintMatches(evidence).length === 0) reviewReasons.push("no_imprint_evidence");
-      return { item: entry.item, orientation: choice.orientation, matchType: matchType(evidence),
-        grade: candidateGrade(evidence, conflicts, reviewReasons, allObservedSurfacesClear && observation.quality === "clear"), evidence, conflicts,
-        formAssessment: entry.formAssessment, reviewReasons };
-    }).filter((choice) => choice.evidence.some((feature) => feature.match === "exact" || feature.match === "partial"))
-      .sort(compareVariantEvidence);
-    if (choices[0]) variants.push(choices[0]);
-    trace?.records.push({ catalogIndex: entry.catalogIndex, itemSeq: entry.item.itemSeq,
-      outcome: !choices[0] ? "no_matching_evidence" : choices[0].reviewReasons.length ? "held_variant" : "candidate_variant",
-      ...(choices[0] ? { selectedVariant: choices[0] } : {}) });
+  let matchingRecords = 0;
+  if (trace) trace.matchingStarted = true;
+  let chunk = yield;
+  while (chunk !== null) {
+    for (const item of chunk) {
+      const catalogIndex = metrics.catalogRecords++;
+      if (metrics.catalogRecords > catalog.totalCount) return result("unavailable", "incomplete_catalog", "공식 데이터 검증에 실패해 후보 검색을 보류했어요.");
+      const entry = { item, catalogIndex, formAssessment: classifyPillForm(item.formName) };
+      if (entry.formAssessment.status === "unsupported") {
+        metrics.unsupportedCatalogRecords++;
+        trace?.records.push({ catalogIndex, itemSeq: item.itemSeq, outcome: "unsupported_official_form" });
+        continue;
+      }
+      if (!matchingSides(prepared, item, false, allowImageApproximation).length) {
+        trace?.records.push({ catalogIndex, itemSeq: item.itemSeq, outcome: "imprint_incompatible" });
+        continue;
+      }
+      matchingRecords++;
+      const visualEvidence = [
+        formEvidence(observation.form, entry.formAssessment),
+        shapeEvidence(observation.shape, entry.item),
+        colorEvidence(observation.colors, entry.item),
+      ];
+      const choices = matchingSides(prepared, entry.item, true, allowImageApproximation).map((choice) => {
+        const evidence = [...visualEvidence, ...choice.evidence];
+        const conflicts = evidence.filter((feature) => feature.match === "mismatch");
+        const reviewReasons: PillReviewReason[] = [];
+        if (entry.formAssessment.status !== "supported") reviewReasons.push("unknown_official_form");
+        if (imprintMatches(evidence).length === 0) reviewReasons.push("no_imprint_evidence");
+        return { item: entry.item, orientation: choice.orientation, matchType: matchType(evidence),
+          grade: candidateGrade(evidence, conflicts, reviewReasons, allObservedSurfacesClear && observation.quality === "clear"), evidence, conflicts,
+          formAssessment: entry.formAssessment, reviewReasons };
+      }).filter((choice) => choice.evidence.some((feature) => feature.match === "exact" || feature.match === "partial"))
+        .sort(compareVariantEvidence);
+      if (choices[0]) variants.push(choices[0]);
+      trace?.records.push({ catalogIndex: entry.catalogIndex, itemSeq: entry.item.itemSeq,
+        outcome: !choices[0] ? "no_matching_evidence" : choices[0].reviewReasons.length ? "held_variant" : "candidate_variant",
+        ...(choices[0] ? { selectedVariant: choices[0] } : {}) });
+      if (options.maxVariants !== undefined && variants.length > options.maxVariants) {
+        return result("needs_retake", "too_many_comparisons", "각인 근거가 부족해 비교 범위가 너무 넓어요. 각인이 선명하게 보이도록 앞뒤를 다시 촬영해주세요.");
+      }
+    }
+    chunk = yield;
   }
+  if (metrics.catalogRecords !== catalog.totalCount) return result("unavailable", "incomplete_catalog", "공식 데이터 수집이 완료되지 않아 후보 검색을 보류했어요.");
+  for (const stage of ["imprint", "form", "shape", "color"] as const) metrics.stages.push({ stage, remaining: matchingRecords });
   metrics.stages.push({ stage: "score_line", remaining: variants.length });
+  if (trace) {
+    const phase = (outcome: PillSearchTrace["records"][number]["outcome"]) => outcome === "unsupported_official_form" ? 0 : outcome === "imprint_incompatible" ? 1 : 2;
+    trace.records.sort((a, b) => phase(a.outcome) - phase(b.outcome) || a.catalogIndex - b.catalogIndex);
+  }
   // Stable code/record tie-breaks, not a fabricated probability or a clinical confidence score.
   variants.sort((a, b) => compareVariantEvidence(a, b) || compare(a.item.itemSeq, b.item.itemSeq) || compare(stableJson(a.item), stableJson(b.item)));
   const grouped = new Map<string, PillCandidate>();

@@ -59,6 +59,8 @@ export default async function MedicationsPage({
         }
       />
 
+      <Link className="button button--secondary" href="/medications/photo">알약 사진으로 비교 후보 찾기</Link>
+
       {adding ? (
         <MedicationSearchAdd
           query={query}
