@@ -30,6 +30,7 @@ export default async function DashboardPage() {
   return (
     <>
       <PageHeader
+        appearance="new-work"
         eyebrow="돌봄 대시보드"
         title={`${snapshot.recipient.displayName}의 돌봄 다이어리`}
         description="달력에서 매일의 복약 일정과 몸 상태 기록을 한눈에 확인하세요."

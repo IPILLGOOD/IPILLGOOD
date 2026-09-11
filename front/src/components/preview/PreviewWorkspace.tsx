@@ -326,7 +326,7 @@ export function PreviewWorkspace() {
               </Link>
             ))}
           </nav>
-          <main className="main-content" id="main-content">
+          <main className="main-content experience-content" id="main-content">
             <FormMessage state={notice} />
             <div key={`${page}-${scenario}`} className="preview-page">
               <PageHeader

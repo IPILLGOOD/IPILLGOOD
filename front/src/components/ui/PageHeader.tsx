@@ -5,14 +5,16 @@ export function PageHeader({
   title,
   description,
   action,
+  appearance = "experience",
 }: {
   eyebrow?: string;
   title: string;
   description: string;
   action?: ReactNode;
+  appearance?: "experience" | "new-work";
 }) {
   return (
-    <header className="page-header">
+    <header className={appearance === "new-work" ? "page-header" : "page-header experience-header"}>
       <div>
         {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h1>{title}</h1>

@@ -106,12 +106,18 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await expect(page).toHaveURL(/\/check-in$/);
   const form = page.getByRole("form", { name: "오늘의 안부 기록", exact: true });
   let answeredQuestions = 0;
-  for (const question of await form.locator(".dynamic-question").all()) {
-    const radio = question.getByRole("radio").first();
-    await tabTo(page, radio);
-    await page.keyboard.press("Space");
-    await expect(radio).toBeChecked();
-    answeredQuestions++;
+  for (let step = 0; step < 20; step++) {
+    const next = form.getByRole("button", { name: "다음 질문", exact: true });
+    if (!await next.isVisible()) break;
+    const radios = form.getByRole("radio");
+    if (await radios.count()) {
+      await tabTo(page, radios.first());
+      await page.keyboard.press("Space");
+      await expect(radios.first()).toBeChecked();
+      answeredQuestions++;
+    }
+    await tabTo(page, next);
+    await page.keyboard.press("Enter");
   }
   expect(answeredQuestions).toBeGreaterThan(1);
   await typeWithKeyboard(page, form.getByLabel("보호자 메모"), "접근성 키보드 검증");
@@ -151,6 +157,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await page.keyboard.press("Space");
   await audit(page, "desktop-profile-consent", info);
   await page.keyboard.press("Space");
+  await page.getByText("기본 정보", { exact: true }).click();
   await typeWithKeyboard(page, page.getByLabel("화면에 표시할 이름"), " ");
   await typeWithKeyboard(page, page.getByLabel("나이", { exact: false }), "75");
   await tabTo(page, page.getByRole("button", { name: "프로필 저장", exact: true }));

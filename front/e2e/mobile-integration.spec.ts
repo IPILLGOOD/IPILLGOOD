@@ -43,6 +43,14 @@ test("mobile: landing, all care pages, medication details, navigation and narrow
       const response = await page.goto(path);
       expect(response?.status()).toBe(200);
       await expect(page.getByRole("main")).toBeVisible();
+      const preserved = path === "/documents" || path === "/dashboard";
+      await expect(page.getByRole("main")).toHaveClass(preserved ? /new-work-content/ : /experience-content/);
+      if (preserved) await expect(page.locator(".page-header")).not.toHaveClass(/experience-header/);
+      if (path === "/documents") {
+        await expect(page.getByLabel("병명 *", { exact: true })).toBeVisible();
+        expect(await page.locator(".document-layout > .card").first().evaluate(element => parseFloat(getComputedStyle(element).borderTopWidth))).toBeGreaterThan(0);
+      }
+
       for (const width of [320, 390, 428]) {
         await page.setViewportSize({ width, height: 844 });
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${path} at ${width}px`).toBe(true);
@@ -56,10 +64,19 @@ test("mobile: landing, all care pages, medication details, navigation and narrow
   await expect(page).toHaveURL(/\/medications\/.+/);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await page.screenshot({ path: "verification-artifacts/mobile/medication-detail-390.png", fullPage: true });
-  for (const [name, path] of [["대시보드", "/dashboard"], ["안부 확인", "/check-in"], ["문서", "/documents"]]) {
-    await page.getByRole("navigation", { name: "주요 메뉴", exact: true }).getByRole("link", { name, exact: true }).click();
+  for (const [name, path] of [["복용 여부 기록", "/dashboard"], ["오늘 몸 상태 기록", "/check-in"], ["처방전·약봉투 등록", "/documents"]]) {
+    await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "무엇을 기록할까요?" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("link", { name, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(dialog).toHaveCount(0);
   }
+  await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "무엇을 기록할까요?" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "무엇을 기록할까요?" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "빠른 기록", exact: true })).toBeFocused();
   await info.attach("mobile-runtime-errors", { body: JSON.stringify(errors), contentType: "application/json" });
   expect(errors).toEqual([]);
 });

@@ -32,6 +32,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader
+        appearance="new-work"
         eyebrow="문서 등록"
         title={diagnosis ? "진단서 등록" : "처방전 또는 약봉투 등록"}
         description={diagnosis ? "진단서를 등록하고 원본과 비교해 확인하세요." : "병명을 입력하고 처방전 또는 약봉투를 등록하세요."}

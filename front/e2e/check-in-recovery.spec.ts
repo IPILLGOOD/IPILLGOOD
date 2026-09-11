@@ -17,7 +17,7 @@ test("/check-in: missing stored question preserves inputs and recovers without r
     // Recovery concerns existing care records; genuinely empty accounts now get onboarding guidance.
     await seedCareAccount(fixture.firestore, recipientId, { consent: true, medications: [syntheticMedication] });
     await page.goto("/check-in");
-    const form = await openCheckInDetails(page, { source: "어르신이 직접 답했어요", symptoms: ["두통"] });
+    const form = await openCheckInDetails(page, { source: "이용자가 직접 답했어요", symptoms: ["두통"] });
     await form.getByLabel("보호자 메모").fill("새로고침 없이 보존할 메모");
     await form.getByLabel("불편한 정도", { exact: true }).selectOption("7");
     const id = await form.locator('input[name="questionSetId"]').inputValue();
@@ -43,6 +43,7 @@ test("/check-in: missing stored question preserves inputs and recovers without r
     expect((await recipient.collection("symptomObservations").get()).size).toBe(1);
 
     await page.goto("/check-in");
+    await page.getByRole("button", { name: "오늘 답변 수정", exact: true }).click();
     const correctionForm = await openCheckInDetails(page, { source: "보호자가 전달받아 확인했어요" });
     await correctionForm.getByLabel("기존 기록을 수정하는 이유").fill("어르신과 통화해 복용량을 다시 확인했어요.");
     await correctionForm.getByRole("button", { name: "오늘의 답변 수정" }).click();
@@ -56,10 +57,12 @@ test("/check-in: missing stored question preserves inputs and recovers without r
 
     // A live generation lease with no published set renders only recovery, never a usable form.
     await page.goto("/check-in");
+    await page.getByRole("button", { name: "오늘 답변 수정", exact: true }).click();
     const nextId = await page.locator('input[name="questionSetId"]').inputValue();
     await recipient.collection("questionSets").doc(nextId).delete();
     await recipient.collection("questionGenerations").doc(nextId).set({ status: "running", owner: "another-request", attempts: 1, leaseUntil: new Date(Date.now() + 120_000).toISOString(), sourceDocumentIds: [] });
     await page.reload();
+    await page.getByRole("button", { name: "오늘 답변 수정", exact: true }).click();
     await expect(page.locator('input[name="questionSetId"]')).toHaveCount(0);
     await expect(page.getByRole("button", { name: "질문 다시 준비하기" })).toBeVisible();
     await recipient.collection("questionGenerations").doc(nextId).update({ leaseUntil: "2020-01-01T00:00:00Z" });

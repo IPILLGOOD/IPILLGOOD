@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Clock3, Copy, Link2, Link2Off, RefreshCw, ShieldCheck, UsersRound } from "lucide-react";
+import { Check, Clock3, Copy, Link2, Link2Off, RefreshCw, ShieldCheck } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
 
 import {
@@ -45,9 +45,8 @@ export function CareConnectionCard({ connection }: { connection: PublicCareConne
     <section className="card connection-card" aria-labelledby="connection-title">
       <div className="connection-card__heading">
         <div className="connection-card__title">
-          <span className="connection-card__icon" aria-hidden="true"><UsersRound size={22} /></span>
           <div>
-            <span className="connection-card__eyebrow">함께 돌보기</span>
+            <span className="connection-card__eyebrow">돌봄 정보</span>
             <h2 id="connection-title">돌봄 화면 연결</h2>
             <p>가족 한 명과 같은 화면, 같은 기록을 안전하게 공유해요.</p>
           </div>

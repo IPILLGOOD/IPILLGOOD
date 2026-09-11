@@ -3,11 +3,11 @@
 import { ArrowRight, CalendarDays, CheckCircle2, CircleHelp, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState, type KeyboardEvent, type UIEvent } from "react";
+
 import { refreshMedicationExplanationAction } from "@/app/actions";
 import { FormMessage } from "@/components/ui/FormMessage";
-import type { ActionState } from "@care-atlas/backend";
-
 import { Badge } from "@/components/ui/Badge";
+import type { ActionState } from "@care-atlas/backend";
 import { stopMedicationAction } from "@/app/actions";
 
 export type MedicationCabinetItem = {
@@ -17,17 +17,15 @@ export type MedicationCabinetItem = {
   category: string;
   isNew: boolean;
   purpose: string;
-  description?: string;
   commonEffects?: string[];
-  itemSeq?: string;
-  needsExplanation?: boolean;
   dose: string;
   frequency: string;
   timing: string;
-  watchFor?: string[];
   startSummary: string;
   sourceLabel: string;
   clinicianQuestion?: string;
+  itemSeq?: string;
+  needsExplanation?: boolean;
 };
 
 export function MedicationCabinet({ medications, detailBase = "/medications", revision }: { medications: MedicationCabinetItem[]; detailBase?: string; revision?: number }) {
@@ -91,11 +89,11 @@ export function MedicationCabinet({ medications, detailBase = "/medications", re
           <h2 id="medicine-cabinet-title">지금 복용 중인 약</h2>
           <span>{medications.length}가지</span>
         </div>
-        <p>약을 선택하면 복용법과 살펴볼 점을 한눈에 볼 수 있어요.</p>
+        <p>약을 선택하면 복용 일정과 약의 쉬운 설명을 볼 수 있어요.</p>
       </header>
 
       <div className="medicine-cabinet__body">
-        <div className="medicine-cabinet__tabs" role="tablist" aria-label="복용약 선택" aria-orientation="vertical" onScroll={syncSelectionWithScroll}>
+        <div className="medicine-cabinet__tabs" role="tablist" aria-label="복용약 선택" onScroll={syncSelectionWithScroll}>
           {medications.map((item, index) => (
             <button
               ref={(element) => { tabs.current[index] = element; }}
@@ -119,6 +117,23 @@ export function MedicationCabinet({ medications, detailBase = "/medications", re
             </button>
           ))}
         </div>
+        {medications.length > 1 ? (
+          <div className="medicine-cabinet__mobile-navigation">
+            <span>옆으로 넘겨 다른 약 보기</span>
+            <div className="medicine-cabinet__pagination" aria-label={`복용약 ${medications.length}개 중 ${selectedIndex + 1}번째`}>
+              {medications.map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={index === selectedIndex ? "is-current" : ""}
+                  aria-label={`${item.productName} 선택`}
+                  aria-current={index === selectedIndex ? "true" : undefined}
+                  onClick={() => selectMedication(index)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <article
           className="medicine-cabinet__panel"
@@ -138,14 +153,20 @@ export function MedicationCabinet({ medications, detailBase = "/medications", re
             <Link className="medicine-cabinet__detail-link" href={`${detailBase}/${medication.id}`}>
               상세 정보 보기 <ArrowRight size={17} aria-hidden="true" />
             </Link>
-            {detailBase === "/medications" && revision !== undefined ? <MedicationStop medicationId={medication.id} productName={medication.productName} revision={revision} key={medication.id} /> : null}
+            {detailBase === "/medications" && revision !== undefined ? (
+              <MedicationStop medicationId={medication.id} productName={medication.productName} revision={revision} key={medication.id} />
+            ) : null}
           </header>
 
           <div className="medicine-cabinet__purpose">
-            <span>이 약은 무엇을 도와주나요?</span>
-            <strong>{medication.purpose}</strong>
-            <p>{medication.description}</p>
-            {medication.needsExplanation && medication.itemSeq && revision !== undefined ? <MedicationExplanationRefresh medicationId={medication.id} itemSeq={medication.itemSeq} revision={revision} /> : null}
+            <span>이 약을 쉽게 설명하면</span>
+            {medication.needsExplanation ? (
+              <>
+                <p className="medicine-cabinet__overview">쉬운 설명을 아직 만들지 않았어요.</p>
+                <p className="medicine-cabinet__explanation-note">식약처 허가정보를 다시 확인한 뒤 쉬운 말로 정리합니다.</p>
+                {medication.itemSeq && revision !== undefined ? <MedicationExplanationRefresh medicationId={medication.id} itemSeq={medication.itemSeq} revision={revision} /> : null}
+              </>
+            ) : <p className="medicine-cabinet__overview">{medication.purpose}</p>}
           </div>
 
           <div className="medicine-cabinet__information">
@@ -154,13 +175,6 @@ export function MedicationCabinet({ medications, detailBase = "/medications", re
               <div><dt>하루 횟수</dt><dd>{medication.frequency}</dd></div>
               <div><dt>먹는 시점</dt><dd>{medication.timing}</dd></div>
             </dl>
-
-            <section className="medicine-cabinet__watch">
-              <h4>보호자가 살펴볼 점</h4>
-              <ul>
-                {(medication.watchFor ?? medication.commonEffects ?? []).map((item) => <li key={item}>{item}</li>)}
-              </ul>
-            </section>
           </div>
 
           <footer className="medicine-cabinet__sources">

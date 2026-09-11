@@ -2,7 +2,7 @@
    nutrition resources, and the guided check-in flow. */
 
 /* Today: time-led schedule rows with compact visual status. */
-.experience-shell .today-tasks-card {
+.experience-content .today-tasks-card {
   border-radius: 0;
   padding: clamp(1.5rem, 3vw, 2.6rem);
 }
@@ -19,27 +19,27 @@
   color: #333d4b;
 }
 
-.experience-shell .today-task {
+.experience-content .today-task {
   grid-template-columns: 5.5rem minmax(0, 1fr) 2.75rem;
   gap: clamp(0.8rem, 2vw, 1.8rem);
   min-height: 6.5rem;
   padding: 1.5rem 0;
 }
 
-.experience-shell .today-task time {
+.experience-content .today-task time {
   color: #191f28;
   font-size: 1.05rem;
   font-weight: 800;
 }
 
-.experience-shell .today-task__medicine strong {
+.experience-content .today-task__medicine strong {
   color: #191f28;
   font-size: 1.08rem;
   overflow-wrap: anywhere;
   white-space: normal;
 }
 
-.experience-shell .today-task__medicine small {
+.experience-content .today-task__medicine small {
   margin-top: 0.35rem;
   color: var(--color-text-secondary);
   font-size: 0.87rem;
@@ -47,7 +47,7 @@
   white-space: normal;
 }
 
-.experience-shell .today-task__result {
+.experience-content .today-task__result {
   width: 2.75rem;
   height: 2.75rem;
   align-items: center;
@@ -56,29 +56,29 @@
   background: #f2f4f6;
 }
 
-.experience-shell .today-task__result.is-complete {
+.experience-content .today-task__result.is-complete {
   background: #e6f1ed;
   color: #14745b;
 }
 
-.experience-shell .today-task__result.is-partial,
-.experience-shell .today-task__result.is-unconfirmed {
+.experience-content .today-task__result.is-partial,
+.experience-content .today-task__result.is-unconfirmed {
   background: #fff4dd;
   color: #9a6812;
 }
 
-.experience-shell .today-task__result.is-skipped {
+.experience-content .today-task__result.is-skipped {
   background: #fcebea;
   color: #cf4841;
 }
 
 /* Nutrition: tab rail and editorial rows. */
-.experience-shell .nutrition-resource-list {
+.experience-content .nutrition-resource-list {
   display: grid;
   gap: 0;
 }
 
-.experience-shell .nutrition-results-heading {
+.experience-content .nutrition-results-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -88,28 +88,28 @@
   padding: 2.25rem 2.25rem 1.5rem;
 }
 
-.experience-shell .nutrition-results-heading h2 {
+.experience-content .nutrition-results-heading h2 {
   margin: 0;
   color: #191f28;
   font-size: 1.4rem;
 }
 
-.experience-shell .nutrition-results-heading p {
+.experience-content .nutrition-results-heading p {
   margin: 0.45rem 0 0;
   color: var(--color-text-secondary);
   font-size: 0.9rem;
 }
 
-.experience-shell .nutrition-results-heading > span {
+.experience-content .nutrition-results-heading > span {
   color: var(--color-text-muted);
   font-size: 1rem;
 }
 
-.experience-shell .nutrition-resource-grid {
+.experience-content .nutrition-resource-grid {
   padding: 0 2.25rem 1.25rem;
 }
 
-.experience-shell .nutrition-resource {
+.experience-content .nutrition-resource {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 2rem;
   align-items: start;
@@ -117,29 +117,29 @@
   padding: 2rem 0;
 }
 
-.experience-shell .nutrition-resource__content h2 {
+.experience-content .nutrition-resource__content h2 {
   margin: 0;
   font-size: 1.25rem;
 }
 
-.experience-shell .nutrition-resource__content h2 a {
+.experience-content .nutrition-resource__content h2 a {
   display: inline;
   color: #191f28;
 }
 
-.experience-shell .nutrition-resource__content p {
+.experience-content .nutrition-resource__content p {
   margin: 0.55rem 0 0.8rem;
   color: #4e5968;
   font-size: 0.94rem;
   line-height: 1.75;
 }
 
-.experience-shell .nutrition-resource__content > small {
+.experience-content .nutrition-resource__content > small {
   color: var(--color-text-muted);
   font-size: 0.8rem;
 }
 
-.experience-shell .nutrition-resource__open {
+.experience-content .nutrition-resource__open {
   display: grid;
   width: 2rem;
   min-height: 2.75rem;
@@ -156,7 +156,7 @@
   margin-inline: auto;
 }
 
-.experience-shell .checkin-layout--single > .card {
+.experience-content .checkin-layout--single > .card {
   border-radius: 0;
   padding: clamp(1.75rem, 4vw, 3.25rem);
 }
@@ -278,14 +278,14 @@
   padding-top: 1.5rem;
 }
 
-.experience-shell .checkin-step-card--details .form-grid--check-in-details select {
+.experience-content .checkin-step-card--details .form-grid--check-in-details select {
   min-height: 3.25rem;
   height: 3.25rem;
   padding-block: 0.65rem;
 }
 
-.experience-shell .checkin-step-card--details .form-grid--check-in-details textarea,
-.experience-shell .checkin-step-card--details > .field textarea {
+.experience-content .checkin-step-card--details .form-grid--check-in-details textarea,
+.experience-content .checkin-step-card--details > .field textarea {
   min-height: 5rem;
   height: 5rem;
   padding-block: 0.75rem;
@@ -358,32 +358,32 @@
 .checkin-complete__actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 2rem; }
 
 @media (max-width: 639px) {
-  .experience-shell .today-task {
+  .experience-content .today-task {
     grid-template-columns: 3.7rem minmax(0, 1fr) 2.55rem;
     gap: 0.75rem;
     min-height: 5.75rem;
   }
 
-  .experience-shell .today-task__result {
+  .experience-content .today-task__result {
     width: 2.55rem;
     height: 2.55rem;
   }
 
-  .experience-shell .nutrition-results-heading {
+  .experience-content .nutrition-results-heading {
     padding: 1.5rem 1.25rem 1rem;
   }
 
-  .experience-shell .nutrition-resource-grid {
+  .experience-content .nutrition-resource-grid {
     padding: 0 1.25rem 0.75rem;
   }
 
-  .experience-shell .nutrition-resource {
+  .experience-content .nutrition-resource {
     grid-template-columns: minmax(0, 1fr) 1.5rem;
     gap: 0.9rem;
     padding: 1.5rem 0;
   }
 
-  .experience-shell .nutrition-resource__content h2 {
+  .experience-content .nutrition-resource__content h2 {
     font-size: 1.12rem;
   }
 
