@@ -1598,11 +1598,11 @@ export async function saveDocumentImportReview(
   if (!/^[^/]{1,256}$/.test(input.idempotencyKey))
     throw new Error("올바르지 않은 요청 식별자입니다.");
   const firestore = scope.firestore ?? (await getAdminFirestore());
-  await assertActiveDemoScope(scope, firestore);
-  await assertHealthDataConsentConfirmed(firestore, scope.recipientId);
-  await getOrCreateReadModel(firestore, scope);
+  // Review storage never reads the care read model. Authorize scope and consent
+  // in the same transaction as the review instead of duplicating preflight reads.
   return firestore.runTransaction(async (tx) => {
     await assertTransactionScope(tx, firestore, scope);
+    await assertHealthDataConsentConfirmed(firestore, scope.recipientId, tx);
     const ref = firestore
       .collection("careRecipients")
       .doc(scope.recipientId)

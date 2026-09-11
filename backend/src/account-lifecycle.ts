@@ -1,5 +1,6 @@
 import { getAdminFirestore } from "./firebase-admin.ts";
 import type { FirestoreLike, TransactionLike } from "./firestore-rest.ts";
+import { readFirestoreDocuments } from "./firestore-rest.ts";
 
 export const ACCOUNT_DELETIONS_COLLECTION = "accountDeletions";
 export const HEALTH_DATA_RESETS_COLLECTION = "healthDataResets";
@@ -18,10 +19,9 @@ export async function isCareAccountActive(firestore: FirestoreLike, recipientId:
   if (!recipientId.startsWith("google-")) return true;
   const accountDeletionRef = firestore.collection(ACCOUNT_DELETIONS_COLLECTION).doc(recipientId);
   const healthResetRef = firestore.collection(HEALTH_DATA_RESETS_COLLECTION).doc(recipientId);
-  const [accountDeletion, healthReset] = await Promise.all([
-    tx ? tx.get(accountDeletionRef) : accountDeletionRef.get(),
-    tx ? tx.get(healthResetRef) : healthResetRef.get(),
-  ]);
+  const [accountDeletion, healthReset] = tx
+    ? await Promise.all([tx.get(accountDeletionRef), tx.get(healthResetRef)])
+    : await readFirestoreDocuments(firestore, [accountDeletionRef, healthResetRef]);
   const accountActive = !accountDeletion.exists || (accountDeletion.data() as { status?: string }).status === "restored";
   const resetStatus = (healthReset.data() as { status?: string } | undefined)?.status;
   return accountActive && (!healthReset.exists || resetStatus === "completed");
@@ -39,9 +39,9 @@ export async function isServiceAccountActive(userId: string) {
 export async function getAccountSessionState(userId: string, firestore?: FirestoreLike) {
   firestore ??= await getAdminFirestore();
   const recipientId = accountRecipientId(userId);
-  const [doc, resetDocument] = await Promise.all([
-    firestore.collection(ACCOUNT_DELETIONS_COLLECTION).doc(recipientId).get(),
-    firestore.collection(HEALTH_DATA_RESETS_COLLECTION).doc(recipientId).get(),
+  const [doc, resetDocument] = await readFirestoreDocuments(firestore, [
+    firestore.collection(ACCOUNT_DELETIONS_COLLECTION).doc(recipientId),
+    firestore.collection(HEALTH_DATA_RESETS_COLLECTION).doc(recipientId),
   ]);
   const job = doc.data() as { status?: string; requestId?: string; requestedAt?: string } | undefined;
   const reset = resetDocument.data() as {

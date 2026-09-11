@@ -83,10 +83,12 @@ test("REST 트랜잭션은 ABORTED 충돌에서 읽기와 쓰기를 함께 재�
   let commits = 0;
   const firestore = createEmulatorFirestoreRestClient("demo-contract", "127.0.0.1:8080", async (url, init) => {
     const address = String(url);
-    if (address.endsWith(":beginTransaction")) return Response.json({ transaction: `tx-${++attempts}` });
     if (address.endsWith(":rollback")) return Response.json({});
-    if (address.endsWith(":batchGet")) return Response.json([{ found: { fields: { count: { integerValue: String(attempts) } } } }]);
     const body = JSON.parse(String(init?.body));
+    if (address.endsWith(":batchGet")) {
+      assert.deepEqual(body.newTransaction, { readWrite: attempts ? { retryTransaction: `tx-${attempts}` } : {} });
+      return Response.json([{ transaction: `tx-${++attempts}` }, { found: { name: body.documents[0], fields: { count: { integerValue: String(attempts) } } } }]);
+    }
     assert.equal(body.transaction, `tx-${attempts}`);
     if (++commits === 1) return Response.json({ error: { status: "ABORTED" } }, { status: 409 });
     return Response.json({});
@@ -99,4 +101,85 @@ test("REST 트랜잭션은 ABORTED 충돌에서 읽기와 쓰기를 함께 재�
   });
   assert.equal(result, 3);
   assert.equal(commits, 2);
+});
+
+test("REST transaction batches concurrent reads, maps unordered/missing documents, and reuses only its own snapshot", async () => {
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  let transaction = 0;
+  const firestore = createEmulatorFirestoreRestClient("demo-contract", "127.0.0.1:8080", async (url, init) => {
+    const body = JSON.parse(String(init?.body));
+    calls.push({ url: String(url), body });
+    if (String(url).endsWith(":batchGet")) return Response.json([
+      { transaction: `tx-${++transaction}` },
+      { missing: body.documents[1] },
+      { found: { name: body.documents[0], fields: { version: { integerValue: String(transaction) } } } },
+    ]);
+    return Response.json({});
+  });
+  const a = firestore.collection("contracts").doc("a"), b = firestore.collection("contracts").doc("b");
+  for (const version of [1, 2]) await firestore.runTransaction(async tx => {
+    const [first, missing] = await Promise.all([tx.get(a), tx.get(b)]);
+    assert.deepEqual(first.data(), { version });
+    assert.equal(missing.exists, false);
+    assert.equal(await tx.get(a), first);
+    tx.set(a, { version: version + 1 });
+    assert.throws(() => tx.get(b), /all reads before writes/);
+  });
+  assert.equal(calls.length, 4, "two read/write transactions need only two HTTP requests each");
+  assert(calls.every(call => !call.url.endsWith(":beginTransaction")));
+});
+
+test("REST transaction partial batch fails closed without committing writes", async () => {
+  const urls: string[] = [];
+  const firestore = createEmulatorFirestoreRestClient("demo-contract", "127.0.0.1:8080", async url => {
+    urls.push(String(url));
+    return Response.json([{ transaction: "tx-partial" }]);
+  });
+  await assert.rejects(firestore.runTransaction(async tx => {
+    await tx.get(firestore.collection("contracts").doc("missing"));
+    tx.set(firestore.collection("contracts").doc("write"), { forbidden: true });
+  }), /no document result/);
+  assert(!urls.some(url => url.endsWith(":commit")));
+  assert(urls.some(url => url.endsWith(":rollback")), "a malformed read still releases the started transaction");
+});
+
+test("REST getAll combines authoritative reads without retaining a cross-request cache", async () => {
+  let calls = 0;
+  const firestore = createEmulatorFirestoreRestClient("demo-contract", "127.0.0.1:8080", async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.transaction, undefined);
+    assert.equal(body.newTransaction, undefined);
+    return Response.json([{ missing: body.documents[1] }, { found: { name: body.documents[0], fields: { value: { integerValue: String(++calls) } } } }]);
+  });
+  const a = firestore.collection("contracts").doc("a"), b = firestore.collection("contracts").doc("b");
+  for (const value of [1, 2]) {
+    const [first, missing] = await firestore.getAll(a, b);
+    assert.deepEqual(first!.data(), { value });
+    assert.equal(missing!.exists, false);
+  }
+  assert.equal(calls, 2);
+});
+
+test("REST transaction query and document reads share one transaction and write-only transactions remain atomic", async () => {
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const firestore = createEmulatorFirestoreRestClient("demo-contract", "127.0.0.1:8080", async (url, init) => {
+    const body = JSON.parse(String(init?.body));
+    calls.push({ url: String(url), body });
+    if (String(url).endsWith(":beginTransaction")) return Response.json({ transaction: "tx-write" });
+    if (String(url).endsWith(":batchGet")) return Response.json([{ transaction: "tx-read" }, { found: { name: body.documents[0], fields: {} } }]);
+    if (String(url).endsWith(":runQuery")) return Response.json([]);
+    return Response.json({});
+  });
+  const ref = firestore.collection("contracts").doc("a");
+  await firestore.runTransaction(async tx => {
+    await Promise.all([tx.get(ref), tx.get(firestore.collection("contracts").where("active", "==", true))]);
+    tx.set(ref, { active: true });
+  });
+  assert.deepEqual(calls.map(call => call.url.split(":").at(-1)), ["batchGet", "runQuery", "commit"]);
+  assert.equal(calls[1]!.body.transaction, "tx-read");
+  assert.equal(calls[2]!.body.transaction, "tx-read");
+  calls.length = 0;
+  await firestore.runTransaction(async tx => { tx.create(ref, { active: true }); });
+  assert.deepEqual(calls.map(call => call.url.split(":").at(-1)), ["beginTransaction", "commit"]);
+  assert.equal(calls[1]!.body.transaction, "tx-write");
 });

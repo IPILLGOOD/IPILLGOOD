@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import {
   analyzeMedicationDocument,
   advanceDocumentAnalysisJob,
-  assertDocumentAnalysisJobActive,
   withCareAccountProcessing,
   DocumentAnalysisCancelledError,
   isServiceAccountActive,
@@ -37,6 +36,18 @@ class OverallAnalysisTimeoutError extends Error {
     super("DOCUMENT_ANALYSIS_JOB_TIMEOUT");
     this.name = "OverallAnalysisTimeoutError";
   }
+}
+
+// The state transition already reads the authoritative job in a transaction.
+// Inspect that result instead of fetching it again, including cancellation that
+// raced with the previous stage. File upload has finished before a job is made.
+async function advanceActiveJob(scope: CareDataScope, jobId: string, state: "extracting" | "analyzing" | "saving_draft") {
+  const job = await advanceDocumentAnalysisJob(scope, jobId, state);
+  if (job.state === "cancellation_requested" || job.state === "cancelled") {
+    await advanceDocumentAnalysisJob(scope, jobId, "cancelled");
+    throw new DocumentAnalysisCancelledError();
+  }
+  return job;
 }
 
 async function withinOverallBudget<T>(operation: Promise<T>) {
@@ -173,14 +184,12 @@ export async function POST(request: Request) {
         job: started.job,
       }, { status: 202 });
     }
-    await advanceDocumentAnalysisJob(scope, jobId, "uploading");
+    await advanceActiveJob(scope, jobId, "extracting");
     const validatedFile = fileBytes
       ? await validateClinicalDocumentFile(fileBytes, claimedContentType)
       : undefined;
     const contentType = validatedFile?.contentType ?? "image/jpeg";
     const contentBase64 = fileBytes ? Buffer.from(fileBytes).toString("base64") : undefined;
-    await advanceDocumentAnalysisJob(scope, jobId, "extracting");
-    await assertDocumentAnalysisJobActive(scope, jobId);
     const existingDocument = (await getCareSnapshot(scope)).documents.find(
       (document) => document.contentHash === contentHash,
     );
@@ -222,7 +231,7 @@ export async function POST(request: Request) {
       }, 409);
     }
 
-    await advanceDocumentAnalysisJob(scope, jobId, "analyzing");
+    await advanceActiveJob(scope, jobId, "analyzing");
     let result = pendingReview
       ? { status: "complete" as const, message: "저장된 분석 결과를 불러왔어요.", analysis: pendingReview.analysis }
       : await withinOverallBudget(withCareAccountProcessing(
@@ -244,8 +253,7 @@ export async function POST(request: Request) {
         },
       };
     }
-    await assertDocumentAnalysisJobActive(scope, jobId);
-    await advanceDocumentAnalysisJob(scope, jobId, "saving_draft");
+    await advanceActiveJob(scope, jobId, "saving_draft");
     let document;
     try {
       document = await registerDocument(scope, {

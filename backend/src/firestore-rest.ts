@@ -70,7 +70,12 @@ export interface TransactionLike extends WriteOperationsLike {
 export interface FirestoreLike {
   collection(path: string): CollectionReferenceLike;
   batch(): WriteBatchLike;
+  getAll?(...refs: DocumentReferenceLike[]): Promise<DocumentSnapshotLike[]>;
   runTransaction<T>(fn: (transaction: TransactionLike) => Promise<T>): Promise<T>;
+}
+
+export function readFirestoreDocuments(firestore: FirestoreLike, refs: DocumentReferenceLike[]) {
+  return firestore.getAll ? firestore.getAll(...refs) : Promise.all(refs.map(ref => ref.get()));
 }
 
 function base64Url(bytes: Uint8Array) {
@@ -219,27 +224,78 @@ export class FirestoreRestClient implements FirestoreLike {
     return new RestWriteBatch(this);
   }
 
+  async getAll(...refs: DocumentReferenceLike[]): Promise<DocumentSnapshotLike[]> {
+    if (!refs.length) return [];
+    const response = await this.requestUrl(`${this.baseUrl}:batchGet`, {
+      method: "POST", body: JSON.stringify({ documents: refs.map(ref => this.documentName(ref.path)) }),
+    });
+    const rows = await response.json() as Array<{ found?: { name: string; fields?: JsonRecord }; missing?: string }>;
+    const byName = new Map<string, JsonRecord | undefined>();
+    for (const row of rows) {
+      if (row.found) byName.set(row.found.name, row.found.fields ?? {});
+      else if (row.missing) byName.set(row.missing, undefined);
+    }
+    return refs.map(ref => {
+      const name = this.documentName(ref.path);
+      if (!byName.has(name)) throw new Error("Firestore batch read returned no document result.");
+      const fields = byName.get(name);
+      return new RestDocumentSnapshot(ref, fields === undefined ? undefined : decodeFirestoreFields(fields));
+    });
+  }
+
   async runTransaction<T>(fn: (transaction: TransactionLike) => Promise<T>): Promise<T> {
     let retryTransaction: string | undefined;
     for (let attempt = 0; ; attempt++) {
-      const response = await this.requestUrl(`${this.baseUrl}:beginTransaction`, {
-        method: "POST", body: JSON.stringify({ options: { readWrite: retryTransaction ? { retryTransaction } : {} } }),
-      });
-      const { transaction } = await response.json() as { transaction: string };
-      const writer = new RestTransaction(this, transaction);
+      const writer = new RestTransaction(this, retryTransaction);
       try {
         const result = await fn(writer);
         await writer.commit();
         return result;
       } catch (error) {
-        await this.requestUrl(`${this.baseUrl}:rollback`, {
-          method: "POST", body: JSON.stringify({ transaction }),
-        }).catch(() => undefined);
+        await writer.rollback().catch(() => undefined);
         if (!(error instanceof FirestoreRestError) || error.code !== "ABORTED" || attempt >= 6) throw error;
-        retryTransaction = transaction;
+        retryTransaction = writer.id;
         await new Promise((resolve) => setTimeout(resolve, Math.min(100 * 2 ** attempt, 2000) * (0.5 + Math.random())));
       }
     }
+  }
+
+  async beginTransaction(retryTransaction?: string): Promise<string> {
+    const response = await this.requestUrl(`${this.baseUrl}:beginTransaction`, {
+      method: "POST", body: JSON.stringify({ options: { readWrite: retryTransaction ? { retryTransaction } : {} } }),
+    });
+    return ((await response.json()) as { transaction: string }).transaction;
+  }
+
+  async rollbackTransaction(transaction: string) {
+    await this.requestUrl(`${this.baseUrl}:rollback`, { method: "POST", body: JSON.stringify({ transaction }) });
+  }
+
+  // Firestore returns batchGet documents in arbitrary order. Map by full name,
+  // and start the read/write transaction with the first read in one request.
+  async transactionDocuments(refs: DocumentReferenceLike[], transaction?: string, retryTransaction?: string, onTransaction?: (id: string) => void) {
+    const response = await this.requestUrl(`${this.baseUrl}:batchGet`, {
+      method: "POST",
+      body: JSON.stringify({ documents: refs.map(ref => this.documentName(ref.path)),
+        ...(transaction ? { transaction } : { newTransaction: { readWrite: retryTransaction ? { retryTransaction } : {} } }),
+      }),
+    });
+    const rows = await response.json() as Array<{ transaction?: string; found?: { name: string; fields?: JsonRecord }; missing?: string }>;
+    const id = transaction ?? rows.find(row => row.transaction)?.transaction;
+    if (!id) throw new Error("Firestore transaction read returned no transaction.");
+    onTransaction?.(id);
+    const byName = new Map<string, JsonRecord | undefined>();
+    for (const row of rows) {
+      if (row.found) byName.set(row.found.name, row.found.fields ?? {});
+      else if (row.missing) byName.set(row.missing, undefined);
+    }
+    const documents = refs.map(ref => {
+      const name = this.documentName(ref.path);
+      if (!byName.has(name)) throw new Error("Firestore transaction read returned no document result.");
+      const fields = byName.get(name);
+      return new RestDocumentSnapshot(ref, fields === undefined ? undefined : decodeFirestoreFields(fields));
+    });
+    return { transaction: id, documents };
   }
 
   documentName(path: string) {
@@ -652,7 +708,7 @@ class RestWriteBatch implements WriteBatchLike {
   private committed = false;
 
   protected readonly client: FirestoreRestClient;
-  protected readonly transaction?: string;
+  protected transaction?: string;
   constructor(client: FirestoreRestClient, transaction?: string) {
     this.client = client;
     this.transaction = transaction;
@@ -687,12 +743,73 @@ class RestWriteBatch implements WriteBatchLike {
 }
 
 class RestTransaction extends RestWriteBatch implements TransactionLike {
+  private readonly retryTransaction?: string;
+  private readonly reads = new Map<string, Promise<DocumentSnapshotLike>>();
+  private pending: Array<{ ref: DocumentReferenceLike; resolve: (value: DocumentSnapshotLike) => void; reject: (error: unknown) => void }> = [];
+  private scheduled = false;
+  private readTail: Promise<void> = Promise.resolve();
+
+  constructor(client: FirestoreRestClient, retryTransaction?: string) {
+    super(client);
+    this.retryTransaction = retryTransaction;
+  }
+  get id() { return this.transaction; }
+
+  private flushDocuments() {
+    this.scheduled = false;
+    const batch = this.pending.splice(0);
+    if (!batch.length) return;
+    const work = this.readTail.then(async () => {
+      const result = await this.client.transactionDocuments(batch.map(item => item.ref), this.transaction, this.retryTransaction, id => { this.transaction = id; });
+      this.transaction = result.transaction;
+      batch.forEach((item, index) => item.resolve(result.documents[index]!));
+    });
+    // Keep a rejected read on the transaction chain: later reads and commit
+    // must not continue after a partial/failed batch.
+    this.readTail = work;
+    void work.catch(error => batch.forEach(item => item.reject(error)));
+  }
+
+  override async commit() {
+    await Promise.resolve(); // Flush reads scheduled in this microtask.
+    await this.readTail;
+    // A transaction containing only writes still needs Firestore's transaction
+    // conflict/atomicity contract, even though there was no first document read.
+    this.transaction ??= await this.client.beginTransaction(this.retryTransaction);
+    return super.commit();
+  }
+
+  async rollback() {
+    await Promise.resolve();
+    await this.readTail.catch(() => undefined);
+    if (this.transaction) await this.client.rollbackTransaction(this.transaction);
+  }
+
   get(ref: DocumentReferenceLike): Promise<DocumentSnapshotLike>;
   get(query: QueryLike | CollectionReferenceLike): Promise<QuerySnapshotLike>;
   get(value: DocumentReferenceLike | QueryLike | CollectionReferenceLike): Promise<DocumentSnapshotLike | QuerySnapshotLike> {
     if (this.writes.length) throw new Error("Firestore transactions require all reads before writes.");
-    if (value instanceof RestDocumentReference) return this.client.getDocument(value.path, value, this.transaction);
-    if (value instanceof RestQuery) return value.get(this.transaction);
+    if (value instanceof RestDocumentReference) {
+      let result = this.reads.get(value.path);
+      if (!result) {
+        result = new Promise<DocumentSnapshotLike>((resolve, reject) => {
+          this.pending.push({ ref: value, resolve, reject });
+          if (!this.scheduled) { this.scheduled = true; queueMicrotask(() => this.flushDocuments()); }
+        });
+        this.reads.set(value.path, result);
+      }
+      return result;
+    }
+    if (value instanceof RestQuery) {
+      if (this.scheduled) this.flushDocuments();
+      const result = this.readTail.then(async () => {
+        this.transaction ??= await this.client.beginTransaction(this.retryTransaction);
+        return value.get(this.transaction);
+      });
+      this.readTail = result.then(() => undefined);
+      void this.readTail.catch(() => undefined);
+      return result;
+    }
     throw new Error("Incompatible Firestore transaction read.");
   }
 }
