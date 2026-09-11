@@ -29,10 +29,24 @@ test.beforeEach(async ({ context }) => {
     ? route.continue() : route.abort("blockedbyclient"));
 });
 
-async function audit(page: Page, name: string, info: TestInfo) {
+async function waitForPageMotion(page: Page) {
   await page.evaluate(async () => {
-    await Promise.all(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished.catch(() => {})));
+    document.documentElement.getBoundingClientRect();
+    const running = document.getAnimations().filter((animation) =>
+      animation.playState === "running" && animation.timeline === document.timeline &&
+      Number.isFinite(animation.effect?.getComputedTiming().endTime),
+    );
+    // Offscreen animations can pause during reflow. Still audit the actual DOM
+    // after this bound instead of waiting forever or forcing an animation state.
+    await Promise.race([
+      Promise.all(running.map((animation) => animation.finished.catch(() => {}))),
+      new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
   });
+}
+
+async function audit(page: Page, name: string, info: TestInfo) {
+  await waitForPageMotion(page);
   await page.evaluate(axe.source);
   const results = await page.evaluate(async () => (window as unknown as { axe: typeof axe }).axe.run(document, {
     runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] },
@@ -221,6 +235,8 @@ test("mobile reflow and 200 percent text size retain usable controls", async ({ 
       await audit(page, `mobile-${path.slice(1)}`, info);
       // Text-size stress test; actual OS/browser zoom and mobile screen readers are separate manual gates.
       await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+      await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+      await waitForPageMotion(page);
       const overflow = await page.locator("body *").evaluateAll((elements) => ({
         viewport: innerWidth,
         documentWidth: document.documentElement.scrollWidth,
