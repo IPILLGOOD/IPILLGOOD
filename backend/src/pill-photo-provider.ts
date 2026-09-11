@@ -189,7 +189,9 @@ async function requestPillPhotoProvider(
   const execute = async (): Promise<{ ok: true; value: unknown } | { ok: false; reason: PhotoFailure }> => {
     try {
       const response = await fetchImpl(ENDPOINT, {
-        method: "POST", redirect: "error", signal: controller.signal,
+        // Workers rejects redirect:"error" before transmission. Manual mode
+        // preserves the no-follow boundary; every 3xx is rejected below.
+        method: "POST", redirect: "manual", signal: controller.signal,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: serialized,
       });

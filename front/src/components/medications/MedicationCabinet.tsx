@@ -2,7 +2,7 @@
 
 import { ArrowRight, CalendarDays, CheckCircle2, CircleHelp, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useRef, useState, type KeyboardEvent, type UIEvent } from "react";
+import { useActionState, useEffect, useRef, useState, type KeyboardEvent, type UIEvent } from "react";
 
 import { refreshMedicationExplanationAction } from "@/app/actions";
 import { FormMessage } from "@/components/ui/FormMessage";
@@ -31,9 +31,20 @@ export type MedicationCabinetItem = {
 export function MedicationCabinet({ medications, detailBase = "/medications", revision }: { medications: MedicationCabinetItem[]; detailBase?: string; revision?: number }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(scrollTimer.current), []);
   const medication = medications[selectedIndex] ?? medications[0];
 
   if (!medication) return null;
+
+  const selectMedication = (index: number) => {
+    clearTimeout(scrollTimer.current);
+    setSelectedIndex(index);
+    tabs.current[index]?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+      block: "nearest", inline: "center",
+    });
+  };
 
   const moveSelection = (index: number, event: KeyboardEvent<HTMLButtonElement>) => {
     let nextIndex = index;
@@ -44,31 +55,30 @@ export function MedicationCabinet({ medications, detailBase = "/medications", re
     else return;
 
     event.preventDefault();
-    setSelectedIndex(nextIndex);
-    tabs.current[nextIndex]?.focus();
-    tabs.current[nextIndex]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-  };
-
-  const selectMedication = (index: number) => {
-    setSelectedIndex(index);
-    tabs.current[index]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    tabs.current[nextIndex]?.focus({ preventScroll: true });
+    selectMedication(nextIndex);
   };
 
   const syncSelectionWithScroll = (event: UIEvent<HTMLDivElement>) => {
     const rail = event.currentTarget;
-    const railCenter = rail.getBoundingClientRect().left + rail.clientWidth / 2;
-    let closestIndex = selectedIndex;
-    let closestDistance = Number.POSITIVE_INFINITY;
-    tabs.current.forEach((tab, index) => {
-      if (!tab) return;
-      const bounds = tab.getBoundingClientRect();
-      const distance = Math.abs(bounds.left + bounds.width / 2 - railCenter);
-      if (distance < closestDistance) {
-        closestIndex = index;
-        closestDistance = distance;
-      }
-    });
-    if (closestIndex !== selectedIndex) setSelectedIndex(closestIndex);
+    clearTimeout(scrollTimer.current);
+    // Intermediate smooth-scroll positions must not replace an explicit tab
+    // selection. Settle a swipe only after scrolling stops (including older iOS).
+    scrollTimer.current = setTimeout(() => {
+      // Wider rows show multiple tabs at once; their visual center does not
+      // determine selection. Only the single-card snapping carousel does.
+      if (rail.scrollWidth <= rail.clientWidth || getComputedStyle(rail).scrollSnapType === "none") return;
+      const railCenter = rail.getBoundingClientRect().left + rail.clientWidth / 2;
+      let closestIndex = 0;
+      let closestDistance = Number.POSITIVE_INFINITY;
+      tabs.current.forEach((tab, index) => {
+        if (!tab) return;
+        const bounds = tab.getBoundingClientRect();
+        const distance = Math.abs(bounds.left + bounds.width / 2 - railCenter);
+        if (distance < closestDistance) { closestIndex = index; closestDistance = distance; }
+      });
+      setSelectedIndex(closestIndex);
+    }, 150);
   };
 
   return (

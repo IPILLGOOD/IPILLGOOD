@@ -21,7 +21,7 @@ test("표본 점검은 실제 페이지 검증을 거치며 이미지를 요청�
   const report = await profilePillCatalog({ apiKey: "test-key", fetcher: async (input, init) => {
     const url = new URL(String(input));
     assert.equal(url.origin, "https://apis.data.go.kr");
-    assert.equal(init?.redirect, "error");
+    assert.equal(init?.redirect, "manual");
     assert.equal(url.searchParams.get("numOfRows"), "100");
     const pageNo = Number(url.searchParams.get("pageNo"));
     requested.push(pageNo);

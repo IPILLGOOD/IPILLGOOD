@@ -70,7 +70,7 @@ test("공식 엔드포인트 고정·리다이렉트 금지·HTTP 실패 구분�
     const result = await extractReviewedPillPhotos(pair, { allowExternalTransfer: true, apiKey: "test-only-not-a-real-key", model: "test-model", fetchImpl: async (url, init) => {
       calls++;
       assert.equal(url, "https://api.openai.com/v1/responses");
-      assert.equal(init?.redirect, "error");
+      assert.equal(init?.redirect, "manual");
       assert.equal(init?.method, "POST");
       const body = JSON.parse(String(init?.body));
       assert.equal(body.store, false);

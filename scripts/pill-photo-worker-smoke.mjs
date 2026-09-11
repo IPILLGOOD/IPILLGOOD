@@ -27,35 +27,54 @@ const observation = { schemaVersion: 'pill-observation.v2', form: classifyPillFo
 const result = await build({ stdin: { contents: `
 import { parsePillWebUpload, analyzePillWebPhotos } from './backend/src/pill-photo-web.ts';
 import { readPillWebManifest, readPillWebChunks } from './backend/src/pill-catalog-web.ts';
-const observation = ${JSON.stringify(observation)};
 export default { async fetch(request, env) {
  const started = Date.now();
  const readAsset = path => env.ASSETS.fetch(new Request('https://assets.local' + path));
  // The explicit historical clock is confined to this offline test harness.
  const manifest = await readPillWebManifest(readAsset, ${Date.parse(snapshot.verifiedAt)});
- const images = await parsePillWebUpload(await request.formData()); let calls = 0;
- const result = await analyzePillWebPhotos(images, { apiKey:'synthetic-key', model:'synthetic-model', catalog: {version:manifest.version, verifiedAt:manifest.verifiedAt, totalCount:manifest.totalCount}, chunks:()=>readPillWebChunks(manifest,readAsset), fetchImpl: async () => {
-   const index = calls++; const side = index === 1 ? observation.front : observation.back;
-   const features = index === 0 ? {observation,pairConsistency:'consistent',bothSidesVisible:true,imageArtifact:'none'} : {schemaVersion:'pill-photo-imprint-ocr-side.v2', side: {imprintCandidates:side.imprintCandidates,noImprintObserved:side.noImprintObserved,imprintVisibility:side.imprintVisibility}};
-   return Response.json({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(features)}]}]});
- }});
- return Response.json({calls,elapsedMs:Date.now()-started,result});
+ const images = await parsePillWebUpload(await request.formData());
+ try {
+   const result = await analyzePillWebPhotos(images, { apiKey:'synthetic-key', model:'synthetic-model', catalog: {version:manifest.version, verifiedAt:manifest.verifiedAt, totalCount:manifest.totalCount}, chunks:()=>readPillWebChunks(manifest,readAsset) });
+   return Response.json({elapsedMs:Date.now()-started,result});
+ } catch(error) { return Response.json({reason:error.message},{status:503}); }
 }};`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, format:'esm', platform:'browser', external:['node:*'], write:false, metafile:true });
 assert.ok(!Object.keys(result.metafile.inputs).some(path => /sharp|pill-photo-preprocessing\.ts$/.test(path)), 'native preprocessing must not enter the Worker bundle');
-let assetReads = 0;
-const mf = new Miniflare(convertV4MiniflareOptions({ name:"pill-photo-smoke", modules:true, script:result.outputFiles[0].text, compatibilityDate:'2026-08-16', compatibilityFlags:['nodejs_compat'], serviceBindings:{ ASSETS: async request => { assetReads++; const bytes=assets.get(new URL(request.url).pathname); return bytes ? new Response(bytes) : new Response('missing',{status:404}); } } }));
+let assetReads = 0, providerCalls = 0, redirectTargets = 0, redirectMode = false, frontDataUrl = '';
+// Exercise workerd's real fetch/Request construction, then intercept egress.
+// Replacing fetchImpl inside the Worker hides unsupported transport options.
+const outboundService = async request => {
+ if (request.url !== 'https://api.openai.com/v1/responses') { redirectTargets++; return new Response('unexpected destination',{status:500}); }
+ providerCalls++;
+ assert.equal(request.headers.get('authorization'),'Bearer synthetic-key');
+ if (redirectMode) return Response.redirect('https://redirect.example/never-follow',307);
+ const body = await request.json();
+ const side = body.input[0].content.find(part => part.type === 'input_image').image_url === frontDataUrl ? observation.front : observation.back;
+ const features = body.text.format.name === 'pill_visible_features' ? {observation,pairConsistency:'consistent',bothSidesVisible:true,imageArtifact:'none'} : {schemaVersion:'pill-photo-imprint-ocr-side.v2', side: {imprintCandidates:side.imprintCandidates,noImprintObserved:side.noImprintObserved,imprintVisibility:side.imprintVisibility}};
+ return Response.json({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(features)}]}]});
+};
+const mf = new Miniflare(convertV4MiniflareOptions({ name:"pill-photo-smoke", modules:true, script:result.outputFiles[0].text, compatibilityDate:'2026-08-16', compatibilityFlags:['nodejs_compat','global_fetch_strictly_public'], outboundService, serviceBindings:{ ASSETS: async request => { assetReads++; const bytes=assets.get(new URL(request.url).pathname); return bytes ? new Response(bytes) : new Response('missing',{status:404}); } } }));
 try {
  const form = new FormData(); form.set('consent','true'); form.set('version',PILL_WEB_PREPROCESSING_VERSION);
  const [front,back] = await Promise.all(['white','gray'].map(background=>sharp({create:{width:768,height:768,channels:3,background}}).jpeg().toBuffer()));
+ frontDataUrl = `data:image/jpeg;base64,${front.toString('base64')}`;
  for(const name of PILL_WEB_IMAGE_NAMES) form.set(name,new File([name.startsWith('front')?front:back],'synthetic.jpg',{type:'image/jpeg'}));
  const encoded = new Request('https://test.local/analyze',{method:'POST',body:form});
- const response = await mf.dispatchFetch(encoded.url,{method:'POST',headers:{'content-type':encoded.headers.get('content-type')},body:await encoded.arrayBuffer()});
+ const bytes = await encoded.arrayBuffer();
+ const send = () => mf.dispatchFetch(encoded.url,{method:'POST',headers:{'content-type':encoded.headers.get('content-type')},body:bytes.slice(0)});
+ const response = await send();
  assert.equal(response.status,200,await response.clone().text());
- const body=await response.json(); assert.equal(body.calls,3); assert.equal(body.result.comparison.status,'searched');
+ const body=await response.json(); assert.equal(providerCalls,3); assert.equal(body.result.comparison.status,'searched');
  assert.equal(body.result.comparison.search.metrics.catalogRecords,snapshot.totalCount);
  assert.equal(assetReads,chunks.length+1);
  assert.ok(body.result.comparison.search.candidates.some(candidate=>candidate.itemSeq===item.itemSeq));
- const summary={runtime:'workerd',network:'mock provider + local asset binding only',historicalClock:snapshot.verifiedAt,records:snapshot.totalCount,chunks:chunks.length,assetReads,modelRequests:body.calls,elapsedMs:body.elapsedMs,comparison:body.result.comparison.search.status,bundleBytes:result.outputFiles[0].contents.length,nativeDecoderBundled:false};
+ const summary={runtime:'workerd',network:'real Worker fetch with intercepted egress + local asset binding',historicalClock:snapshot.verifiedAt,records:snapshot.totalCount,chunks:chunks.length,assetReads,modelRequests:providerCalls,elapsedMs:body.elapsedMs,comparison:body.result.comparison.search.status,bundleBytes:result.outputFiles[0].contents.length,nativeDecoderBundled:false};
+ redirectMode = true;
+ const redirected = await send();
+ assert.equal(redirected.status,503);
+ assert.equal((await redirected.json()).reason,'provider_unavailable');
+ assert.equal(providerCalls,6);
+ assert.equal(redirectTargets,0,'provider redirects must never forward photos or credentials');
+ summary.redirectsRejected = true;
  mkdirSync('verification-artifacts',{recursive:true});
  writeFileSync('verification-artifacts/pill-web-worker-smoke.json',JSON.stringify(summary,null,2)); console.log(JSON.stringify(summary,null,2));
 } finally { await mf.dispose(); }

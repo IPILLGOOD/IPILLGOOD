@@ -162,7 +162,7 @@ test("공통 전송은 Vision·앞면 OCR·뒷면 OCR을 결합하며 호출자 
   let calls = 0;
   const fetchImpl: typeof fetch = async (url, init) => {
     assert.equal(url, "https://api.openai.com/v1/responses");
-    assert.equal(init?.redirect, "error");
+    assert.equal(init?.redirect, "manual");
     assert.equal(init?.method, "POST");
     assert.equal(new Headers(init?.headers).get("authorization"), "Bearer synthetic-test-credential");
     assert.equal(init?.body, expectedRequests[calls]);
@@ -190,6 +190,7 @@ test("공통 전송은 Vision·앞면 OCR·뒷면 OCR을 결합하며 호출자 
 test("외부 거절·응답 한도·OCR 실패는 후속 호출을 중단하고 오류 원문을 보관하지 않는다", async () => {
   const prepared = await preparedPromise;
   const cases = [
+    { responses: [Response.redirect("https://example.test/never-follow", 307)], reason: "provider_unavailable", count: 1 },
     { responses: [new Response("sensitive provider body", { status: 429 })], reason: "rate_limited", count: 1 },
     { responses: [new Response("{}", { headers: { "content-type": "application/json", "content-length": "262145" } })], reason: "invalid_response", count: 1 },
     { responses: [Response.json(response(features())), Response.json(response({ invalid: "sensitive provider body" }))], reason: "ocr_failed", count: 2 },
