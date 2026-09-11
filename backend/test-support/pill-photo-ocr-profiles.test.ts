@@ -98,7 +98,7 @@ test("OCR-only 전송은 Vision 없이 양면 두 요청만 전송하고 callbac
     onRequestTrace: async (event) => { traces.push(event); },
     fetchImpl: async (url, init) => {
       assert.equal(url, "https://api.openai.com/v1/responses");
-      assert.equal(init?.redirect, "error");
+      assert.equal(init?.redirect, "manual");
       assert.equal(hash(JSON.parse(String(init?.body))), hash(expected[calls]));
       return ocrResponse(calls++ === 0 ? "Q7" : "R2");
     } });
