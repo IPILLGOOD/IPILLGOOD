@@ -82,7 +82,7 @@ export function ProfileForm({
             : "최신 내용 확인 후 다시 저장"}
         </button>
       ) : null}
-      <details ref={identitySection} className="profile-accordion">
+      <details ref={identitySection} className="profile-accordion" open={onboarding}>
         <summary>
           <span>
             <strong>기본 정보</strong>

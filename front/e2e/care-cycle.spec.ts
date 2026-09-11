@@ -1,3 +1,4 @@
+import { openCheckInDetails } from "../test-support/check-in-wizard";
 import { test, expect } from "@playwright/test";
 import { SignJWT, decodeJwt } from "jose";
 import { randomUUID } from "node:crypto";
@@ -76,23 +77,10 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       (entry) => entry.name === "care_atlas_session",
     )!;
     recipientId = decodeJwt(cookie.value).sub;
-    await page.getByRole("link", { name: /확인 시작/ }).click();
+    await page.getByRole("link", { name: "안부 확인", exact: true }).click();
     await expect(page).toHaveURL(/\/check-in$/);
-    const form = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
-    await checkChoice(form.getByLabel("어지러움", { exact: true }));
+    const form = await openCheckInDetails(page, { symptoms: ["어지러움"] });
     await form.getByLabel("보호자 메모").fill("격리된 자동 검증 기록");
-    const doseResponses = form.locator(
-      'input[name^="dose_"][value="completed"]',
-    );
-    expect(await doseResponses.count()).toBeGreaterThan(0);
-    for (let index = 0; index < (await doseResponses.count()); index++) {
-      await checkChoice(doseResponses.nth(index));
-    }
-    const questions = form.locator(".dynamic-question");
-    expect(await questions.count()).toBeGreaterThan(0);
-    for (let index = 0; index < (await questions.count()); index++) {
-      await checkChoice(questions.nth(index).getByRole("radio").first());
-    }
     await form.getByRole("button", { name: "오늘의 답변 저장" }).click();
     await expect(
       page.getByText("오늘의 복약과 몸 상태를 기록했어요."),
@@ -125,7 +113,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       const sampleButtonName =
         documentType === "진단서"
           ? "비식별 샘플 진단서로 체험"
-          : "비식별 샘플 처방전으로 체험";
+          : "비식별 샘플 처방전·약봉투로 체험";
       await page.getByRole("button", { name: sampleButtonName }).click();
       if (documentType === "처방전") {
         await expect(
@@ -134,14 +122,10 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
           }),
         ).toBeVisible();
         await page.getByRole("button", { name: "별도 처방으로 등록" }).click();
-        await expect(
-          page.getByText("복약 일정에는 아직 반영하지 않았어요.", {
-            exact: false,
-          }),
-        ).toBeVisible();
+        await expect(page.getByRole("region", { name: "약을 하나씩 확인하세요" })).toBeVisible();
       } else {
         await expect(
-          page.getByText("비식별 데모 분석을 마쳤어요."),
+          page.getByRole("heading", { name: "분석 결과", exact: true }),
         ).toBeVisible();
         const diagnosisReview = page.getByRole("region", {
           name: "원본과 대조해 진단 정보를 수정하세요",
@@ -175,29 +159,19 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
           baselineDoseEventCount,
         );
         const medicationReview = page.getByRole("region", {
-          name: "원본과 비교해 약과 일정을 검토하세요",
+          name: "약을 하나씩 확인하세요",
         });
-        const endDates = medicationReview.getByLabel("종료일");
-        for (let index = 0; index < (await endDates.count()); index++) {
-          if (!(await endDates.nth(index).inputValue()))
-            await endDates.nth(index).fill("2027-12-31");
-        }
-        const comparisons = medicationReview.getByRole("checkbox", {
-          name: /원본 처방전과 모든 입력값을 대조했어요/,
-        });
-        for (let index = 0; index < (await comparisons.count()); index++) {
-          await checkChoice(comparisons.nth(index));
-        }
-        const inclusions = medicationReview.getByRole("checkbox", {
-          name: /이 약을 복약 일정에 포함/,
-        });
-        for (let index = 0; index < (await inclusions.count()); index++) {
-          await checkChoice(inclusions.nth(index));
+        for (let index = 0; index < 3; index++) {
+          const endDate = medicationReview.getByLabel("종료일");
+          if (!await endDate.inputValue()) await endDate.fill("2027-12-31");
+          const comparison = medicationReview.getByRole("checkbox", { name: "원본과 대조 완료" });
+          if (await comparison.count()) await checkChoice(comparison);
+          await checkChoice(medicationReview.getByRole("checkbox", { name: /복용약으로 등록/ }));
+          if (index < 2) await medicationReview.getByRole("button", { name: "다음 약" }).click();
         }
         await page.getByRole("button", { name: "선택한 약 3개 확정" }).click();
-        await expect(
-          page.getByText("선택한 약 3개를 복약 일정에 반영했어요."),
-        ).toBeVisible();
+        await expect(page).toHaveURL(/\/dashboard$/);
+        await page.goto("/documents");
         expect((await recipient.collection("medicationPlans").get()).size).toBe(
           baselineMedicationCount + 3,
         );
@@ -205,7 +179,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       page.once("dialog", (dialog) => dialog.accept());
       await page
         .getByRole("button", {
-          name: `“비식별_샘플_${documentType}.jpg” 문서 삭제`,
+          name: `“비식별_샘플_${documentType === "처방전" ? "처방전 또는 약봉투" : documentType}.jpg” 문서 삭제`,
         })
         .first()
         .click();
@@ -217,6 +191,9 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       }
     }
     await page.goto("/check-in");
+    await expect(page.getByRole("heading", { name: "오늘 안부에 이미 답변했어요" })).toBeVisible();
+    await page.getByRole("button", { name: "오늘 답변 수정", exact: true }).click();
+    await openCheckInDetails(page);
     await expect(page.getByLabel("보호자 메모")).toHaveValue(
       "격리된 자동 검증 기록",
     );
@@ -488,7 +465,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
     await page.goto("/documents");
     await expect(page.getByText("아직 등록한 문서가 없어요")).toBeVisible();
     await expect(
-      page.getByText("처방전이나 진단서를 첨부하고 분석해보세요."),
+      page.getByText("처방전·약봉투나 진단서를 첨부하고 분석해보세요."),
     ).toBeVisible();
     await expect(
       page.getByText("비식별 샘플로 안전하게 흐름을 체험할 수 있어요."),
@@ -500,7 +477,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
         0,
       );
       await expect(
-        page.getByRole("button", { name: "처방전 첨부하고 분석하기" }),
+        page.getByRole("button", { name: "처방전 또는 약봉투 첨부하고 분석하기" }),
       ).toBeVisible();
       expect(
         await page.evaluate(
@@ -522,7 +499,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
         page.getByRole("button", { name: /비식별 샘플 .*으로 체험/ }),
       ).toHaveCount(0);
       await expect(
-        page.getByRole("button", { name: `${documentType} 첨부하고 분석하기` }),
+        page.getByRole("button", { name: `${documentType === "처방전" ? "처방전 또는 약봉투" : documentType} 첨부하고 분석하기` }),
       ).toBeEnabled();
       const forbidden = await context.request.post("/api/documents/analyze", {
         multipart: { documentType, sample: "true" },
@@ -555,7 +532,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
         response.request().method() === "POST",
     );
     await page
-      .getByRole("button", { name: "처방전 첨부하고 분석하기" })
+      .getByRole("button", { name: "처방전 또는 약봉투 첨부하고 분석하기" })
       .click();
     // The isolated environment intentionally has no AI credentials: upload must reach the normal analysis path, not the demo policy denial.
     expect((await analysisResponse).status()).toBe(503);
@@ -563,7 +540,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
       "문서 분석 서비스를 준비 중이에요. 잠시 후 다시 시도해주세요.",
     );
     await expect(
-      page.getByRole("button", { name: "처방전 첨부하고 분석하기" }),
+      page.getByRole("button", { name: "처방전 또는 약봉투 첨부하고 분석하기" }),
     ).toBeEnabled();
     const model = await fixture.admin
       .collection("careReadModels")
@@ -613,7 +590,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
     ).sub;
     await page.goto("/documents");
     await expect(
-      page.getByRole("button", { name: "비식별 샘플 처방전으로 체험" }),
+      page.getByRole("button", { name: "비식별 샘플 처방전·약봉투로 체험" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "로그아웃" }).click();
     await expect(page).toHaveURL(/\/$/);
@@ -623,7 +600,7 @@ test("documents: samples stay demo-only across API requests, uploads and account
       0,
     );
     await expect(
-      page.getByText("처방전이나 진단서를 첨부하고 분석해보세요."),
+      page.getByText("처방전·약봉투나 진단서를 첨부하고 분석해보세요."),
     ).toBeVisible();
   } finally {
     for (const id of [recipientId, demoRecipientId].filter((id): id is string =>

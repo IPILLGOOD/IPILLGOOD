@@ -1,9 +1,10 @@
+import { openCheckInDetails } from "../test-support/check-in-wizard";
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { SignJWT } from "jose";
 import { emulatorFixture } from "../../backend/test-support/emulator";
 import { seedCareAccount, syntheticMedication } from "../../backend/test-support/care-fixtures";
-import { checkChoice, dismissInstallPromptWhenShown } from "../test-support/browser-controls";
+import { dismissInstallPromptWhenShown } from "../test-support/browser-controls";
 
 test("/check-in: missing stored question preserves inputs and recovers without reload", async ({ context, page }) => {
   await dismissInstallPromptWhenShown(page);
@@ -16,21 +17,9 @@ test("/check-in: missing stored question preserves inputs and recovers without r
     // Recovery concerns existing care records; genuinely empty accounts now get onboarding guidance.
     await seedCareAccount(fixture.firestore, recipientId, { consent: true, medications: [syntheticMedication] });
     await page.goto("/check-in");
-    const form = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
-    const doseGroups = form.locator(".dose-question");
-    await expect(doseGroups).toHaveCount(1);
-    for (let index = 0; index < await doseGroups.count(); index++) {
-      const group = doseGroups.nth(index);
-      await expect(group.locator('input[type="radio"]:checked')).toHaveCount(0);
-      await checkChoice(group.getByLabel("모두 먹었어요", { exact: true }));
-    }
+    const form = await openCheckInDetails(page, { source: "이용자가 직접 답했어요", symptoms: ["두통"] });
     await form.getByLabel("보호자 메모").fill("새로고침 없이 보존할 메모");
-    await checkChoice(form.getByLabel("두통", { exact: true }));
     await form.getByLabel("불편한 정도", { exact: true }).selectOption("7");
-    await checkChoice(form.getByLabel("어르신이 직접 답했어요", { exact: true }));
-    const radioNames = await form.locator('input[type="radio"][name^="question_"]').evaluateAll((inputs) => [...new Set(inputs.map((input) => input.getAttribute("name")!))]);
-    expect(radioNames.length).toBeGreaterThan(0);
-    for (const name of radioNames) await checkChoice(form.locator(`input[name="${name}"]`).first());
     const id = await form.locator('input[name="questionSetId"]').inputValue();
     const recipient = fixture.admin.collection("careRecipients").doc(recipientId);
     await recipient.collection("questionSets").doc(id).delete();
@@ -50,29 +39,30 @@ test("/check-in: missing stored question preserves inputs and recovers without r
     expect(saved.docs[0].data()).toMatchObject({ note: "새로고침 없이 보존할 메모", severity: 7, completedBy: "recipient", symptoms: ["두통"] });
     expect((await recipient.collection("doseEvents").get()).size).toBe(0);
     expect((await recipient.collection("symptomEvents").get()).size).toBe(0);
-    expect((await recipient.collection("doseObservations").get()).size).toBe(1);
+    expect((await recipient.collection("doseObservations").get()).size).toBe(0);
     expect((await recipient.collection("symptomObservations").get()).size).toBe(1);
 
     await page.goto("/check-in");
-    const correctionForm = page.getByRole("form", { name: "오늘의 복약과 안부 기록" });
-    await checkChoice(correctionForm.getByLabel("보호자가 전달받아 확인했어요", { exact: true }));
-    await checkChoice(correctionForm.locator(".dose-question").getByLabel("일부만 먹었어요", { exact: true }));
+    await page.getByRole("button", { name: "오늘 답변 수정", exact: true }).click();
+    const correctionForm = await openCheckInDetails(page, { source: "보호자가 전달받아 확인했어요" });
     await correctionForm.getByLabel("기존 기록을 수정하는 이유").fill("어르신과 통화해 복용량을 다시 확인했어요.");
     await correctionForm.getByRole("button", { name: "오늘의 답변 수정" }).click();
     await expect(page.getByText("오늘의 복약과 몸 상태를 기록했어요.")).toBeVisible();
     const doseHistory = (await recipient.collection("doseObservations").get()).docs.map((document) => document.data());
     const symptomHistory = (await recipient.collection("symptomObservations").get()).docs.map((document) => document.data());
-    expect(doseHistory).toHaveLength(2);
+    expect(doseHistory).toHaveLength(0);
     expect(symptomHistory).toHaveLength(2);
-    expect(doseHistory.some((item) => item.supersedesObservationId && item.correctionReason === "어르신과 통화해 복용량을 다시 확인했어요.")).toBe(true);
+    expect(symptomHistory.some((item) => item.supersedesObservationId && item.correctionReason === "어르신과 통화해 복용량을 다시 확인했어요.")).toBe(true);
     expect(symptomHistory.some((item) => item.evidenceLevel === "relayed_confirmation" && item.supersedesObservationId)).toBe(true);
 
     // A live generation lease with no published set renders only recovery, never a usable form.
     await page.goto("/check-in");
+    await page.getByRole("button", { name: "오늘 답변 수정", exact: true }).click();
     const nextId = await page.locator('input[name="questionSetId"]').inputValue();
     await recipient.collection("questionSets").doc(nextId).delete();
     await recipient.collection("questionGenerations").doc(nextId).set({ status: "running", owner: "another-request", attempts: 1, leaseUntil: new Date(Date.now() + 120_000).toISOString(), sourceDocumentIds: [] });
     await page.reload();
+    await page.getByRole("button", { name: "오늘 답변 수정", exact: true }).click();
     await expect(page.locator('input[name="questionSetId"]')).toHaveCount(0);
     await expect(page.getByRole("button", { name: "질문 다시 준비하기" })).toBeVisible();
     await recipient.collection("questionGenerations").doc(nextId).update({ leaseUntil: "2020-01-01T00:00:00Z" });

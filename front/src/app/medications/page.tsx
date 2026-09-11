@@ -5,13 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { MedicationCabinet } from "@/components/medications/MedicationCabinet";
 import { MedicationSearchAdd } from "@/components/medications/MedicationSearchAdd";
 import { PageHeader } from "@/components/ui/PageHeader";
-import {
-  getCareSnapshot,
-  PRODUCT_SOURCE_URL,
-  searchOfficialMedicationInfo,
-  withCareAccountProcessing,
-  type OfficialMedicationLookupResult,
-} from "@care-atlas/backend";
+import { getCareSnapshot, PRODUCT_SOURCE_URL, searchOfficialMedicationInfo, withCareAccountProcessing, type OfficialMedicationLookupResult } from "@care-atlas/backend";
 import { activeMedications, daysSince, formatDate } from "@/lib/presentation";
 import { requireCareScope } from "@/lib/auth/care-scope";
 import { enforceRateLimit } from "@/lib/rate-limit";

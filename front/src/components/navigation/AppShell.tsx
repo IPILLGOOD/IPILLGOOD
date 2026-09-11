@@ -99,6 +99,7 @@ function MobileQuickAction() {
   const [open, setOpen] = useState(false);
   const triggerButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const close = () => {
     setOpen(false);
     requestAnimationFrame(() => triggerButton.current?.focus());
@@ -109,8 +110,17 @@ function MobileQuickAction() {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
       if (event.key === "Tab") {
-        event.preventDefault();
-        closeButton.current?.focus();
+        const controls = dialogRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
+        if (!controls?.length) return;
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", closeOnEscape);
@@ -142,6 +152,7 @@ function MobileQuickAction() {
               }}
             >
               <section
+                ref={dialogRef}
                 id="mobile-quick-action-dialog"
                 className="mobile-quick-action__dialog"
                 role="dialog"
@@ -151,15 +162,20 @@ function MobileQuickAction() {
                 <span className="mobile-quick-action__dialog-icon">
                   <Plus size={22} aria-hidden="true" />
                 </span>
-                <h2 id="quick-action-title">빠른 기록을 준비하고 있어요</h2>
-                <p>현구님 알약 등록으로 direction?</p>
+                <h2 id="quick-action-title">무엇을 기록할까요?</h2>
+                <p>필요한 기록 화면으로 바로 이동하세요.</p>
+                <div className="mobile-quick-action__links">
+                  <Link className="button button--secondary" href="/dashboard" onClick={close}>복용 여부 기록</Link>
+                  <Link className="button button--secondary" href="/check-in" onClick={close}>오늘 몸 상태 기록</Link>
+                  <Link className="button button--secondary" href="/documents" onClick={close}>처방전·약봉투 등록</Link>
+                </div>
                 <button
                   ref={closeButton}
                   className="button button--primary"
                   type="button"
                   onClick={close}
                 >
-                  확인
+                  닫기
                 </button>
               </section>
             </div>,

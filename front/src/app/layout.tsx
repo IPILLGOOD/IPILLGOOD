@@ -14,6 +14,7 @@ import "@/styles/landing.css";
 import "@/styles/landing-next.css";
 import "@/styles/not-found.css";
 import "@/styles/design-refresh.css";
+import "@/styles/refinement.css";
 import "@/styles/experience-refresh.css";
 import "@/styles/approved-patterns.css";
 

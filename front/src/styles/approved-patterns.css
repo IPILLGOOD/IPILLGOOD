@@ -12,7 +12,7 @@
   width: 2.75rem;
   min-height: 2.75rem;
   place-items: center;
-  color: #8b95a1;
+  color: var(--color-text-muted);
 }
 
 .today-tasks-heading__more:hover {
@@ -41,7 +41,7 @@
 
 .experience-shell .today-task__medicine small {
   margin-top: 0.35rem;
-  color: #6b7684;
+  color: var(--color-text-secondary);
   font-size: 0.87rem;
   overflow-wrap: anywhere;
   white-space: normal;
@@ -96,12 +96,12 @@
 
 .experience-shell .nutrition-results-heading p {
   margin: 0.45rem 0 0;
-  color: #6b7684;
+  color: var(--color-text-secondary);
   font-size: 0.9rem;
 }
 
 .experience-shell .nutrition-results-heading > span {
-  color: #8b95a1;
+  color: var(--color-text-muted);
   font-size: 1rem;
 }
 
@@ -135,7 +135,7 @@
 }
 
 .experience-shell .nutrition-resource__content > small {
-  color: #8b95a1;
+  color: var(--color-text-muted);
   font-size: 0.8rem;
 }
 
@@ -170,7 +170,7 @@
 }
 
 .checkin-step-progress span {
-  color: #6b7684;
+  color: var(--color-text-secondary);
   font-size: 1rem;
   font-variant-numeric: tabular-nums;
 }
@@ -213,7 +213,7 @@
 
 .checkin-step-card > p {
   margin: 0.9rem 0 2rem;
-  color: #6b7684;
+  color: var(--color-text-secondary);
   font-size: 0.95rem;
 }
 
@@ -335,7 +335,7 @@
 .checkin-complete__description {
   max-width: 38rem;
   margin: .8rem 0 2rem;
-  color: #6b7684;
+  color: var(--color-text-secondary);
   line-height: 1.7;
 }
 
@@ -353,7 +353,7 @@
 }
 
 .checkin-complete__summary > div:last-child { border-bottom: 0; }
-.checkin-complete__summary dt { color: #8b95a1; }
+.checkin-complete__summary dt { color: var(--color-text-muted); }
 .checkin-complete__summary dd { margin: 0; color: #333d4b; font-weight: 700; }
 .checkin-complete__actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 2rem; }
 
@@ -409,3 +409,5 @@
   .checkin-complete__actions { display: grid; grid-template-columns: 1fr; }
   .checkin-complete__actions .button { width: 100%; }
 }
+.mobile-quick-action__links { display: grid; gap: .75rem; width: 100%; margin-bottom: .75rem; }
+.mobile-quick-action__dialog { max-height: calc(100dvh - 2rem); overflow-y: auto; }

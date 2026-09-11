@@ -1306,6 +1306,7 @@
   font-size: 0.9rem;
 }
 
+.checkin-signal-card { margin: 0; }
 
 .dashboard-medications-card .medication-row {
   grid-template-columns: auto minmax(0, 1fr);
@@ -2448,6 +2449,37 @@
   font-weight: 700;
 }
 
+.analysis-medication-simple {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analysis-medication-simple li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.85rem;
+}
+
+.analysis-medication-simple strong {
+  color: var(--color-primary-900);
+}
+
+.analysis-medication-simple span {
+  border-radius: 999px;
+  background: var(--color-sage-50);
+  color: var(--color-primary-700);
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .medication-evidence {
   margin: var(--space-5) 0;
   border-top: 1px solid var(--color-border);
@@ -2806,6 +2838,97 @@
   gap: var(--space-3);
 }
 
+.medication-draft-review__list > .medication-draft-candidate {
+  animation: medication-step-enter 220ms ease-out;
+}
+
+.medication-review-stepper {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: var(--space-2) 0;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.medication-review-stepper li {
+  display: flex;
+  align-items: center;
+  flex: 1 0 3.25rem;
+}
+
+.medication-review-stepper li:not(:last-child)::after {
+  width: 100%;
+  height: 2px;
+  content: "";
+  background: var(--color-border);
+  transition: background-color 180ms ease;
+}
+
+.medication-review-stepper li.is-complete::after {
+  background: var(--color-primary-600);
+}
+
+.medication-review-stepper button {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 2.25rem;
+  place-items: center;
+  border: 2px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: default;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.medication-review-stepper li.is-complete button {
+  border-color: var(--color-primary-600);
+  background: var(--color-primary-700);
+  color: white;
+  cursor: pointer;
+}
+
+.medication-review-stepper li.is-current button {
+  border-color: var(--color-primary-700);
+  background: var(--color-sage-50);
+  color: var(--color-primary-800);
+  transform: scale(1.08);
+  box-shadow: 0 0 0 4px var(--color-sage-100);
+}
+
+.medication-review-stepper button:focus-visible {
+  outline: 2px solid var(--color-primary-700);
+  outline-offset: 3px;
+}
+
+@keyframes medication-step-enter {
+  from {
+    opacity: 0;
+    transform: translateX(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .medication-draft-review__list > .medication-draft-candidate {
+    animation: none;
+  }
+
+  .medication-review-stepper button,
+  .medication-review-stepper li::after {
+    transition: none;
+  }
+}
+
 .medication-draft-candidate {
   display: grid;
   gap: var(--space-3);
@@ -2816,14 +2939,18 @@
 }
 
 .medication-draft-candidate legend {
+  width: 100%;
   color: var(--color-primary-800);
   padding: 0 var(--space-2);
   font-size: 0.76rem;
   font-weight: 800;
 }
 
-.medication-draft-empty,
-.medication-draft-candidate__verification {
+.medication-draft-candidate legend span {
+  margin-right: var(--space-2);
+}
+
+.medication-draft-empty {
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
@@ -2831,6 +2958,18 @@
   background: var(--color-warning-bg);
   color: var(--color-warning);
   padding: var(--space-3);
+}
+
+.medication-draft-candidate__verification {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 0.7rem 0.8rem;
+  cursor: pointer;
 }
 
 .medication-draft-empty p,
@@ -2844,7 +2983,8 @@
   width: 1.15rem;
   height: 1.15rem;
   flex: 0 0 auto;
-  margin-top: 0.1rem;
+  margin: 0;
+  accent-color: var(--color-primary-700);
 }
 
 .medication-draft-candidate__verification small {
@@ -2867,14 +3007,27 @@
 }
 
 .medication-draft-candidate__include {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-3);
+  justify-self: start;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.medication-draft-candidate__include.is-selected {
+  border-color: var(--color-primary-500);
+  background: var(--color-sage-50);
+  color: var(--color-primary-800);
 }
 
 .medication-draft-candidate__include input {
-  width: 1.15rem;
-  height: 1.15rem;
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .medication-draft-candidate__include strong,
@@ -2928,13 +3081,18 @@
 }
 
 .medication-draft-summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
+  display: none;
+  justify-content: flex-end;
+}
+
+.medication-draft-summary.is-visible {
+  display: flex;
+}
+
+.medication-draft-navigation {
+  display: flex;
+  justify-content: space-between;
   gap: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-sage-50);
-  padding: var(--space-4);
 }
 
 .medication-draft-summary > svg {
@@ -3236,6 +3394,10 @@
   .medication-draft-summary .button {
     grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .medication-draft-navigation .button {
+    flex: 1;
   }
 
   .today-task {

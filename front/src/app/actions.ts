@@ -25,6 +25,7 @@ import {
   saveDailyCheckIn,
   saveDoseResponse,
   saveWellbeingCheckIn,
+  stopMedicationPlan,
   updateRecipientProfile,
   type ActionState,
   type QuestionSetAvailability,
@@ -863,5 +864,28 @@ export async function refreshMedicationExplanationAction(
       status: "error",
       message: "쉬운 설명을 만들지 못했어요. 잠시 후 다시 시도해주세요.",
     };
+  }
+}
+
+export async function stopMedicationAction(_state: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const guard = await demoWriteGuard();
+    if (guard) return guard;
+    const session = await getSession();
+    if (!session) return { status: "error", message: "로그인 정보가 만료되었어요." };
+    const scope = careScopeFor(session);
+    const profileGuard = await completedProfileGuard(scope);
+    if (profileGuard) return profileGuard;
+    const medicationPlanId = String(formData.get("medicationPlanId") ?? "");
+    const expectedRevision = Number(formData.get("expectedRevision"));
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+      return { status: "error", message: "최신 복용약 목록을 다시 불러와주세요." };
+    }
+    await stopMedicationPlan(scope, medicationPlanId, expectedRevision);
+    for (const path of ["/medications", "/dashboard", "/today", "/report"]) revalidatePath(path);
+    return { status: "success", message: "복용약 목록에서 뺐어요. 이전 기록은 유지돼요." };
+  } catch (error) {
+    if (error instanceof CareConflictError) return { status: "error", conflict: true, message: "다른 화면에서 기록이 변경됐어요. 새로고침한 뒤 다시 시도해주세요." };
+    return { status: "error", message: "복용약을 빼지 못했어요. 목록을 새로고침한 뒤 다시 시도해주세요." };
   }
 }

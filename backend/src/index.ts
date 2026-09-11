@@ -24,6 +24,7 @@ export {
   saveDailyCheckIn,
   saveDoseResponse,
   saveWellbeingCheckIn,
+  stopMedicationPlan,
   updateDocumentDiagnoses,
   updateRecipientProfile,
   type CareDataScope,

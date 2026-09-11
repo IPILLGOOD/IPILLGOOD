@@ -17,20 +17,6 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { supportedNutritionDiagnoses } from "@/lib/nutrition-presentation";
 import type { ClinicalDocument, DocumentAnalysis } from "@care-atlas/backend";
 
-const evidenceLabels = {
-  productName: "제품명",
-  ingredientName: "성분명",
-  itemCode: "품목기준코드(이전 형식)",
-  mfdsItemSeq: "품목기준코드",
-  insuranceCode: "보험코드",
-  doseAmount: "1회 복용량",
-  frequency: "복용 횟수",
-  timing: "복용 시점",
-  startDate: "시작일",
-  endDate: "종료일",
-  supplyDays: "투약일수",
-} as const;
-
 export function DocumentAnalysisResult({
   analysis,
   documentId,
@@ -46,6 +32,7 @@ export function DocumentAnalysisResult({
   medicationRegistration?: "draft" | "pending" | "merged";
   onDiagnosesSaved?: (document: ClinicalDocument) => void;
 }) {
+  const isMedicationDocument = analysis.documentType !== "진단서";
   const analysisSource =
     analysis.source === "api"
       ? "외부 API 문서 분석"
@@ -72,19 +59,19 @@ export function DocumentAnalysisResult({
           <Badge tone={analysis.source === "demo" ? "info" : "success"}>
             {analysisSource}
           </Badge>
-          <h3 id="analysis-result-title">{analysis.documentType} 분석 결과</h3>
-          <p>{analysis.summary}</p>
+          <h3 id="analysis-result-title">분석 결과</h3>
+          {!isMedicationDocument ? <p>{analysis.summary}</p> : null}
         </div>
       </div>
 
-      <dl className="analysis-findings">
+      {!isMedicationDocument ? <dl className="analysis-findings">
         {analysis.findings.map((finding) => (
           <div key={`${finding.label}-${finding.value}`}>
             <dt>{finding.label}</dt>
             <dd>{finding.value}</dd>
           </div>
         ))}
-      </dl>
+      </dl> : null}
 
       {analysis.extraction?.status !== undefined &&
       analysis.extraction.status !== "complete" ? (
@@ -105,7 +92,7 @@ export function DocumentAnalysisResult({
         </div>
       ) : null}
 
-      {analysis.documentType !== "진단서" && analysis.medications?.length ? (
+      {isMedicationDocument && analysis.medications?.length ? (
         <div
           className={`disease-lookup-status disease-lookup-status--${medicationRegistration === "pending" || requiresMedicationVerification ? "failed" : requiresPeriodReview ? "not_configured" : "official_match"}`}
           role="status"
@@ -132,94 +119,25 @@ export function DocumentAnalysisResult({
             {medicationRegistration === "merged"
               ? "기존 복약 계획을 유지하고 중복 일정과 알림은 만들지 않았어요."
               : medicationRegistration === "pending"
-                ? "등록 방식을 선택하기 전에는 복약 초안·오늘 일정·알림을 만들지 않아요."
+                ? "등록 방식을 선택해주세요."
                 : requiresMedicationVerification
-                  ? `OCR 또는 공식 정보 대조가 필요한 약 ${medicationsNeedingReview}개는 원본과 모든 값을 대조한 기록이 있어야 활성화할 수 있어요.`
-                  : requiresPeriodReview
-                    ? "처방일과 총 투약일수를 원본에서 확인하고 확정하기 전에는 약을 활성화하지 않아요."
-                    : `문서에서 약 ${analysis.medications.length}개를 찾았어요. 아래에서 검토하고 확정하기 전에는 복약 일정에 반영되지 않아요.`}
+                  ? `확인이 필요한 약 ${medicationsNeedingReview}개가 있어요.`
+                : requiresPeriodReview
+                  ? "복용 기간을 확인해주세요."
+                    : "아래에서 확인해주세요."}
           </p>
         </div>
       ) : null}
 
-      {analysis.documentType !== "진단서" && analysis.medications?.length ? (
-        <section
-          className="medication-evidence"
-          aria-labelledby="medication-evidence-title"
-        >
-          <div className="medication-evidence__heading">
-            <h4 id="medication-evidence-title">
-              약별 OCR 근거와 공식 정보 대조
-            </h4>
-            <p>원문의 같은 부분을 보면서 제품명·복용법을 확인해주세요.</p>
-          </div>
-          <div className="medication-evidence__list">
-            {analysis.medications.map((medication, index) => (
-              <article
-                className="medication-evidence__item"
-                key={`${medication.productName}-${index}`}
-              >
-                <header>
-                  <div>
-                    <span>약 {index + 1}</span>
-                    <h5>{medication.productName}</h5>
-                  </div>
-                  <Badge
-                    tone={
-                      medication.reviewStatus === "verified" ||
-                      medication.reviewStatus === "human_confirmed"
-                        ? "success"
-                        : "warning"
-                    }
-                  >
-                    {medication.reviewStatus === "verified"
-                      ? "공식 대조 완료"
-                      : medication.reviewStatus === "human_confirmed"
-                        ? "보호자 대조 완료"
-                        : "확인 필요"}
-                  </Badge>
-                </header>
-                <dl>
-                  {(medication.fieldEvidence ?? []).map((evidence) => (
-                    <div key={`${evidence.field}-${evidence.sourceText}`}>
-                      <dt>{evidenceLabels[evidence.field]}</dt>
-                      <dd>
-                        <q>{evidence.sourceText}</q>
-                        {evidence.confidence !== undefined ||
-                        evidence.region ? (
-                          <small>
-                            {evidence.confidence !== undefined
-                              ? `신뢰도 ${Math.round(evidence.confidence * 100)}%`
-                              : "원문에서 추출"}
-                            {evidence.region
-                              ? ` · ${evidence.region.page}쪽 위치 ${Math.round(evidence.region.x * 100)}, ${Math.round(evidence.region.y * 100)}%`
-                              : ""}
-                          </small>
-                        ) : null}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                {medication.verification?.officialProductName ? (
-                  <p className="medication-evidence__official">
-                    식약처 {medication.verification.officialItemCode}:{" "}
-                    {medication.verification.officialProductName}
-                    {medication.verification.officialIngredientName
-                      ? ` · ${medication.verification.officialIngredientName}`
-                      : ""}
-                  </p>
-                ) : null}
-                {medication.verification?.warnings.length ? (
-                  <ul className="medication-evidence__warnings">
-                    {medication.verification.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </section>
+      {isMedicationDocument && analysis.medications?.length ? (
+        <ol className="analysis-medication-simple" aria-label="문서에서 찾은 약">
+          {analysis.medications.map((medication, index) => (
+            <li key={`${medication.productName}-${index}`}>
+              <strong>약 {index + 1}</strong>
+              <span>{medication.reviewStatus === "verified" ? "확인됨" : "확인 필요"}</span>
+            </li>
+          ))}
+        </ol>
       ) : null}
 
       <div className="analysis-columns">

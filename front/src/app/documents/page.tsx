@@ -1,4 +1,4 @@
-import { FileCheck2, FileClock, FileText, ShieldCheck } from "lucide-react";
+import { ShieldCheck, FileCheck2, FileClock, FileText } from "lucide-react";
 
 import { DocumentUploadForm } from "@/components/documents/DocumentUploadForm";
 import { DiagnosisDraftReview } from "@/components/documents/DiagnosisDraftReview";

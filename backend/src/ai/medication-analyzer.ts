@@ -182,6 +182,10 @@ async function enrichMedicationVerification(
       const officialReason = officialReviewReason(official, officialWarnings);
       return {
         ...medication,
+        ...(matched && officialWarnings.length === 0 ? {
+          productName: official.item.productName,
+          ingredientName: official.item.ingredientName || medication.ingredientName,
+        } : {}),
         mfdsItemSeq,
         itemCode: mfdsItemSeq,
         reviewStatus: verified ? "verified" as const : "needs_review" as const,
@@ -196,7 +200,7 @@ async function enrichMedicationVerification(
               ? "mismatch" as const
               : official.status,
           sourceLabel: "식약처 의약품 제품 허가정보",
-          ...(matched ? {
+          ...(matched && officialWarnings.length === 0 ? {
             officialItemCode: official.item.itemSeq,
             officialProductName: official.item.productName,
             officialIngredientName: official.item.ingredientName,

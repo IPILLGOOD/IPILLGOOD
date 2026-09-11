@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CalendarDays, CheckCircle2, CircleHelp } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, CircleHelp, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useRef, useState, type KeyboardEvent, type UIEvent } from "react";
 
@@ -8,6 +8,7 @@ import { refreshMedicationExplanationAction } from "@/app/actions";
 import { FormMessage } from "@/components/ui/FormMessage";
 import { Badge } from "@/components/ui/Badge";
 import type { ActionState } from "@care-atlas/backend";
+import { stopMedicationAction } from "@/app/actions";
 
 export type MedicationCabinetItem = {
   id: string;
@@ -141,6 +142,9 @@ export function MedicationCabinet({ medications, detailBase = "/medications", re
             <Link className="medicine-cabinet__detail-link" href={`${detailBase}/${medication.id}`}>
               상세 정보 보기 <ArrowRight size={17} aria-hidden="true" />
             </Link>
+            {detailBase === "/medications" && revision !== undefined ? (
+              <MedicationStop medicationId={medication.id} productName={medication.productName} revision={revision} key={medication.id} />
+            ) : null}
           </header>
 
           <div className="medicine-cabinet__purpose">
@@ -183,6 +187,18 @@ export function MedicationExplanationRefresh({ medicationId, itemSeq, revision, 
     <input type="hidden" name="itemSeq" value={itemSeq} />
     <input type="hidden" name="expectedRevision" value={revision} />
     <button className="button button--secondary" type="submit" disabled={pending}>{pending ? "설명 만드는 중…" : label}</button>
+    <FormMessage state={state} />
+  </form>;
+}
+
+function MedicationStop({ medicationId, productName, revision }: { medicationId: string; productName: string; revision: number }) {
+  const [state, action, pending] = useActionState(stopMedicationAction, { status: "idle" as const, message: "" });
+  return <form action={action}>
+    <input type="hidden" name="medicationPlanId" value={medicationId} />
+    <input type="hidden" name="expectedRevision" value={revision} />
+    <button className="button button--secondary" type="submit" aria-label={`${productName} 복용약에서 빼기`} disabled={pending}>
+      <Trash2 size={16} aria-hidden="true" /> {pending ? "목록에서 빼는 중…" : "복용약에서 빼기"}
+    </button>
     <FormMessage state={state} />
   </form>;
 }

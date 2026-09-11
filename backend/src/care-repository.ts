@@ -832,6 +832,28 @@ export async function updateMedicationExplanation(
   );
 }
 
+export async function stopMedicationPlan(
+  scope: CareDataScope,
+  medicationPlanId: string,
+  expectedRevision?: number,
+) {
+  if (!/^[^/]{1,256}$/.test(medicationPlanId)) throw new Error("올바르지 않은 복용약 식별자입니다.");
+  return mutateCare(scope, undefined, async (tx, snapshot, ref) => {
+    const medication = snapshot.medications.find((item) => item.id === medicationPlanId);
+    if (!medication) throw new Error("복용약을 찾을 수 없어요.");
+    if (medication.status !== "active") return { snapshot, result: snapshot, unchanged: true };
+    const stopped: MedicationPlan = { ...medication, status: "ended", endDate: dateKeyInSeoul() };
+    tx.set(ref.collection("medicationPlans").doc(medication.id), stopped);
+    return {
+      snapshot: {
+        ...snapshot,
+        medications: snapshot.medications.map((item) => item.id === medication.id ? stopped : item),
+      },
+      result: snapshot,
+    };
+  }, { affectsMedications: true, requiresConsent: true, expectedRevision });
+}
+
 export interface UpdateDocumentDiagnosesInput {
   documentId: string;
   expectedAnalysisRevision: number;
