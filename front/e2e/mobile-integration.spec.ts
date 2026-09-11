@@ -92,7 +92,7 @@ test("mobile: nutrition handles configuration, success, refresh failure and retr
   await expect(page).toHaveURL(/\/today$/);
   await page.goto("/nutrition");
   await page.getByRole("button", { name: "관련 자료 찾기", exact: true }).click();
-  await expect(page.locator(".nutrition-search-status")).toContainText("설정");
+  await expect(page.locator(".nutrition-search-status")).toContainText("현재 자료 검색을 시작할 수 없어요");
   let call = 0;
   await page.route("**/api/nutrition/explore", async (route) => {
     call++;
@@ -108,5 +108,5 @@ test("mobile: nutrition handles configuration, success, refresh failure and retr
   await expect(page.getByRole("button", { name: "자료 다시 확인", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "자료 다시 확인", exact: true }).click();
   await expect(page.locator(".nutrition-resource")).toHaveCount(1);
-  expect(call).toBe(3);
+  await expect.poll(() => call).toBe(3);
 });
