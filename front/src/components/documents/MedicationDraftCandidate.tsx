@@ -76,7 +76,7 @@ export function MedicationDraftCandidate({
             })}
           />
           <span>
-            <strong>원본 처방전과 모든 입력값을 대조했어요</strong>
+            <strong>원본 처방전·약봉투와 모든 입력값을 대조했어요</strong>
             <small>자동 대조가 끝나지 않은 값은 이 확인 기록이 있어야 활성화할 수 있어요.</small>
           </span>
         </label>

@@ -94,6 +94,7 @@ export interface OfficialMedicationConsumerInfo {
 export interface OfficialMedicationPlainExplanation {
   categoryPlain: string;
   overview: string;
+  commonEffects: string[];
   usagePlain: string;
   safetyPlain: string;
   genePlain: string;
@@ -294,7 +295,9 @@ export function parseProductPermitResponse(
       itemSeq,
       productName,
       englishName: plainOfficialText(item.ITEM_ENG_NAME),
-      ingredientName: plainOfficialText(item.ITEM_INGR_NAME),
+      ingredientName: plainOfficialText(
+        item.ITEM_INGR_NAME ?? item.MAIN_INGR_ENG ?? item.MAIN_ITEM_INGR ?? item.INGR_NAME,
+      ),
       manufacturer: plainOfficialText(item.ENTP_NAME),
       classification: plainOfficialText(item.SPCLTY_PBLC),
       productType: plainOfficialText(item.PRDUCT_TYPE),
@@ -396,7 +399,7 @@ export async function verifyOfficialMedicationCode(
   if (!apiKey) return { status: "not_configured", sourceUrl: PRODUCT_SOURCE_URL };
 
   const endpoint = new URL(
-    `${(options.productApiUrl ?? process.env.MFDS_PRODUCT_API_URL ?? DEFAULT_PRODUCT_API_URL).replace(/\/$/, "")}/getDrugPrdtPrmsnInq07`,
+    `${(options.productApiUrl ?? process.env.MFDS_PRODUCT_API_URL ?? DEFAULT_PRODUCT_API_URL).replace(/\/$/, "")}/getDrugPrdtPrmsnDtlInq06`,
   );
   endpoint.searchParams.set("serviceKey", normalizedServiceKey(apiKey));
   endpoint.searchParams.set("pageNo", "1");
@@ -408,7 +411,24 @@ export async function verifyOfficialMedicationCode(
     const format = options.format ?? "json";
     const payload = await fetchOfficialPayload(endpoint, format, options.fetcher ?? fetch);
     const parsed = parseProductPermitResponse(payload, format, "product_name");
-    const item = parsed.items.find((candidate) => candidate.itemSeq === normalizedCode);
+    const detail = parseProductPermitDetailResponse(payload, format).items
+      .find((candidate) => candidate.itemSeq === normalizedCode);
+    const matchedItem = parsed.items.find((candidate) => candidate.itemSeq === normalizedCode);
+    const item = matchedItem && detail ? {
+      ...matchedItem,
+      consumerInfo: {
+        source: "product_permit" as const,
+        efficacy: detail.efficacy,
+        usage: detail.usage,
+        warning: "",
+        precautions: detail.precautions,
+        interactions: "",
+        adverseEffects: "",
+        storage: detail.storage,
+        openedAt: "",
+        updatedAt: "",
+      },
+    } : matchedItem;
     return item
       ? { status: "matched", item, sourceUrl: PRODUCT_SOURCE_URL }
       : { status: "not_found", sourceUrl: PRODUCT_SOURCE_URL };

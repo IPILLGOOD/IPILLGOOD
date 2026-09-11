@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./dates": "./src/dates.ts"
+    "./dates": "./src/dates.ts",
+    "./nutrition-exploration": "./src/nutrition-exploration.ts",
+    "./nutrition-search-errors": "./src/nutrition-search-errors.ts",
+    "./ai/nutrition-exploration": "./src/ai/nutrition-exploration.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.pill.json --incremental false",

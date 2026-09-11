@@ -137,7 +137,7 @@ async function enrichMedicationVerification(
   analysis: DocumentAnalysis,
   verifyCode: typeof verifyOfficialMedicationCode,
 ): Promise<DocumentAnalysis> {
-  if (analysis.documentType !== "처방전") return analysis;
+  if (analysis.documentType === "진단서") return analysis;
   if (analysis.source === "demo") {
     return {
       ...analysis,
@@ -354,13 +354,13 @@ function analysisMissingFields(analysis: DocumentAnalysis): string[] {
 
 function extractionReview(analysis: DocumentAnalysis): DocumentExtractionReview {
   const missingFields = analysisMissingFields(analysis);
-  const hasPrimaryEntity = analysis.documentType === "처방전"
+  const hasPrimaryEntity = analysis.documentType !== "진단서"
     ? (analysis.medications?.length ?? 0) > 0
     : diagnosisCandidates(analysis).length > 0;
   return {
     status: !hasPrimaryEntity ? "failed" : missingFields.length > 0 ? "partial" : "complete",
     issues: !hasPrimaryEntity
-      ? [analysis.documentType === "처방전" ? "medication_not_found" : "diagnosis_not_found"]
+      ? [analysis.documentType !== "진단서" ? "medication_not_found" : "diagnosis_not_found"]
       : missingFields.length > 0
         ? ["missing_field"]
         : [],
@@ -469,7 +469,7 @@ function mergeDocumentAnalyses(
 }
 
 function withStructuredEvidenceFindings(analysis: DocumentAnalysis): DocumentAnalysis {
-  const evidenceNames = analysis.documentType === "처방전"
+  const evidenceNames = analysis.documentType !== "진단서"
     ? (analysis.medications ?? []).map((medication) => medication.productName.trim())
     : diagnosisCandidates(analysis).map((diagnosis) => diagnosis.name);
   const existingText = analysis.findings.map((finding) => finding.value).join(" ");
@@ -483,7 +483,7 @@ function withStructuredEvidenceFindings(analysis: DocumentAnalysis): DocumentAna
     findings: [
       ...analysis.findings,
       {
-        label: analysis.documentType === "처방전" ? "확인된 약 이름" : "확인된 진단명",
+        label: analysis.documentType !== "진단서" ? "확인된 약 이름" : "확인된 진단명",
         value: missingNames.join(", "),
       },
     ],

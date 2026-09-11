@@ -7,6 +7,7 @@ import {
   currentDailyCheckIn,
 } from "./care-read-model.ts";
 import {
+  addMedicationPlan,
   CareConflictError,
   confirmDocumentDiagnoses,
   createInitialCareSnapshot,
@@ -23,6 +24,7 @@ import {
   registerDocument,
   saveDocumentImportReview,
   updateDocumentDiagnoses,
+  updateMedicationExplanation,
   updateRecipientProfile,
   rebuildCareReadModel,
   deleteDocument,
@@ -1239,4 +1241,72 @@ test("중복 선택 대기 분석을 같은 요청에서 재사용해 AI 재실�
     (await getDocumentImportReview(scope, reviewInput.requestIdempotencyKey, reviewInput.contentHash))?.duplicateCandidates,
     duplicateCandidates,
   );
+});
+
+const searchedMedicationInput = {
+  itemSeq: "999999999", productName: "합성 검색약", ingredientName: "합성 성분",
+  purposePlain: "공식 허가정보를 쉽게 풀어쓴 설명", descriptionPlain: "식약처 원문에 근거한 일반적인 사용 안내",
+  commonEffects: ["어지럽게 느껴질 수 있어요."],
+  doseAmount: "1정", frequency: "하루 2회", timing: "아침·저녁 식사 후",
+  startDate: "2026-01-01", confirmedBy: "합성 보호자",
+};
+
+test("검색 약 추가는 동의와 revision을 지키고 현재 약과 복약 일정에 반영한다", async () => {
+  const scope = { recipientId: "google-search-add", firestore: new MemoryFirestore() };
+  await assert.rejects(addMedicationPlan(scope, searchedMedicationInput, 0), /동의/);
+  const before = await consentedSnapshot(scope);
+  await addMedicationPlan(scope, searchedMedicationInput, before.revision);
+  const after = await getCareSnapshot(scope);
+  assert.equal(after.medications.length, 1);
+  assert.equal(after.medications[0]?.productName, "합성 검색약");
+  assert.equal(after.medications[0]?.purposePlain, "공식 허가정보를 쉽게 풀어쓴 설명");
+  assert.equal(after.revision, before.revision + 1);
+  assert.equal(createMedicationSchedule(after.medications, [], new Date("2026-09-09T03:00:00Z")).length, 2);
+  await assert.rejects(addMedicationPlan(scope, searchedMedicationInput, after.revision), /이미 복용 중/);
+  await assert.rejects(addMedicationPlan(scope, { ...searchedMedicationInput, itemSeq: "888888888" }, before.revision), CareConflictError);
+  assert.equal((await getCareSnapshot(scope)).medications.length, 1);
+});
+
+test("검색 약 추가는 잘못된 날짜와 품목코드를 저장하지 않는다", async () => {
+  const scope = { recipientId: "google-search-invalid", firestore: new MemoryFirestore() };
+  const before = await consentedSnapshot(scope);
+  for (const patch of [{ startDate: "2026-02-30" }, { endDate: "2025-12-31" }, { itemSeq: "abc999999999" }]) {
+    await assert.rejects(addMedicationPlan(scope, { ...searchedMedicationInput, ...patch }, before.revision));
+  }
+  assert.equal((await getCareSnapshot(scope)).revision, before.revision);
+  assert.deepEqual((await getCareSnapshot(scope)).medications, []);
+});
+
+test("기존 검색 약의 일정과 복용 기록을 유지하며 쉬운 설명만 갱신한다", async () => {
+  const scope = { recipientId: "google-search-explanation", firestore: new MemoryFirestore() };
+  const before = await consentedSnapshot(scope);
+  const medication = await addMedicationPlan(scope, searchedMedicationInput, before.revision);
+  const added = await getCareSnapshot(scope);
+  await updateMedicationExplanation(scope, {
+    medicationId: medication.id,
+    itemSeq: searchedMedicationInput.itemSeq,
+    categoryPlain: "혈압약",
+    purposePlain: "혈압을 조절하는 데 일반적으로 사용돼요.",
+    descriptionPlain: "식약처 허가정보에 있는 용법을 쉬운 말로 정리했어요.",
+    commonEffects: ["얼굴이 화끈하게 느껴질 수 있어요."],
+  }, added.revision);
+  const after = await getCareSnapshot(scope);
+  assert.equal(after.medications[0]?.purposePlain, "혈압을 조절하는 데 일반적으로 사용돼요.");
+  assert.deepEqual(after.medications[0]?.commonEffects, ["얼굴이 화끈하게 느껴질 수 있어요."]);
+  assert.equal(after.medications[0]?.frequency, searchedMedicationInput.frequency);
+  assert.equal(after.medications[0]?.id, medication.id);
+});
+
+test("약봉투와 통합 문서 유형도 복약 검토 초안을 만들고 확정 전에는 약을 활성화하지 않는다", async () => {
+  for (const documentType of ["약봉투", "처방전 또는 약봉투"] as const) {
+    const scope = { recipientId: `google-bag-${documentType.length}`, firestore: new MemoryFirestore() };
+    await consentedSnapshot(scope);
+    const input = prescriptionUpload("bag");
+    const document = await registerDocument(scope, { ...input, documentType, analysis: { ...input.analysis, documentType } });
+    const draft = await getMedicationPlanDraft(scope, document.medicationDraftId!);
+    assert.equal(draft?.candidates.length, 2);
+    assert.equal(draft?.state, "needs_review");
+    assert.equal(document.status, "needs_review");
+    assert.deepEqual((await getCareSnapshot(scope)).medications, []);
+  }
 });

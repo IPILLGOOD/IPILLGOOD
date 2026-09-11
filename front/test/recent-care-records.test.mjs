@@ -55,7 +55,7 @@ test("timeline and report distinguish self reports from third-party evidence", (
   ];
   assert.match(careTimelineItems([], events)[0].detail, /전달받아 확인/);
   assert.deepEqual(observationEvidenceCounts(events), [
-    { label: "어르신 자가보고", count: 1 },
+    { label: "이용자 자가보고", count: 1 },
     { label: "보호자가 전달받아 확인", count: 1 },
   ]);
 });

@@ -146,7 +146,7 @@ export function MedicationDraftReview({ draft }: { draft: MedicationPlanDraft })
       {candidates.length === 0 ? (
         <div className="medication-draft-empty" role="status">
           <TriangleAlert size={20} aria-hidden="true" />
-          <p><strong>자동으로 찾은 약이 없어요.</strong> 원본 처방전을 보며 약을 직접 추가해주세요.</p>
+          <p><strong>자동으로 찾은 약이 없어요.</strong> 원본 처방전·약봉투를 보며 약을 직접 추가해주세요.</p>
         </div>
       ) : null}
 
