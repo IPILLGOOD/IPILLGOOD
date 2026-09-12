@@ -4,6 +4,17 @@
 
 > 처방전 한 장을, 오늘의 돌봄으로.
 
+## 현재 배포 상태 · 2026-09-13
+
+[운영 PWA](https://ipillgood.wkddudgk4869.workers.dev/)는 Cloudflare Workers에서 실행됩니다. 최근 앱 배포는 **2026-09-13 05:14 KST**, Worker 버전은 `f430db9d-abbe-4e14-96a8-bbee9793c152`입니다.
+
+- 하단 메뉴: **오늘 할 일 · 복용약 · 빠른 이동 · 식사/영양 · 프로필**. 가운데 빠른 이동에서 복약·몸 상태 기록, 문서 등록, 사진으로 약 검색을 엽니다.
+- PWA 헤더와 상태 표시줄 배경을 흰색으로 맞추고, 하단 메뉴는 홈 인디케이터 영역까지 채웁니다. 중복 하단 패딩과 과한 장식을 줄였습니다.
+- 화면 맨 위에서 아래로 당기면 새로고침합니다. 복약 알림 설정과 연결 상태는 **프로필**에서 확인합니다.
+- Google 로그인 오류·시간 초과 후 **다시 시도**할 수 있고, 로딩 중에도 **로그인 화면 새로고침**으로 복구할 수 있습니다. Safari가 이전 로그인 화면을 복원할 때도 버튼이 다시 활성화됩니다.
+
+최근 검증: 단위 검사 **739개**, 타입 검사·린트·프로덕션 빌드, Firebase Emulator 계약 검사 **14개**, Chromium/WebKit 브라우저 검사 **40개**, 별도 계정 생애주기 검사 **1개** 통과. 전체 검증은 한 번 실행했고, 새 로그인 검사의 선택자 충돌을 수정한 뒤 해당 4개만 같은 앱 빌드에서 재검사했습니다. 실제 Google 계정의 OAuth 완료, iPhone 설치형 PWA의 시스템 바·손가락 제스처는 이 자동 검증 범위에 포함하지 않습니다.
+
 ## 팀 소개
 
 | <a href="https://github.com/hongjiyeon56"><img src="https://avatars.githubusercontent.com/u/237960924?s=120&v=4" width="80" height="80" alt="홍지연 GitHub 프로필 사진"></a> | <a href="https://github.com/dkim1112"><img src="https://avatars.githubusercontent.com/u/74619981?s=120&v=4" width="80" height="80" alt="김동은 GitHub 프로필 사진"></a> | <a href="https://github.com/kanade012"><img src="https://avatars.githubusercontent.com/u/87456609?s=120&v=4" width="80" height="80" alt="장영하 GitHub 프로필 사진"></a> | <a href="https://github.com/stringnine"><img src="https://avatars.githubusercontent.com/u/179396940?s=120&v=4" width="80" height="80" alt="지현구 GitHub 프로필 사진"></a> |
@@ -23,7 +34,7 @@ IPILLGOOD는 처방전의 어려운 표현을 보호자가 이해할 수 있는 
 
 IPILLGOOD는 이미 존재하는 처방 정보와 공식 의약품 안전 정보를 보호자가 이해할 수 있는 말과 행동으로 바꾸고, 병원 밖에서 발생하는 실제 복용 여부와 몸 상태를 기록해 다음 진료로 연결하는 도구입니다.
 
-## 1차 MVP에서 실제로 되는 것
+## 현재 사용할 수 있는 기능
 
 1. **돌봄 대시보드** — 현재 복용약, 복용량·횟수·기간, 7일 기록, 의료진 질문을 한 화면에서 확인
 2. **쉬운 약 설명** — 전문용어 대신 약의 일반적인 쓰임과 보호자가 살펴볼 변화를 구분해 표시
@@ -33,13 +44,17 @@ IPILLGOOD는 이미 존재하는 처방 정보와 공식 의약품 안전 정보
 6. **Care Report** — 약 변경과 증상을 인과관계로 단정하지 않고 시간순 기록과 상담 질문으로 정리
 7. **식약처 공식 정보 검색** — 제품명·성분명을 제품 허가정보에서 통합 검색하고, 일반의약품은 e약은요, 전문의약품은 제품 허가 상세의 효능·용법·주의사항을 연결해 확인. 공식 원문이 있으면 OpenAI가 보호자용 쉬운 말 설명을 함께 제공하고 약물유전정보를 선택적으로 보강
 8. **진단서 질병 정보 보강** — 진단명·KCD/ICD 코드를 추출해 건강보험심사평가원 질병정보 API를 우선 조회하고, 미설정·장애·불일치일 때 OpenAI 웹 검색으로 공신력 있는 출처를 보강
-9. **설치형 PWA 복약 알림** — 로그인 후 현재 기기를 등록하면 Chrome·Safari의 Web Push로 복약 시각을 알리고, 운영자 테스트 발송의 기기 표시 여부까지 확인
+9. **설치형 PWA 복약 알림** — 프로필에서 현재 기기를 등록하고 다음 복약 시각과 알림 상태 확인. 발송 접수와 기기 표시 receipt를 구분
+10. **사진으로 약 검색** — 같은 알약의 앞뒤 사진에서 외형·각인을 추출하고 식약처 전체 낱알식별 목록과 비교. 후보·보류·재촬영 상태를 구분하며 약을 확정하거나 자동 등록하지 않음
+11. **식사/영양 자료 탐색** — 사용자가 확인한 질환을 선택해 한국어 병원·학회 자료, 블로그·영상 등의 출처와 요약 확인
+12. **돌봄 연결 코드** — Google 계정 소유자가 프로필에서 코드를 발급하고 별도 기기 한 대를 연결
+13. **회원 탈퇴와 복구** — 탈퇴 즉시 이용·알림 중단, 3개월 내 같은 Google 계정으로 명시적 복구, 기한 후 계정과 돌봄 기록 영구 삭제
 
 Google 계정으로 로그인하면 계정별로 분리된 빈 돌봄 공간을 사용하고, 가입 없이 데모 로그인하면 세션별로 복제된 비식별 샘플로 핵심 흐름을 바로 체험할 수 있습니다. 데모 변경은 다른 방문자에게 보이지 않으며 로그아웃 또는 2시간 만료 후 삭제됩니다. 저장소에 포함된 데모 데이터에는 실제 환자 정보를 사용하지 않습니다.
 
 ## 아키텍처
 
-IPILLGOOD는 인증과 데이터 접근을 서버 경계 안에 두는 Next.js 기반 모노레포입니다. 공개 랜딩·로그인 외 앱 경로는 서명된 세션 쿠키를 확인하며, 브라우저는 Firestore와 외부 API에 직접 접근하지 않습니다.
+IPILLGOOD는 인증과 데이터 접근을 서버 경계 안에 두는 Next.js 기반 모노레포입니다. 공개 랜딩·로그인 외 앱 경로는 서명된 세션 쿠키를 확인하며, 건강 데이터 조회·저장과 외부 분석 API 호출은 서버를 거칩니다. Google 로그인과 Push 권한 요청은 브라우저에서 처리합니다.
 
 ![IPILLGOOD Care Framework](design/generated/ipillgood-care-framework-16x9.png)
 
@@ -95,8 +110,10 @@ flowchart LR
 | 프로필·안부 기록 | Server Action | 세션·소유 범위·데모 모드 확인 → Zod/도메인 검증 → 질문 답변과 복약·증상 기록을 원자적으로 저장 | `questionResponses`, 원본 이벤트, read model |
 | 문서 분석 | `POST /api/documents/analyze` | 세션·5MB·형식 검증 → 분석 어댑터 → 응답 스키마 확인 | 원본이 아닌 메타데이터와 결과 |
 | 공식 약 정보 검색 | `/medications` | 제품명·성분명 통합 조회 → `itemSeq` 기준 e약은요 또는 제품 허가 상세 결합 → 해당 성분의 약물유전정보 보강 → 공식 원문이 있을 때만 쉬운 말 생성 | 없음 |
+| 알약 사진 비교 | `/medications/photo`, `POST /api/pills/analyze` | 브라우저 JPEG 전처리·메타데이터 제거 → 동의·크기 검증 → Vision/양면 OCR → 공식 목록 전체 비교 | 사진·검색 결과는 앱에 저장하지 않음 |
+| 식사/영양 자료 | `/nutrition`, `POST /api/nutrition/explore` | 확정 질환 ID·권한 검증 → 질환명/코드로 검색 → 출처·한국어·접근 가능 여부 검사 | 공개 질환별 결과 24시간 캐시 |
 | 진단서 질병 보강 | 문서 분석 후처리 | HIRA 정확 일치 우선 → 실패한 항목만 허용 도메인 웹 검색 | 분석 결과에 출처 URL 저장 |
-| 복약 알림 | `/today`, Cloudflare Cron | 명시적 권한 요청 → 기기별 Push 구독 → 서울 시간 복약 일정 생성 → 매분 도래 일정 조회·중복 방지 발송 | `pushSubscriptions`, `medicationReminderSchedules`, `pushDeliveries` |
+| 복약 알림 | `/profile`, Cloudflare Cron | 명시적 권한 요청 → 기기별 Push 구독 → 서울 시간 복약 일정 생성 → 매분 도래 일정 조회·중복 방지 발송 | `pushSubscriptions`, `medicationReminderSchedules`, `pushDeliveries` |
 
 ### 보안과 의료 안전 경계
 
@@ -137,7 +154,7 @@ care-atlas/
 
 ## 기술 구성
 
-- Next.js 16 App Router, React 19, TypeScript
+- Node.js 24, Next.js 16.3.4 App Router, React 19.2.8, TypeScript 6.0.2
 - Firebase 프로젝트: `care-atlas-seoul-2026-v3`
 - Cloud Firestore: 서울 `asia-northeast3`
 - Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
@@ -148,45 +165,50 @@ care-atlas/
 - Zod 입력 검증, Lucide SVG 아이콘
 - Noto Sans KR, 딥그린·세이지 기반 접근성 디자인 시스템
 
-브라우저의 Firestore 직접 접근은 보안 규칙으로 모두 차단했습니다. Google 로그인은 계정별 돌봄 범위에서 바로 읽고 쓸 수 있습니다. 데모는 `IPILLGOOD_DEMO_MODE=true`일 때 서버가 방문자별 임시 범위를 만들며, 운영에서는 `isolated` 모드와 정확한 허용 호스트가 함께 설정된 경우에만 로그인할 수 있습니다. 여러 보호자가 한 대상을 함께 돌보는 초대·역할 기반 권한 모델은 실제 배포 전에 추가해야 합니다.
+브라우저의 Firestore 직접 접근은 보안 규칙으로 모두 차단했습니다. Google 로그인은 계정별 돌봄 범위에서 바로 읽고 쓸 수 있습니다. 데모는 `IPILLGOOD_DEMO_MODE=true`일 때 서버가 방문자별 임시 범위를 만들며, 운영에서는 `isolated` 모드와 정확한 허용 호스트가 함께 설정된 경우에만 로그인할 수 있습니다. 연결 코드로 기기 한 대를 추가하는 기능은 구현되어 있습니다. 여러 보호자의 개별 초대·역할 관리와 소유권 이전은 아직 지원하지 않습니다.
 
 ## 빠른 실행
 
 CI와 로컬 검증이 같은 Node API를 사용하도록 Node.js 24를 사용합니다. 저장소의 `.nvmrc`를 지원하는 버전 관리자에서는 `nvm use`로 맞출 수 있으며, 다른 Node 버전에서는 `npm ci`가 중단됩니다.
 
+일반 개발은 Java 21과 Firebase Auth·Firestore Emulator를 사용합니다. 실제 Google 계정이나 운영 Firebase IAM 권한이 필요하지 않습니다.
+
 ```bash
-npm install
+npm ci
+npm run doctor:local
+npm run dev:local
+```
+
+브라우저에서 `http://localhost:3000`을 엽니다. Google 버튼은 Auth Emulator의 가상 계정 화면을 사용합니다. 로컬 인증 회귀 검사는 `npm run verify:local-auth`로 실행할 수 있습니다.
+
+실제 Firebase 프로젝트나 외부 API를 연결하는 개발 환경은 별도로 설정합니다.
+
+```bash
 cp front/.env.example front/.env.local
-# front/.env.local에서 IPILLGOOD_DEMO_MODE=true를 유지하고,
-# SESSION_SECRET과 CONNECTION_CODE_SECRET에 각각 `openssl rand -base64 32` 결과를 입력합니다.
+# SESSION_SECRET과 CONNECTION_CODE_SECRET에 각각 별도로 생성한 값을 입력합니다.
+# 생성 예: openssl rand -base64 32
 gcloud auth application-default login
 npm run seed
 npm run dev
 ```
 
-브라우저에서 `http://localhost:3000`을 엽니다.
-
-Firebase IAM 권한 없이 Google 로그인 핵심 흐름을 개발할 때는 실제 프로젝트 대신 Auth·Firestore Emulator를 함께 실행합니다.
-
-```bash
-npm run doctor:local
-npm run dev:local
-```
-
-Google 버튼은 Auth Emulator의 로컬 가상 계정 화면을 사용하며 실제 Google 계정이나 ADC가 필요하지 않습니다. 실제 프로젝트 연결이 필요한 작업의 최소 역할, 승인 도메인, ADC 확인 방법과 예상 오류는 [`docs/local-firebase-development.md`](docs/local-firebase-development.md)에 정리했습니다. IAM 없는 로그인 회귀 검증은 `npm run verify:local-auth`로 실행합니다.
+필요한 IAM 역할, 승인 도메인, ADC 설정과 오류 대응은 [로컬 Firebase 개발 안내](docs/local-firebase-development.md)를 참고하세요. 운영 비밀값이 있는 `.env*`·`.dev.vars` 파일은 아래 전체 검증용 checkout에 두지 않습니다.
 
 ### 주요 경로
 
 | 경로 | 설명 |
 |---|---|
 | `/` | 제품 소개와 로그인·데모 진입 랜딩페이지 |
-| `/login` | Google OAuth와 비식별 데모 로그인 |
+| `/login` | Google·연결 코드·비식별 데모 로그인, 실패 후 재시도 |
 | `/today` | 오늘 복약 일정과 인라인 안부 확인 |
 | `/dashboard` | 현재 복용약, 최근 기록, 상담 질문 요약 |
 | `/medications` | 쉬운 약 설명과 식약처 공식 정보 검색 |
+| `/medications/photo` | 알약 앞뒤 사진으로 공식 비교 후보 검색 |
 | `/check-in` | 상세 복약·증상 확인 |
+| `/nutrition` | 확정 질환별 한국어 식사·영양 자료 탐색 |
 | `/documents` | 처방전·진단서 분석과 출처 확인 |
-| `/profile` | 돌봄 대상자 최소 프로필 관리 |
+| `/profile` | 프로필·확정 질환·알림 설정·돌봄 연결·탈퇴 관리 |
+| `/account/recovery` | 탈퇴 계정의 보관 기간 내 복구 확인 |
 | `/report` | 출력 가능한 최근 7일 Care Report |
 
 Google 로그인은 `care-atlas-seoul-2026-v3` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키를 `front/.env.local`에 설정합니다. 로컬 데모 로그인에는 `IPILLGOOD_DEMO_MODE=true`도 필요하며 환경 변수를 바꾼 뒤 개발 서버를 다시 시작해야 합니다. 데모 로그인도 고정 fallback 키를 사용하지 않으므로 `openssl rand -base64 32`처럼 생성한 충분히 강한 `SESSION_SECRET`이 필요합니다. 운영 데모는 `IPILLGOOD_PUBLIC_DEMO_MODE=isolated`와 `IPILLGOOD_DEMO_ALLOWED_HOSTS`의 정확한 호스트가 모두 일치해야 합니다.
@@ -231,14 +253,17 @@ HIRA_DISEASE_API_KEY=공공데이터포털_일반_인증키
 
 `OPENAI_API_KEY`가 있으면 공식 약 원문을 `store:false` 구조화 응답으로 쉬운 말로 바꿉니다. 공식 원문이 없는 항목은 모델이 내용을 만들어내지 않으며, OpenAI가 미설정이거나 실패해도 식약처 원문과 의약품안전나라 상세 링크는 계속 표시합니다.
 
-검증 명령:
+### 전체 검증
+
+Node 24와 Java 21이 설치된 깨끗한 checkout에서 다음 명령을 사용합니다. PR·main CI도 같은 명령을 실행합니다.
 
 ```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
+npm ci
+npx playwright install --with-deps chromium webkit
+npm run verify -- --account-full-cycle
 ```
+
+실행기는 임시 `demo-*` Firebase 프로젝트와 비밀키를 생성하고 단위 검사 → 타입 검사 → 린트 → 프로덕션 빌드 → Emulator 계약 → 브라우저/API → 계정 생애주기를 검사합니다. 결과는 Git에서 제외한 `verification-artifacts/`, `playwright-report/`, `test-results/`에 남습니다. 외부 AI와 Google 계정 경계는 합성 응답으로 검증하므로 실제 서비스의 인식 정확도나 OAuth 성공률을 뜻하지 않습니다.
 
 실제 OpenAI·식약처 키로 비식별 처방전/진단서 이미지, 공식 제품·성분 검색, Care Agent를 연쇄 검증하려면:
 
@@ -254,9 +279,11 @@ npm run cf:preview --workspace @care-atlas/front
 npm run cf:deploy --workspace @care-atlas/front
 ```
 
+사진 검색을 포함한 배포는 `MFDS_PILL_API_KEY`로 식약처 전체 목록을 두 번 수집하고 무결성을 확인합니다. 이미 검증한 스냅샷은 `PILL_CATALOG_FILE=/absolute/path/catalog.json`으로 재사용할 수 있습니다. **168시간 이내 자료만 허용하며, 자동 갱신은 아직 없어 7일 이내에 목록을 갱신해 재배포해야 합니다.** 목록·키 오류 시 배포를 중단합니다. [사진 검색과 카탈로그 배포 안내](docs/pill-photo-web.md)에 자세한 조건이 있습니다.
+
 ### PWA 복약 알림 설정과 검증
 
-Web Push는 페이지를 닫아도 서비스 워커가 Chrome 또는 Safari의 시스템 알림을 표시합니다. 알림 섹션은 모바일 브라우저와 설치형 PWA에서만 표시하며, iPhone·iPad는 iOS/iPadOS 16.4 이상에서 홈 화면에 설치한 PWA로 실행해야 합니다. 사용자가 `이 기기에서 알림 받기` 버튼을 눌러 브라우저 권한을 허용해야 합니다.
+Web Push는 페이지를 닫아도 서비스 워커가 Chrome 또는 Safari의 시스템 알림을 표시합니다. 알림 섹션은 모바일 브라우저와 설치형 PWA의 **프로필 탭**에 표시하며, iPhone·iPad는 iOS/iPadOS 16.4 이상에서 홈 화면에 설치한 PWA로 실행해야 합니다. 사용자가 `이 기기에서 알림 받기` 버튼을 눌러 브라우저 권한을 허용해야 합니다.
 
 VAPID 키와 Cron 인증값을 한 번 생성합니다. 출력된 값은 저장소에 커밋하지 않습니다.
 
@@ -291,7 +318,7 @@ npm run cf:deploy --workspace @care-atlas/front
 
 처방전 분석으로 복약 계획이 등록되거나 해당 문서가 삭제되면 서버가 최신 복약 목록으로 알림 일정을 즉시 동기화합니다. 일시적인 Firestore 오류는 한 번 재시도하며, 사용자가 알림을 먼저 허용한 경우와 복약 계획을 먼저 등록한 경우 모두 같은 기기·복약 슬롯을 upsert해 중복 일정을 만들지 않습니다.
 
-운영 도착 검증은 로그인 후 `/today`에서 다음 순서로 진행합니다.
+운영 도착 검증은 로그인 후 `/profile`에서 다음 순서로 진행합니다.
 
 1. PWA를 설치하고 `이 기기에서 알림 받기`를 누른 뒤 권한을 허용합니다.
 2. 카드에 다음 복약 시각이 표시되는지 확인합니다.
@@ -321,13 +348,16 @@ npm run firebase:deploy
 
 ## AI 연결 지점
 
-현재 생성형 AI는 세 군데에서 사용합니다. 모든 OpenAI 요청은 Responses API에 `store: false`, 낮은 reasoning effort, 30초 timeout을 적용하며 기본 모델은 `OPENAI_MODEL` 또는 `gpt-5.6-luna`입니다.
+주요 AI 연결은 아래와 같습니다. OpenAI Responses API는 `store:false`를 사용합니다. 일반 분석·검색의 기본 모델은 `OPENAI_MODEL` 또는 `gpt-5.6-luna`, 배포용 사진 분석은 `PILL_PHOTO_MODEL` 또는 `gpt-5.6-sol`입니다. 입력·출력 한도와 제한 시간은 기능별로 관리하며, 미설정·시간 초과·부분 실패를 정상 결과로 처리하지 않습니다.
 
 | 기능 | AI 입력 | AI 출력과 후처리 | 실패 시 동작 |
 |---|---|---|---|
 | Care Agent 맞춤 안부 | 최소 프로필, 활성 약, 목표일 이전 최근 14일 복약·증상 이벤트 | `care-agent.v1` Structured Output → Zod 검증 → 존재하는 event ID만 허용 → 코드의 승인 템플릿으로 질문 최대 3개 생성 | 같은 기록을 결정적 규칙으로 분석하는 `safe_fallback`; 안부 기능은 계속 동작 |
 | 처방전·진단서 분석 | 요청 중 메모리에만 둔 이미지/PDF | 문서 사실, 돌봄 확인점, 의료진 질문, 진단명·코드를 JSON Schema로 추출 | 외부 분석 API가 설정되면 그 제공자를 우선 사용; 어떤 분석기도 없으면 실제 파일 분석은 503, 비식별 샘플은 데모 결과 제공 |
 | 진단서 질병 정보 | 문서에서 추출한 진단명·KCD/ICD 코드 | HIRA 정확 일치를 우선 사용하고, 실패한 항목만 OpenAI 웹 검색으로 보강해 출처 URL과 함께 반환 | 공식·웹 결과가 없다는 상태를 명시하고 추측하지 않음 |
+| 공식 약 정보의 쉬운 설명 | 식약처 제품 원문·일치하는 공식 보강 정보 | 원문 범위 안에서 보호자용 설명 생성 | 공식 원문과 상세 링크 유지 |
+| 사진으로 약 검색 | 전처리한 알약 앞뒤 JPEG; 약 이름·정답 코드는 전송하지 않음 | Vision·앞면 OCR·뒷면 OCR → 구조화 특징 검증 → 공식 목록과 결정적으로 비교 | 부분 실패·사진 품질 부족·오래된 목록은 후보를 내보내지 않고 오류·재촬영 안내 |
+| 식사/영양 자료 탐색 | 사용자가 확인한 질환명·코드 | 웹 검색 → 출처 URL·한국어·본문/자막 접근 조건 검증 → 요약과 원문 링크 | 0건과 오류를 구분하고 허구의 자료로 채우지 않음 |
 
 ### Care Agent 실행 흐름
 
@@ -357,8 +387,12 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 
 ## 문서
 
+- [PWA 메뉴·안전 영역·새로고침·로그인 복구](docs/pwa-navigation.md)
+- [배포용 사진 검색과 공식 목록 갱신](docs/pill-photo-web.md)
+- [식사/영양 자료 탐색](docs/nutrition-exploration.md)
+- [회원 탈퇴·복구 정책](docs/account-deletion.md) · [계정 생애주기 검증](docs/account-deletion-verification.md)
 - [알약 식별 팀원 시작 안내](docs/pill-photo-team-guide.md) — Git에 포함한 공개 최소 자료로 API 키 없이 `pill:verify` / `pill:replay` / `pill:regression` 실행 (로컬 평가용, 사용자 기능 아님)
-- [저장·알림 안정성, 로컬·CI 전체 검증 및 운영 복구](docs/backend-reliability.md) — 깨끗한 checkout에서 `npm ci`, `npx playwright install --with-deps chromium` 후 `npm run verify -- --account-full-cycle` (PR·main CI와 동일)
+- [저장·알림 안정성, 로컬·CI 전체 검증 및 운영 복구](docs/backend-reliability.md) — 깨끗한 checkout에서 `npm ci`, `npx playwright install --with-deps chromium webkit` 후 `npm run verify -- --account-full-cycle` (PR·main CI와 동일)
 - [제품 기획안](md/IPILLGOOD_제품_기획안.md)
 - [문제 정의 및 필요성 근거 자료](md/IPILLGOOD_근거자료.md)
 - [기술 구조와 데이터 모델](md/architecture.md)
@@ -368,10 +402,10 @@ AI를 연결하더라도 다음 경계는 유지합니다.
 ## 프로덕션 전 필수 과제
 
 - 여러 보호자가 한 돌봄 대상을 공유하는 초대, 역할 기반 권한, 소유권 이전
-- 공개 인증·분석 엔드포인트의 rate limit, 감사 로그, 이상 사용 탐지
-- 동의 이력, 보관 기간, 내보내기와 완전 삭제, 비밀키 회전 정책
+- 구현된 인증·분석 요청 제한의 운영 관측, 감사 로그 보강과 이상 사용 탐지
+- 구현된 동의·탈퇴·3개월 보관/복구/삭제 정책의 운영 점검, 데이터 내보내기와 외부 제공자 보관·비밀키 회전 정책 정리
 - OCR 신뢰도 표시, 이름·주민번호·주소 자동 가리기, 원문 대조·확정 단계
 - 식약처 품목·성분 ID 매칭과 HIRA DUR 기반 결정적 안전 규칙
 - 의료·약학·개인정보·의료기기 규제 검토와 운영 모니터링·백업·복구
 
-현재 Google 로그인 사용자의 데이터는 Firebase 사용자 ID에서 파생한 별도 돌봄 범위에 저장됩니다. 데모 로그인은 방문자마다 별도 비식별 범위를 사용하고 로그아웃 또는 2시간 만료 후 하위 기록까지 정리합니다. 아직 의료 서비스 운영을 위한 권한·동의·감사 체계를 갖춘 상태가 아니므로 실제 건강정보를 입력하거나 건강 의사결정에 사용해서는 안 됩니다.
+현재 Google 로그인 사용자의 데이터는 Firebase 사용자 ID에서 파생한 별도 돌봄 범위에 저장됩니다. 데모 로그인은 방문자마다 별도 비식별 범위를 사용하고 로그아웃 또는 2시간 만료 후 하위 기록까지 정리합니다. 계정별 권한 검사, 건강정보 처리 동의, 요청 제한과 탈퇴·복구 절차는 구현되어 있습니다. 의료·약학적 검수와 실제 운영을 위한 개인정보·감사 검토가 완료된 서비스는 아니며, 데모에는 비식별 정보만 사용하고 결과를 건강 의사결정의 근거로 사용하지 않습니다.

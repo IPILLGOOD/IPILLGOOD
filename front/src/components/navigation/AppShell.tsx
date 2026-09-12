@@ -60,9 +60,30 @@ function Brand() {
 
 function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
   const pathname = usePathname();
+  const navigationRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navigationRef.current;
+    if (!mobile || !nav) return;
+    const measure = () => {
+      const bounds = nav.getBoundingClientRect();
+      const action = nav.querySelector(".mobile-quick-action > span")?.getBoundingClientRect();
+      const overhang = action ? Math.max(0, bounds.top - action.top) : 0;
+      document.documentElement.style.setProperty("--mobile-nav-clearance", `${Math.ceil(bounds.height + overhang)}px`);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(nav);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      document.documentElement.style.removeProperty("--mobile-nav-clearance");
+    };
+  }, [mobile]);
 
   return (
     <nav
+      ref={navigationRef}
       className={mobile ? "mobile-nav" : "side-nav"}
       aria-label={mobile ? "주요 메뉴" : "서비스 메뉴"}
     >

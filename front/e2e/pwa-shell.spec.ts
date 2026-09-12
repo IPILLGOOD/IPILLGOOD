@@ -61,10 +61,30 @@ test("PWA: centered navigation, system colors, safe areas and pull-to-refresh", 
   const nav = page.getByRole("navigation", { name: "주요 메뉴", exact: true });
   await expect(nav.getByRole("link")).toHaveText(["오늘 할 일", "복용약", "식사/영양", "프로필"]);
   await expect(page.locator('.mobile-header a[href="/profile"]')).toHaveCount(0);
+  const checkFooter = async () => {
+    // Only one clearance belongs below the footer; none is duplicated in main.
+    await expect.poll(async () => page.evaluate(() => {
+      const footer = document.querySelector(".app-footer")!;
+      const nav = document.querySelector(".mobile-nav")!;
+      const action = nav.querySelector(".mobile-quick-action > span")!;
+      const covered = nav.getBoundingClientRect().height + Math.max(0, nav.getBoundingClientRect().top - action.getBoundingClientRect().top);
+      return Math.abs(parseFloat(getComputedStyle(footer).paddingBottom) - covered - parseFloat(getComputedStyle(document.documentElement).fontSize) * .5);
+    })).toBeLessThan(2);
+    expect(await page.locator("main").evaluate(el => parseFloat(getComputedStyle(el).paddingBottom))).toBeLessThanOrEqual(40);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const bottom = await page.locator(".app-footer").evaluate(el => {
+      const range = document.createRange(); range.selectNodeContents(el);
+      return range.getBoundingClientRect().bottom;
+    });
+    const top = await nav.locator(".mobile-quick-action > span").evaluate(el => el.getBoundingClientRect().top);
+    expect(bottom).toBeLessThan(top);
+  };
   for (const width of [320, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     if (width < 960) {
+      await checkFooter();
+      await page.evaluate(() => window.scrollTo(0, 0));
       const bar = await nav.boundingBox();
       const center = await nav.getByRole("button", { name: "빠른 이동" }).boundingBox();
       expect(bar!.x).toBe(0);
@@ -91,6 +111,13 @@ test("PWA: centered navigation, system colors, safe areas and pull-to-refresh", 
   await nav.getByRole("link", { name: "프로필", exact: true }).click();
   await expect(page).toHaveURL(/\/profile$/);
   await expect(page.locator(".medication-reminder-card")).toBeVisible();
+  await checkFooter();
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+  await checkFooter();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.evaluate(() => { document.documentElement.style.removeProperty("font-size"); window.scrollTo(0, 0); });
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(nav.getByRole("link", { name: "프로필", exact: true })).toHaveAttribute("aria-current", "page");
   await nav.getByRole("button", { name: "빠른 이동" }).click();
   const dialog = page.getByRole("dialog", { name: "어디로 이동할까요?" });
@@ -134,6 +161,15 @@ test("PWA: centered navigation, system colors, safe areas and pull-to-refresh", 
   await info.attach("ready-to-refresh", { body: await page.screenshot({ path: `verification-artifacts/pwa-shell/${browserName}-ready.png` }), contentType: "image/png" });
   let reloads = 0;
   page.on("request", request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) reloads++; });
+  await info.attach("compact-today-bottom", { body: await (async () => {
+    await touch(page, "main h1", "touchcancel", 100, 330);
+    await checkFooter();
+    const screenshot = await page.screenshot({ path: `verification-artifacts/pwa-shell/${browserName}-compact-bottom.png` });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await touch(page, "main h1", "touchstart", 100, 150);
+    await touch(page, "main h1", "touchmove", 100, 330);
+    return screenshot;
+  })(), contentType: "image/png" });
   const reloaded = page.waitForEvent("load");
   await touch(page, "main h1", "touchend", 100, 330);
   await reloaded;

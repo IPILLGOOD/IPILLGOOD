@@ -99,7 +99,8 @@ export function hasPendingGoogleRedirect() {
   if (hasGoogleRedirectMarker(window.location.search)) return true;
   try {
     const createdAt = Number(window.localStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY));
-    return Number.isFinite(createdAt) && Date.now() - createdAt < 10 * 60 * 1_000;
+    const age = Date.now() - createdAt;
+    return Number.isFinite(createdAt) && createdAt > 0 && age >= 0 && age < 10 * 60 * 1_000;
   } catch {
     return false;
   }
@@ -109,23 +110,37 @@ export async function createGoogleServerSession(
   user: User,
   auth: Auth,
   authModule: AuthModule,
+  signal: AbortSignal,
 ) {
-  const idToken = await user.getIdToken();
-  const response = await withGoogleAuthTimeout(
-    fetch("/api/auth/google", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken }),
-    }),
-    15_000,
-    "server/session_timeout",
-  );
-  if (!response.ok) {
-    const result = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw googleAuthServerError(result?.error ?? "google_login_failed");
+  const request = new AbortController();
+  const abortRequest = () => request.abort();
+  signal.throwIfAborted();
+  signal.addEventListener("abort", abortRequest, { once: true });
+  try {
+    // Cover token refresh and the response body as well as response headers.
+    const result = await withGoogleAuthTimeout((async () => {
+      const idToken = await user.getIdToken();
+      request.signal.throwIfAborted();
+      const response = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+        signal: request.signal,
+      });
+      const body = await response.json().catch(() => null) as { error?: string; redirectTo?: string } | null;
+      if (!response.ok || !body) {
+        throw googleAuthServerError(body?.error ?? "google_login_failed");
+      }
+      return body;
+    })(), 15_000, "server/session_timeout");
+    signal.throwIfAborted();
+    // Client cleanup must not hold an already-created server session hostage.
+    await withGoogleAuthTimeout(authModule.signOut(auth), 2_000, "auth/signout-timeout").catch(() => undefined);
+    signal.throwIfAborted();
+    clearGoogleRedirectState();
+    window.location.replace(googleSessionDestination(result.redirectTo));
+  } finally {
+    request.abort();
+    signal.removeEventListener("abort", abortRequest);
   }
-  const result = await response.json() as { redirectTo?: string };
-  await authModule.signOut(auth).catch(() => undefined);
-  clearGoogleRedirectState();
-  window.location.replace(googleSessionDestination(result.redirectTo));
 }

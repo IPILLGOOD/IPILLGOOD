@@ -16,65 +16,96 @@ import { getGoogleAuthErrorMessage } from "@/lib/auth/google-error";
 type LoadingState = "idle" | "popup" | "redirect" | "completing";
 
 export function GoogleSignInButton() {
+  const attempt = useRef<AbortController | null>(null);
   const redirectResult = useRef<ReturnType<typeof readRedirectUser> | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>();
   const isLoading = loadingState !== "idle";
 
   useEffect(() => {
-    if (!hasPendingGoogleRedirect()) return;
-    let active = true;
-    queueMicrotask(() => { if (active) setLoadingState("completing"); });
-
-    void (async () => {
-      try {
-        // Share Firebase's one-time redirect result across Strict Mode effect
-        // replays, but only let the currently mounted effect create a session.
-        redirectResult.current ??= readRedirectUser();
-        const { user, auth, authModule } = await redirectResult.current;
-        if (!active) return;
-        await createGoogleServerSession(user, auth, authModule);
-      } catch (error) {
-        if (!active) return;
-        clearGoogleRedirectState();
-        setErrorMessage(getGoogleAuthErrorMessage(error));
-        setLoadingState("idle");
-      }
-    })();
-
+    // Safari can restore the pre-redirect document with its disabled button.
+    const restore = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      attempt.current?.abort();
+      attempt.current = null;
+      clearGoogleRedirectState();
+      setErrorMessage("로그인이 완료되지 않았어요. 다시 시도해주세요.");
+      setLoadingState("idle");
+    };
+    window.addEventListener("pageshow", restore);
     return () => {
-      active = false;
+      window.removeEventListener("pageshow", restore);
+      attempt.current?.abort();
+      attempt.current = null;
     };
   }, []);
 
+  useEffect(() => {
+    if (!hasPendingGoogleRedirect()) return;
+    const controller = new AbortController();
+    attempt.current = controller;
+    queueMicrotask(() => { if (!controller.signal.aborted) setLoadingState("completing"); });
+
+    void (async () => {
+      try {
+        // Firebase consumes the redirect result once, including in Strict Mode.
+        redirectResult.current ??= readRedirectUser();
+        const { user, auth, authModule } = await redirectResult.current;
+        controller.signal.throwIfAborted();
+        await createGoogleServerSession(user, auth, authModule, controller.signal);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        clearGoogleRedirectState();
+        setErrorMessage(getGoogleAuthErrorMessage(error));
+        setLoadingState("idle");
+        attempt.current = null;
+      }
+    })();
+
+    return () => controller.abort();
+  }, []);
+
   async function handleSignIn() {
-    if (isLoading) return;
+    if (attempt.current || isLoading) return;
+    const controller = new AbortController();
+    attempt.current = controller;
     setErrorMessage(undefined);
     const mode = currentGoogleAuthMode();
     setLoadingState(mode);
 
     try {
-      const { auth, authModule } = await loadFirebaseAuth(mode);
-      const provider = new authModule.GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
+      await withGoogleAuthTimeout((async () => {
+        const { auth, authModule } = await loadFirebaseAuth(mode);
+        controller.signal.throwIfAborted();
+        const provider = new authModule.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: "select_account" });
 
-      if (mode === "redirect") {
-        markGoogleRedirectPending();
-        await authModule.signInWithRedirect(auth, provider);
-        return;
-      }
+        if (mode === "redirect") {
+          markGoogleRedirectPending();
+          await authModule.signInWithRedirect(auth, provider);
+          throw Object.assign(new Error("redirect did not navigate"), { code: "auth/redirect-result-missing" });
+        }
 
-      const credential = await withGoogleAuthTimeout(
-        authModule.signInWithPopup(auth, provider),
-        60_000,
-        "auth/popup-timeout",
-      );
-      await createGoogleServerSession(credential.user, auth, authModule);
+        const credential = await authModule.signInWithPopup(auth, provider);
+        controller.signal.throwIfAborted();
+        await createGoogleServerSession(credential.user, auth, authModule, controller.signal);
+      })(), mode === "redirect" ? 30_000 : 90_000,
+      mode === "redirect" ? "auth/redirect-timeout" : "auth/popup-timeout");
     } catch (error) {
+      if (controller.signal.aborted) return;
+      controller.abort();
+      attempt.current = null;
       clearGoogleRedirectState();
       setErrorMessage(getGoogleAuthErrorMessage(error));
       setLoadingState("idle");
     }
+  }
+
+  function restartLogin() {
+    attempt.current?.abort();
+    clearGoogleRedirectState();
+    // A fresh document also recovers failed SDK chunks and stale Firebase state.
+    window.location.reload();
   }
 
   const loadingLabel =
@@ -100,10 +131,15 @@ export function GoogleSignInButton() {
           </>
         ) : (
           <>
-            Google로 계속하기 <ArrowRight size={17} aria-hidden="true" />
+            {errorMessage ? "Google 로그인 다시 시도" : "Google로 계속하기"} <ArrowRight size={17} aria-hidden="true" />
           </>
         )}
       </button>
+      {isLoading || errorMessage ? (
+        <button className="login-restart-button" type="button" onClick={restartLogin}>
+          로그인 화면 새로고침
+        </button>
+      ) : null}
       {errorMessage ? (
         <p className="login-provider-error" role="alert">{errorMessage}</p>
       ) : null}
