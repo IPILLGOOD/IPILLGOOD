@@ -51,6 +51,8 @@ test("PWA: centered navigation, system colors, safe areas and pull-to-refresh", 
   }
   await expect(page).toHaveURL(/\/today$/);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.locator(".medication-reminder-card")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "알림 상태 다시 확인" })).toHaveCount(0);
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#FFFFFF");
   await expect(page.locator('meta[name="viewport"]')).toHaveAttribute("content", /viewport-fit=cover/);
   const manifest = await (await context.request.get("/manifest.webmanifest")).json();
@@ -74,6 +76,10 @@ test("PWA: centered navigation, system colors, safe areas and pull-to-refresh", 
         expect(box!.width).toBeGreaterThanOrEqual(44);
         expect(box!.height).toBeGreaterThanOrEqual(44);
       }
+      for (const root of ["html", "body"]) {
+        expect(await page.locator(root).evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgb(255, 255, 255)");
+      }
+      expect(await page.locator(".experience-shell").evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgb(247, 248, 250)");
       expect(await page.locator(".mobile-header").evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgb(255, 255, 255)");
       expect(await nav.evaluate(el => getComputedStyle(el).backgroundColor)).toBe("rgb(255, 255, 255)");
     } else {
@@ -84,6 +90,7 @@ test("PWA: centered navigation, system colors, safe areas and pull-to-refresh", 
   await page.setViewportSize({ width: 390, height: 844 });
   await nav.getByRole("link", { name: "프로필", exact: true }).click();
   await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.locator(".medication-reminder-card")).toBeVisible();
   await expect(nav.getByRole("link", { name: "프로필", exact: true })).toHaveAttribute("aria-current", "page");
   await nav.getByRole("button", { name: "빠른 이동" }).click();
   const dialog = page.getByRole("dialog", { name: "어디로 이동할까요?" });

@@ -1,6 +1,8 @@
 import { formatInSeoul } from "@care-atlas/backend/dates";
 import { History } from "lucide-react";
 
+import { MedicationReminderCard } from "@/components/notifications/MedicationReminderCard";
+import { PushKeyNotice } from "@/components/notifications/PushKeyNotice";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { AccountDeletionCard } from "@/components/profile/AccountDeletionCard";
 import { AccountDeletionProgress } from "@/components/profile/AccountDeletionProgress";
@@ -83,6 +85,8 @@ export default async function ProfilePage({
         title="돌봄에 필요한 정보만 관리해요"
         description="각 정보의 활용 목적은 입력란 아래에서 확인할 수 있어요."
       />
+      <PushKeyNotice />
+      <MedicationReminderCard />
       {params.onboarding === "1" && !snapshot.recipient.consentConfirmed ? (
         <p className="account-deletion-notice" role="status">
           건강정보를 처리하기 전에 대상자 정보와 동의를 먼저 확인해 주세요.

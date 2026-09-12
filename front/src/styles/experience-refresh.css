@@ -200,7 +200,11 @@
 @media (max-width: 1100px) { .experience-content .today-workspace__main { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 959px) {
   .workspace-context { display: none; }
+  /* iOS standalone paints the status-bar area from the root canvas. Keep both
+     roots white after design-refresh.css; only the content shell is gray. */
+  html:has(.experience-shell), body:has(.experience-shell) { background: var(--color-surface); }
   html:has(.experience-shell) { overscroll-behavior-y: none; }
+  .experience-shell { background: var(--color-background); }
   .experience-shell .mobile-header {
     background: var(--color-surface);
     border-bottom-color: #e5e8eb;

@@ -7,7 +7,6 @@ import {
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { MedicationReminderCard } from "@/components/notifications/MedicationReminderCard";
 import { TodayTaskList } from "@/components/today/TodayTaskList";
 import { TodayGettingStarted } from "@/components/today/TodayGettingStarted";
 import { Card } from "@/components/ui/Card";
@@ -56,8 +55,6 @@ export default async function TodayPage() {
         title={`${snapshot.recipient.displayName}의 오늘 돌봄`}
         description="오늘 예정된 복용 시간과 완료 여부를 확인하세요."
       />
-
-      <MedicationReminderCard />
 
       <div className="today-workspace">
         <div className="today-workspace__main">

@@ -190,11 +190,14 @@ test.describe("mobile Push status semantics (simulated user agent, no delivery)"
     await page.goto("/login");
     await page.getByRole("button", { name: /둘러보기/ }).click();
     await expect(page).toHaveURL(/\/today$/);
-    await expect(page.getByText("이 기기의 알림 가능 여부를 확인하고 있어요.")).toBeVisible();
+    await expect(page.locator(".medication-reminder-card")).toHaveCount(0);
     const installPrompt = page.getByRole("dialog", { name: "IPILLGOOD를 앱으로 사용해 보세요" });
     await expect(installPrompt).toBeVisible();
     await installPrompt.getByRole("button", { name: "닫기", exact: true }).click();
     await expect(installPrompt).toBeHidden();
+    await page.getByRole("navigation", { name: "주요 메뉴", exact: true }).getByRole("link", { name: "프로필", exact: true }).click();
+    await expect(page).toHaveURL(/\/profile$/);
+    await expect(page.getByText("이 기기의 알림 가능 여부를 확인하고 있어요.")).toBeVisible();
     await audit(page, "push-loading", info);
     release();
     const alert = page.getByRole("alert").filter({ hasText: "알림 연결을 확인하지 못했어요" });
@@ -202,6 +205,12 @@ test.describe("mobile Push status semantics (simulated user agent, no delivery)"
     await expect(alert).toContainText("알림 연결을 확인하지 못했어요");
     expect(await alert.evaluate((element) => element.parentElement?.closest('[aria-live], [role="status"], [role="alert"]') === null)).toBe(true);
     await audit(page, "push-config-error", info);
+    await page.getByRole("navigation", { name: "주요 메뉴", exact: true }).getByRole("link", { name: "오늘 할 일", exact: true }).click();
+    await expect(page).toHaveURL(/\/today$/);
+    await expect(page.locator(".medication-reminder-card")).toHaveCount(0);
+    await expect(alert).toHaveCount(0);
+    await page.getByRole("navigation", { name: "주요 메뉴", exact: true }).getByRole("link", { name: "프로필", exact: true }).click();
+    await expect(alert).toHaveCount(1);
     await page.unroute("**/api/push/config");
     await page.reload();
     await expect(page.getByText("현재 알림 서버 설정을 준비하고 있어요.")).toBeVisible();

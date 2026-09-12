@@ -22,7 +22,6 @@ import { createPortal } from "react-dom";
 
 import type { SessionUser } from "@/lib/auth/session";
 import { PushStatusProvider } from "@/components/notifications/PushStatusProvider";
-import { PushKeyNotice } from "@/components/notifications/PushKeyNotice";
 import { PullToRefresh } from "@/components/pwa/PullToRefresh";
 import { CareSyncProvider } from "@/components/sync/CareSyncProvider";
 
@@ -293,7 +292,6 @@ export function AppShell({
               </div>
             </header>
             <main id="main-content" className={`main-content ${preserveNewWork ? "new-work-content" : "experience-content"}`} tabIndex={-1}>
-              <PushKeyNotice />
               {children}
             </main>
             <footer className="app-footer">
