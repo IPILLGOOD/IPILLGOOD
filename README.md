@@ -6,6 +6,13 @@ IPILLGOOD는 어려운 처방 정보를 쉬운 말로 정리하고, 매일의 �
 
 **[서비스 둘러보기](https://ipillgood.wkddudgk4869.workers.dev/)** · [제품 기획](md/IPILLGOOD_제품_기획안.md) · [개발·운영 안내](docs/development-guide.md)
 
+## 팀 소개
+
+| <a href="https://github.com/hongjiyeon56"><img src="https://avatars.githubusercontent.com/u/237960924?s=120&v=4" width="80" height="80" alt="홍지연 GitHub 프로필 사진"></a> | <a href="https://github.com/dkim1112"><img src="https://avatars.githubusercontent.com/u/74619981?s=120&v=4" width="80" height="80" alt="김동은 GitHub 프로필 사진"></a> | <a href="https://github.com/kanade012"><img src="https://avatars.githubusercontent.com/u/87456609?s=120&v=4" width="80" height="80" alt="장영하 GitHub 프로필 사진"></a> | <a href="https://github.com/stringnine"><img src="https://avatars.githubusercontent.com/u/179396940?s=120&v=4" width="80" height="80" alt="지현구 GitHub 프로필 사진"></a> |
+|:---:|:---:|:---:|:---:|
+| **[홍지연](https://github.com/hongjiyeon56)** | **[김동은](https://github.com/dkim1112)** | **[장영하](https://github.com/kanade012)** | **[지현구](https://github.com/stringnine)** |
+| 팀장 · Insight | Insight | Build | Build |
+
 ![IPILLGOOD 랜딩페이지](design/screenshots/landing-desktop.png)
 
 ## 어떤 문제를 해결하나요?
@@ -51,33 +58,114 @@ Next.js가 화면과 서버 요청을 처리하고, 백엔드가 돌봄 기록·
 
 ```mermaid
 flowchart TB
-  USER["보호자 · 어르신"] --> APP["웹 · 설치형 PWA"]
-  APP --> AUTH["Google · 연결 코드 · 데모 로그인"]
-  AUTH --> SERVER["Next.js 서버 · backend<br/>세션·돌봄 공간 확인<br/>권한·동의·입력 검증"]
+  USER["보호자 · 어르신"] --> CLIENT
 
-  SERVER --> CARE["매일의 돌봄<br/>복약·증상 기록 · Care Agent<br/>대시보드 · Care Report"]
-  SERVER --> DOC["문서 등록·분석<br/>진행 상태 · 중복 검토<br/>약·질환 확인 · 확정·삭제"]
-  SERVER --> SEARCH["정보 탐색<br/>제품명·성분명 · 알약 사진<br/>질환별 식사/영양 자료"]
-  SERVER --> ACCOUNT["프로필·계정 관리<br/>동의 · 연결 코드·해제<br/>건강정보 삭제 · 탈퇴·복구"]
-  SERVER --> PUSH["복약 알림<br/>기기 구독 · 일정 동기화<br/>예약 발송 · 표시 확인"]
+  subgraph CLIENT["사용자 화면 · 기기"]
+    direction LR
+    APP["웹 · 설치형 PWA<br/>오늘 할 일 · 복용약 · 식사/영양 · 프로필<br/>빠른 이동 → 기록·문서·사진 검색"]
+    SAMPLE["로그인 없는 화면 체험<br/>샘플 상태만 메모리에서 변경"]
+    DEVICE["PWA 서비스 워커<br/>계정·구독 확인 · 알림 표시<br/>표시 receipt · 알림 클릭 이동"]
+  end
 
-  CARE <--> DB[("Cloud Firestore<br/>돌봄 기록 · 조회 모델<br/>계정·연결·처리 상태")]
-  DOC <--> DB
-  ACCOUNT <--> DB
-  PUSH <--> DB
-  CARE --> AI["OpenAI<br/>구조화 분석 · Vision · OCR<br/>출처를 확인하는 웹 검색"]
-  DOC --> AI
-  SEARCH --> AI
-  DOC --> OFFICIAL["식약처 · HIRA<br/>공식 약·질병 정보<br/>낱알식별 카탈로그"]
-  SEARCH --> OFFICIAL
-  CRON["예약 작업<br/>알림 발송 · 탈퇴 기한 처리<br/>만료된 데모·연결 정리"] --> PUSH
-  CRON --> ACCOUNT
-  PUSH --> DELIVERY["Web Push 서비스<br/>→ PWA 서비스 워커 → 기기 알림"]
+  CLIENT --> AUTH
+  subgraph AUTH["인증 · 돌봄 공간 연결"]
+    direction LR
+    GOOGLE["Google 로그인<br/>Firebase 사용자·토큰 확인"] --> SESSION
+    CODE["연결 코드 로그인<br/>소유자의 돌봄 공간 연결<br/>추가 기기 한 대 · 세션 교체"] --> SESSION
+    DEMO["둘러보기 로그인<br/>방문자별 임시 데모 공간"] --> SESSION
+    SESSION["서버 세션<br/>소유자 · 연결 사용자 · 데모<br/>계정·연결 유효성 확인"]
+  end
+
+  AUTH --> GATE["Cloudflare Workers · Next.js / OpenNext<br/>Server Components · Server Actions · API<br/>요청별 세션·돌봄 범위·권한·동의·입력 검증"]
+  GATE --> CARE_FLOW & DOCUMENT_FLOW & SEARCH_FLOW & ACCOUNT_FLOW & PUSH_FLOW
+
+  subgraph CARE_FLOW["매일의 돌봄 · backend"]
+    direction TB
+    RECORD["복약·안부 기록<br/>예정 회차와 실제 복용 구분<br/>본인 응답 · 보호자 관찰<br/>증상·메모 · 지난 기록 수정"]
+    AGENT["Care Agent<br/>최근 14일 기록·근거 검증<br/>템플릿 질문 · 저장 세트 재사용<br/>실패 시 규칙 기반 질문"]
+    VIEW["돌봄 현황 조회<br/>오늘 일정 · 복약 달력<br/>대시보드 · 의료진 질문<br/>최근 7일 Care Report"]
+    RECORD --> AGENT --> VIEW
+  end
+
+  subgraph DOCUMENT_FLOW["문서 분석 · 검토"]
+    direction TB
+    DOCUMENT["처방전·약봉투·진단서<br/>이미지/PDF 검사 · 진행 상태<br/>중복 검토 · 약·일정·진단 추출"]
+    ENRICH["공식 정보 보강<br/>식약처 품목 확인<br/>HIRA 정확 일치 우선<br/>미일치·실패 시 웹 출처 보강"]
+    REVIEW["사용자 원본 대조·수정·확정<br/>복약 계획 · 확정 질환 반영<br/>문서·연결 복약 계획 삭제<br/>알림 일정 동기화"]
+    DOCUMENT --> ENRICH --> REVIEW
+  end
+
+  subgraph SEARCH_FLOW["약 · 식사/영양 탐색"]
+    direction TB
+    DRUG["제품명·성분명 검색<br/>식약처 품목별 원문 결합<br/>쉬운 설명 · 공식 링크<br/>개인 복약 계획과 분리"]
+    PHOTO["사진으로 약 검색<br/>기기 전처리·메타데이터 제거<br/>전송 동의 → Vision·앞뒤 OCR<br/>공식 후보 · 보류 · 재촬영"]
+    NUTRITION["확정 질환별 자료 탐색<br/>질환명·코드로 한국어 검색<br/>출처·언어·접근 상태 검사<br/>요약·원문 링크 최대 8개"]
+    DRUG ~~~ PHOTO ~~~ NUTRITION
+  end
+
+  subgraph ACCOUNT_FLOW["프로필 · 계정 관리"]
+    direction TB
+    PROFILE["프로필·동의<br/>기본 정보 · 알레르기·메모<br/>문서·직접 입력의 확정 질환"]
+    CONNECTION["돌봄 연결<br/>소유자 코드 발급 · 상태 확인<br/>기기 연결·해제 · 만료 처리"]
+    LIFECYCLE["본인 확인 후 데이터 관리<br/>건강정보 삭제 · 탈퇴 즉시 차단<br/>3개월 내 명시적 복구<br/>기한 후 계정·기록 영구 삭제"]
+    PROFILE ~~~ CONNECTION ~~~ LIFECYCLE
+  end
+
+  subgraph PUSH_FLOW["PWA 복약 알림"]
+    direction TB
+    SUBSCRIBE["프로필의 기기 알림 설정<br/>권한 요청 · 구독 준비·활성화<br/>계정·기기 연결 · 해제<br/>로그아웃 후 잔여 구독 정리"]
+    REMINDER["일정 동기화<br/>확정 계획·활성 구독 기준<br/>서울 시간 다음 알림 계산<br/>누락 복구 · 변경 반영"]
+    DISPATCH["예약 발송<br/>회차·작업 중복 제한<br/>실패 재시도 · 만료 구독 해제<br/>접수·표시 상태 구분"]
+    SUBSCRIBE --> REMINDER --> DISPATCH
+  end
+
+  CARE_FLOW & DOCUMENT_FLOW & ACCOUNT_FLOW & PUSH_FLOW -->|"범위별 조회·저장"| FIRESTORE
+  subgraph FIRESTORE["Cloud Firestore · 사용자 데이터"]
+    direction LR
+    CARE_DB[("돌봄 원본<br/>프로필·동의·질환 · 복약 계획<br/>복용·증상·안부 · 문서 분석·출처")]
+    READ_DB[("화면 조회 모델<br/>최근 복약·증상·문서 요약<br/>원본과 함께 revision 갱신")]
+    AGENT_DB[("Care Agent 기록<br/>분석 · 질문 세트 · 답변<br/>버전·근거·처리 상태")]
+    AUTH_DB[("계정·연결 상태<br/>연결 코드·세션 · 데모 만료<br/>탈퇴·복구·삭제 상태")]
+    PUSH_DB[("알림 상태<br/>기기 구독 · 다음 일정<br/>동기화 · 전송·표시 기록")]
+  end
+  AUTH -->|"연결·데모·계정 상태 확인"| FIRESTORE
+
+  SEARCH_FLOW --> REFERENCE
+  subgraph REFERENCE["공개 참조 데이터 · 사용자 기록과 분리"]
+    direction LR
+    CATALOG["Workers 정적 카탈로그<br/>식약처 전체 목록 두 번 수집·검증<br/>분할 청크 · 최신성·해시 검사"]
+    CACHE["공개 질환별 검색 캐시<br/>24시간 · 검색·검증 버전 구분"]
+  end
+
+  CARE_FLOW & DOCUMENT_FLOW & SEARCH_FLOW -->|"기능별 최소 입력으로 분석·조회"| EXTERNAL
+  subgraph EXTERNAL["외부 분석 · 공식 정보"]
+    direction LR
+    OPENAI["OpenAI Responses API<br/>구조화 분석 · 쉬운 설명<br/>Vision · OCR · 웹 검색"]
+    ANALYZER["선택형 외부 문서 분석기<br/>설정 시 우선 사용<br/>미설정 시 OpenAI 분석"]
+    MFDS["식약처<br/>제품 허가 · e약은요<br/>약물유전 · 낱알식별 정보"]
+    HIRA["HIRA<br/>진단명·KCD/ICD<br/>정확 일치 조회"]
+  end
+
+  CRON["Cloudflare 예약 작업<br/>복약 발송·일정 대조<br/>탈퇴 기한·데모·연결 만료 정리"] --> PUSH_FLOW & ACCOUNT_FLOW
+  PUSH_FLOW --> DELIVERY["Web Push 공급자 → 기기 서비스 워커<br/>현재 계정·구독 재확인 → 시스템 알림 표시<br/>표시 receipt 전송 · 클릭 전 권한 확인"]
 ```
 
-문서 분석은 별도 외부 분석 API가 설정되어 있으면 우선 사용하고, 그렇지 않으면 OpenAI를 사용합니다. 문서에서 약과 일정을 확정하거나 문서를 삭제하면 복약 알림 일정을 함께 갱신합니다. 확인한 질환은 프로필과 식사/영양 자료 탐색으로 이어집니다. 진단서의 질병 정보는 HIRA를 우선 조회하고, 일치 정보가 없거나 조회에 실패하면 출처를 확인하는 웹 검색으로 보강합니다.
+전체 구조의 화살표는 기능 사이의 데이터·처리 관계를 나타냅니다. 앱 요청은 서버에서 계정과 돌봄 공간을 확인한 뒤 처리하며, 브라우저의 Firestore 직접 접근은 차단합니다. 로그인 없는 화면 체험은 로컬 샘플 상태만 사용하고, 둘러보기 로그인은 방문자별로 분리된 서버 데모 공간을 사용합니다.
 
-복약·증상·프로필과 문서 분석 결과는 돌봄 공간별로 저장합니다. 사진 검색의 사진·결과는 앱에 보관하지 않으며, 식사/영양 검색은 개인 기록 대신 공개 질환별 검색 결과만 캐시합니다. 문서의 원본 이미지·PDF도 영구 저장하지 않습니다.
+| 처리 흐름 | 동작과 데이터 연결 |
+|---|---|
+| 매일의 돌봄 | 확정 복약 계획으로 예정 회차를 계산하고 실제 복용·증상·안부를 따로 기록합니다. 원본과 조회 모델을 함께 갱신해 오늘 화면·달력·대시보드·보고서에서 같은 기록을 확인합니다. |
+| 맞춤 안부 | 목표일 이전 최근 14일 기록을 분석하고, 실제 이벤트 근거를 확인해 코드의 템플릿으로 질문을 만듭니다. 질문·답변·생성 상태를 보존하며 저장된 질문은 재사용합니다. AI 실패 시 규칙 기반 질문으로 이어갑니다. |
+| 문서 등록 | 업로드 분석은 검토할 초안을 만듭니다. 사용자가 원본과 대조해 약·일정을 확정해야 복약 계획과 알림에 반영됩니다. 진단서는 HIRA 정확 일치를 우선 확인하고, 없거나 실패한 항목을 출처가 있는 웹 검색으로 보강합니다. |
+| 공식 약 검색 | 제품명·성분명으로 식약처 품목을 찾고 동일 품목의 공식 정보를 연결합니다. 쉬운 설명은 원문을 바탕으로 만들며 개인 복약 계획을 자동 변경하지 않습니다. |
+| 사진 검색 | 브라우저에서 가공한 앞뒤 사진을 Vision·면별 OCR로 읽고, 관찰 특징을 공식 카탈로그 전체와 비교합니다. 사진 품질·쌍·목록 최신성을 확인한 뒤 후보·보류·재촬영·무결과를 구분합니다. |
+| 영양 탐색 | 사용자가 확인한 질환의 ID를 서버에서 검증하고 질환명·코드로 자료를 검색합니다. 본문·자막을 확인한 결과와 검색 미리보기를 구분하며 공개 질환별 결과만 캐시합니다. |
+| 복약 알림 | 프로필에서 기기 구독을 활성화하면 확정 복약 계획으로 다음 시각을 계산합니다. 예약 작업이 발송하고 서비스 워커는 현재 계정·구독을 다시 확인합니다. 공급자 접수와 실제 표시 receipt를 별도로 기록합니다. |
+| 계정 관리 | 연결 코드는 소유자의 돌봄 공간을 추가 기기 한 대에 연결합니다. 탈퇴 시 접근·알림을 차단하고 3개월 안에 명시적으로 복구할 수 있으며 기한 후에는 영구 삭제합니다. 건강정보만 삭제하는 흐름은 별도의 본인 확인을 거칩니다. |
+
+복약·증상·프로필과 문서 분석 결과는 돌봄 공간별로 저장합니다. 문서 원본 이미지·PDF와 사진 검색의 사진·결과는 앱에 영구 보관하지 않습니다. 외부 AI 요청의 `store:false`와 앱의 원본 미저장이 외부 제공자의 모든 보관 정책까지 없애는 것은 아닙니다.
+
+공식 카탈로그는 사용자 데이터와 분리한 정적 참조 데이터이며 168시간 이내의 검증 자료만 사용합니다. 자동 갱신은 지원하지 않아 목록 갱신과 재배포가 필요합니다. 사진 검색·영양 탐색 결과는 복약 계획을 자동 변경하지 않고, 알림의 공급자 접수는 기기의 즉시 표시나 정확히 한 번 도착을 보장하지 않습니다. 저장 구조와 실패·복구 계약은 [기술 구조](md/architecture.md), [저장·알림 안정성](docs/backend-reliability.md)에 있습니다.
 
 ### Google 로그인과 연결 코드 로그인
 
@@ -145,10 +233,3 @@ flowchart TB
 - [PWA 탐색과 로그인 복구](docs/pwa-navigation.md) · [사진 검색 상세 구조](docs/pill-photo-web.md)
 - [식사/영양 자료 탐색](docs/nutrition-exploration.md) · [탈퇴·복구 정책](docs/account-deletion.md)
 - [제품 기획안](md/IPILLGOOD_제품_기획안.md) · [문제 정의와 근거](md/IPILLGOOD_근거자료.md) · [사업성](md/value-and-viability.md)
-
-## 팀 소개
-
-| <a href="https://github.com/hongjiyeon56"><img src="https://avatars.githubusercontent.com/u/237960924?s=120&v=4" width="80" height="80" alt="홍지연 GitHub 프로필 사진"></a> | <a href="https://github.com/dkim1112"><img src="https://avatars.githubusercontent.com/u/74619981?s=120&v=4" width="80" height="80" alt="김동은 GitHub 프로필 사진"></a> | <a href="https://github.com/kanade012"><img src="https://avatars.githubusercontent.com/u/87456609?s=120&v=4" width="80" height="80" alt="장영하 GitHub 프로필 사진"></a> | <a href="https://github.com/stringnine"><img src="https://avatars.githubusercontent.com/u/179396940?s=120&v=4" width="80" height="80" alt="지현구 GitHub 프로필 사진"></a> |
-|:---:|:---:|:---:|:---:|
-| **[홍지연](https://github.com/hongjiyeon56)** | **[김동은](https://github.com/dkim1112)** | **[장영하](https://github.com/kanade012)** | **[지현구](https://github.com/stringnine)** |
-| 팀장 · Insight | Insight | Build | Build |
