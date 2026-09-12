@@ -35,7 +35,7 @@ export default async function MedicationsPage({
     reason: "rate_limited",
   };
   const [snapshot, result] = await Promise.all([
-    getCareSnapshot(scope),
+    getCareSnapshot(scope, { includeClinicianQuestions: false }),
     query
       ? rateLimit?.allowed
         ? withCareAccountProcessing(scope.recipientId, () =>

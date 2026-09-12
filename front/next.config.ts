@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/((?!__/auth/).*)",
+        source: "/((?!__/auth/|api/firebase-auth/).*)",
         headers: commonSecurityHeaders(process.env.NODE_ENV === "production"),
       },
       {
@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
         headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
       },
       {
-        source: "/api/:path*",
+        source: "/api/((?!firebase-auth/).*)",
         headers: [
           {
             key: "Content-Security-Policy",

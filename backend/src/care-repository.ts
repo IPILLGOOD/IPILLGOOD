@@ -470,6 +470,7 @@ async function getOrCreateReadModel(
 
 export async function getCareSnapshot(
   scope: CareDataScope,
+  options: { includeClinicianQuestions?: boolean } = {},
 ): Promise<CareSnapshot> {
   assertValidScope(scope);
   const firestore = scope.firestore ?? (await getAdminFirestore());
@@ -478,6 +479,9 @@ export async function getCareSnapshot(
     await getOrCreateReadModel(firestore, scope),
     scope,
   );
+  // Most app pages only render the bounded read model. The report still gets
+  // the latest question/answer projection by default; authorization is shared.
+  if (options.includeClinicianQuestions === false) return snapshot;
   return {
     ...snapshot,
     clinicianQuestions: await clinicianQuestionsFromActualAccount(

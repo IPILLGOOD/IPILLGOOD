@@ -35,7 +35,13 @@ for (const [path, status] of [["/", 200], ["/login", 200], ["/today", 307], ["/4
     redirect: "manual",
     headers: path === "/today" ? { cookie: "care_atlas_session=invalid" } : undefined,
   });
-  assert.equal(response.status, status, `${path}: unexpected response status`);
+  if (path === "/today" && response.status === 200) {
+    // loading.tsx can flush the shell before the invalid session is rejected.
+    // Require Next's login redirect in that stream; a 200 alone is not a pass.
+    assert.match(await response.text(), /<meta id="__next-page-redirect" http-equiv="refresh" content="1;url=\/login"/);
+  } else {
+    assert.equal(response.status, status, `${path}: unexpected response status`);
+  }
   assertCommonHeaders(response, path);
   const policy = response.headers.get("content-security-policy");
   assert.ok(policy, `${path}: Content-Security-Policy 누락`);

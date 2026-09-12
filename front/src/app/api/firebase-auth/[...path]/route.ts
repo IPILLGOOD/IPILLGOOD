@@ -5,7 +5,7 @@ type RouteContext = {
 };
 
 function safeAuthPath(path: string[]) {
-  if (!path.length || path.some((segment) => !/^[a-zA-Z0-9._-]+$/.test(segment))) {
+  if (!path.length || path.some((segment) => segment === "." || segment === ".." || !/^[a-zA-Z0-9._-]+$/.test(segment))) {
     return null;
   }
   return path.map(encodeURIComponent).join("/");

@@ -27,11 +27,14 @@ export function CareSyncProvider({
   const inFlight = useRef(false);
   const retryAt = useRef(0);
   const failures = useRef(0);
+  const currentPathname = useRef(pathname);
+
+  useEffect(() => { currentPathname.current = pathname; }, [pathname]);
 
   useEffect(() => {
     if (!enabled) return;
     let stopped = false;
-    const unauthorized = () => { router.replace(`/login?next=${encodeURIComponent(pathname)}`); };
+    const unauthorized = () => { router.replace(`/login?next=${encodeURIComponent(currentPathname.current)}`); };
     const check = async () => {
       if (stopped || !shouldPollCareRevision({
         visible: document.visibilityState === "visible",
@@ -43,6 +46,7 @@ export function CareSyncProvider({
       inFlight.current = true;
       try {
         const response = await fetch("/api/care/revision", { cache: "no-store", credentials: "same-origin" });
+        if (stopped) return;
         if (response.status === 401) { unauthorized(); return; }
         if (response.status === 429) {
           retryAt.current = Date.now() + retryAfterMilliseconds(response.headers.get("Retry-After"));
@@ -50,6 +54,7 @@ export function CareSyncProvider({
         }
         if (!response.ok) throw new Error("revision_unavailable");
         const body = await response.json() as { revision?: unknown };
+        if (stopped) return;
         if (!Number.isSafeInteger(body.revision)) throw new Error("invalid_revision");
         failures.current = 0;
         retryAt.current = 0;
@@ -75,7 +80,7 @@ export function CareSyncProvider({
       window.removeEventListener("focus", wake);
       window.removeEventListener("online", wake);
     };
-  }, [enabled, pathname, router]);
+  }, [enabled, router]);
 
   useEffect(() => {
     if (!enabled || !connected) return;

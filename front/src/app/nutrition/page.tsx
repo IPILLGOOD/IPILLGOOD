@@ -7,7 +7,7 @@ import { requireCareScope } from "@/lib/auth/care-scope";
 export const dynamic = "force-dynamic";
 
 export default async function NutritionPage() {
-  const snapshot = await getCareSnapshot(await requireCareScope());
+  const snapshot = await getCareSnapshot(await requireCareScope(), { includeClinicianQuestions: false });
   const conditions = (snapshot.recipient.confirmedConditions ?? []).map(
     ({ id, standardName }) => ({ id, standardName }),
   );

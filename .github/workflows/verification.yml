@@ -24,7 +24,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - name: Run current UI, API and account full-cycle verification
         run: npm run verify -- --account-full-cycle
       - name: Summarize verification stages

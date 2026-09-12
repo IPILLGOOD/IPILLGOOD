@@ -1,4 +1,5 @@
 import { PILL_WEB_PREPROCESSING_VERSION } from "@care-atlas/backend/pill-photo-web-contract";
+import { stripJpegMetadata } from "./jpeg-metadata";
 
 export type PreparedWebPhoto = { preview: string; width: number; height: number; images: Record<string, Blob> };
 const canvas = (width: number, height: number) => {
@@ -11,7 +12,10 @@ const canvas = (width: number, height: number) => {
 async function jpeg(node: HTMLCanvasElement) {
   for (const quality of [0.92, 0.82, 0.7]) {
     const blob = await new Promise<Blob | null>(resolve => node.toBlob(resolve, "image/jpeg", quality));
-    if (blob && blob.size <= 512 * 1024) return blob;
+    if (blob) {
+      const clean = new Blob([stripJpegMetadata(new Uint8Array(await blob.arrayBuffer()))], { type: "image/jpeg" });
+      if (clean.size <= 512 * 1024) return clean;
+    }
   }
   throw new Error("사진 용량이 너무 커요. 배경을 단순하게 하고 다시 촬영해주세요.");
 }

@@ -46,6 +46,12 @@ export function urlWithoutGoogleRedirectMarker(value: string) {
   return url.toString();
 }
 
+export function googleSessionDestination(value: unknown) {
+  return value === "/account/recovery" || value === "/profile?onboarding=1"
+    ? value
+    : "/today";
+}
+
 function authFlowError(code: string) {
   return Object.assign(new Error(code), { code });
 }

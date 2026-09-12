@@ -77,7 +77,8 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       (entry) => entry.name === "care_atlas_session",
     )!;
     recipientId = decodeJwt(cookie.value).sub;
-    await page.getByRole("link", { name: "안부 확인", exact: true }).click();
+    await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
+    await page.getByRole("dialog").getByRole("link", { name: "오늘 몸 상태 기록", exact: true }).click();
     await expect(page).toHaveURL(/\/check-in$/);
     const form = await openCheckInDetails(page, { symptoms: ["어지러움"] });
     await form.getByLabel("보호자 메모").fill("격리된 자동 검증 기록");
@@ -205,7 +206,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
     const medicationTabs = page
       .getByRole("tablist", { name: "복용약 선택" })
       .getByRole("tab");
-    expect(await medicationTabs.count()).toBe(baselineMedicationCount);
+    await expect(medicationTabs).toHaveCount(baselineMedicationCount);
     for (let index = 0; index < (await medicationTabs.count()); index++) {
       const tab = medicationTabs.nth(index);
       await tab.click();

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const scope = await requireCareScope();
-  const snapshot = await getCareSnapshot(scope);
+  const snapshot = await getCareSnapshot(scope, { includeClinicianQuestions: false });
   const medications = activeMedications(snapshot.medications);
   const todayTasks = createMedicationSchedule(snapshot.medications, snapshot.doseEvents);
   const calendarDoses = [

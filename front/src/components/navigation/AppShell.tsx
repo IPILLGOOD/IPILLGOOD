@@ -31,12 +31,12 @@ const navigation = [
     href: "/dashboard",
     label: "대시보드",
     icon: LayoutDashboard,
-    mobile: true,
+    mobile: false,
   },
   { href: "/medications", label: "복용약", icon: Pill, mobile: true },
   { href: "/nutrition", label: "식사/영양", icon: Leaf, mobile: true },
-  { href: "/check-in", label: "안부 확인", icon: ClipboardCheck, mobile: true },
-  { href: "/documents", label: "문서", icon: FileText, mobile: true },
+  { href: "/check-in", label: "안부 확인", icon: ClipboardCheck, mobile: false },
+  { href: "/documents", label: "문서", icon: FileText, mobile: false },
   { href: "/profile", label: "프로필", icon: UserRound, mobile: false },
 ];
 
@@ -72,7 +72,7 @@ function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
           const active = pathname.startsWith(href);
           return (
             <Fragment key={href}>
-              {mobile && index === 3 ? <MobileQuickAction /> : null}
+              {mobile && index === 2 ? <MobileQuickAction /> : null}
               <Link
                 href={href}
                 className={active ? "nav-link nav-link--active" : "nav-link"}
@@ -163,11 +163,12 @@ function MobileQuickAction() {
                   <Plus size={22} aria-hidden="true" />
                 </span>
                 <h2 id="quick-action-title">무엇을 기록할까요?</h2>
-                <p>필요한 기록 화면으로 바로 이동하세요.</p>
+                <p>복약과 몸 상태를 기록하거나 사진으로 약을 찾아보세요.</p>
                 <div className="mobile-quick-action__links">
                   <Link className="button button--secondary" href="/dashboard" onClick={close}>복용 여부 기록</Link>
                   <Link className="button button--secondary" href="/check-in" onClick={close}>오늘 몸 상태 기록</Link>
                   <Link className="button button--secondary" href="/documents" onClick={close}>처방전·약봉투 등록</Link>
+                  <Link className="button button--secondary" href="/medications/photo" onClick={close}>사진으로 약 검색</Link>
                 </div>
                 <button
                   ref={closeButton}

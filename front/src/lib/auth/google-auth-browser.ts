@@ -3,6 +3,7 @@ import type { Auth, User } from "firebase/auth";
 import {
   firebaseAuthDomain,
   googleAuthMode,
+  googleSessionDestination,
   GOOGLE_REDIRECT_PENDING_KEY,
   hasGoogleRedirectMarker,
   urlWithGoogleRedirectMarker,
@@ -126,5 +127,5 @@ export async function createGoogleServerSession(
   const result = await response.json() as { redirectTo?: string };
   await authModule.signOut(auth).catch(() => undefined);
   clearGoogleRedirectState();
-  window.location.replace(result.redirectTo === "/account/recovery" ? "/account/recovery" : "/today");
+  window.location.replace(googleSessionDestination(result.redirectTo));
 }

@@ -64,7 +64,9 @@ test("mobile: landing, all care pages, medication details, quick actions and nar
   await expect(page).toHaveURL(/\/medications\/.+/);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await page.screenshot({ path: "verification-artifacts/mobile/medication-detail-390.png", fullPage: true });
-  for (const [name, path] of [["복용 여부 기록", "/dashboard"], ["오늘 몸 상태 기록", "/check-in"], ["처방전·약봉투 등록", "/documents"]]) {
+  const mobileNavigation = page.getByRole("navigation", { name: "주요 메뉴", exact: true });
+  await expect(mobileNavigation.getByRole("link")).toHaveText(["오늘 할 일", "복용약", "식사/영양"]);
+  for (const [name, path] of [["복용 여부 기록", "/dashboard"], ["오늘 몸 상태 기록", "/check-in"], ["처방전·약봉투 등록", "/documents"], ["사진으로 약 검색", "/medications/photo"]]) {
     await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "무엇을 기록할까요?" });
     await expect(dialog).toBeVisible();

@@ -12,5 +12,10 @@ export default defineConfig({
   workers: 2,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    // Service-worker-owned fetches bypass the mocked analysis status API.
+    { name: "webkit-pill-photo", testMatch: "**/pill-photo.spec.ts", use: { ...devices["iPhone 13"], browserName: "webkit", serviceWorkers: "block" } },
+  ],
   use: { baseURL, ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 }, trace: "retain-on-failure", screenshot: "only-on-failure" },
 });

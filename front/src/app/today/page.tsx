@@ -26,7 +26,7 @@ export const metadata: Metadata = {
 
 export default async function TodayPage() {
   const scope = await requireCareScope();
-  const snapshot = await getCareSnapshot(scope);
+  const snapshot = await getCareSnapshot(scope, { includeClinicianQuestions: false });
   const guide = gettingStartedGuide(snapshot, scope.useDemoData);
   if (guide) {
     return (

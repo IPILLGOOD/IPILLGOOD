@@ -83,6 +83,24 @@ test("복약 초안 일괄 조회는 계정 상태와 동의를 한 번만 확�
   assert.equal(reads.filter((path) => path.includes("/medicationPlanDrafts/")).length, 2);
 });
 
+test("화면용 snapshot은 상담 질문 조회를 생략해도 계정 상태를 검증한다", async () => {
+  const firestore = new MemoryFirestore();
+  const recipientId = "google-page-snapshot";
+  const scope = { recipientId, firestore };
+  const expected = await getCareSnapshot(scope);
+  const reads: string[] = [];
+  firestore.beforeRead = async (path) => { reads.push(path); };
+
+  assert.deepEqual(await getCareSnapshot(scope, { includeClinicianQuestions: false }), expected);
+  assert.ok(reads.includes(`accountDeletions/${recipientId}`));
+  assert.ok(reads.includes(`healthDataResets/${recipientId}`));
+  assert.ok(reads.includes(`careReadModels/${recipientId}`));
+  assert.equal(reads.some((path) => /questionSets|questionResponses/.test(path)), false);
+
+  firestore.store.set(`accountDeletions/${recipientId}`, { status: "requested" });
+  await assert.rejects(getCareSnapshot(scope, { includeClinicianQuestions: false }), { name: "AccountDeletingError" });
+});
+
 test("실제 계정의 최신 질문 세트와 답변을 상담 질문 읽기 모델로 투영한다", async () => {
   const firestore = new MemoryFirestore();
   const scope = { recipientId: "google-question-read-model", firestore };

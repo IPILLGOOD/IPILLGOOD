@@ -16,36 +16,27 @@ import { getGoogleAuthErrorMessage } from "@/lib/auth/google-error";
 type LoadingState = "idle" | "popup" | "redirect" | "completing";
 
 export function GoogleSignInButton() {
-  const redirectCheckStarted = useRef(false);
+  const redirectResult = useRef<ReturnType<typeof readRedirectUser> | null>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>();
   const isLoading = loadingState !== "idle";
 
   useEffect(() => {
-    if (redirectCheckStarted.current || !hasPendingGoogleRedirect()) return;
-    redirectCheckStarted.current = true;
+    if (!hasPendingGoogleRedirect()) return;
     let active = true;
-    setLoadingState("completing");
+    queueMicrotask(() => { if (active) setLoadingState("completing"); });
 
     void (async () => {
       try {
-        const { auth, authModule } = await loadFirebaseAuth("redirect");
-        const credential = await withGoogleAuthTimeout(
-          authModule.getRedirectResult(auth),
-          30_000,
-          "auth/redirect-timeout",
-        );
-        await auth.authStateReady();
-        const user = credential?.user ?? auth.currentUser;
-        if (!user) {
-          throw Object.assign(new Error("redirect result missing"), {
-            code: "auth/redirect-result-missing",
-          });
-        }
+        // Share Firebase's one-time redirect result across Strict Mode effect
+        // replays, but only let the currently mounted effect create a session.
+        redirectResult.current ??= readRedirectUser();
+        const { user, auth, authModule } = await redirectResult.current;
+        if (!active) return;
         await createGoogleServerSession(user, auth, authModule);
       } catch (error) {
-        clearGoogleRedirectState();
         if (!active) return;
+        clearGoogleRedirectState();
         setErrorMessage(getGoogleAuthErrorMessage(error));
         setLoadingState("idle");
       }
@@ -118,4 +109,19 @@ export function GoogleSignInButton() {
       ) : null}
     </>
   );
+}
+
+async function readRedirectUser() {
+  return withGoogleAuthTimeout((async () => {
+    const { auth, authModule } = await loadFirebaseAuth("redirect");
+    const credential = await authModule.getRedirectResult(auth);
+    await auth.authStateReady();
+    const user = credential?.user ?? auth.currentUser;
+    if (!user) {
+      throw Object.assign(new Error("redirect result missing"), {
+        code: "auth/redirect-result-missing",
+      });
+    }
+    return { user, auth, authModule };
+  })(), 30_000, "auth/redirect-timeout");
 }

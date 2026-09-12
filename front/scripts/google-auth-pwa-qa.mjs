@@ -4,6 +4,11 @@ const playwrightEntry = process.env.IPILLGOOD_PLAYWRIGHT;
 if (!playwrightEntry) throw new Error("IPILLGOOD_PLAYWRIGHT is required");
 const baseUrl = process.env.IPILLGOOD_BASE_URL ?? "http://localhost:3000";
 const expectedAuthHost = process.env.IPILLGOOD_EXPECTED_AUTH_HOST;
+// Exercise a local build under the registered HTTPS app origin without deploying.
+const localOrigin = process.env.IPILLGOOD_LOCAL_ORIGIN;
+if (localOrigin && !["127.0.0.1", "localhost"].includes(new URL(localOrigin).hostname)) {
+  throw new Error("IPILLGOOD_LOCAL_ORIGIN must be a loopback server");
+}
 const playwrightModule = await import(pathToFileURL(playwrightEntry).href);
 const chromium = playwrightModule.chromium ?? playwrightModule.default?.chromium;
 if (!chromium) throw new Error("Chromium launcher was not found in the Playwright runtime");
@@ -13,14 +18,30 @@ const browser = await chromium.launch({
   executablePath:
     process.env.IPILLGOOD_CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 });
+try {
 const context = await browser.newContext({
   viewport: { width: 390, height: 844 },
   isMobile: true,
   userAgent:
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 Version/18.4 Mobile/15E148 Safari/604.1",
 });
+context.setDefaultTimeout(10_000);
+if (localOrigin) {
+  await context.route(`${new URL(baseUrl).origin}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${localOrigin}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+}
 await context.addInitScript(() => {
-  localStorage.setItem("ipillgood:pwa-install-prompt:hidden", "true");
+  try { localStorage.setItem("ipillgood:pwa-install-prompt:hidden", "true"); } catch { /* Cross-origin helper */ }
+  Object.defineProperty(navigator, "standalone", { configurable: true, get: () => true });
+  const originalMatchMedia = window.matchMedia.bind(window);
+  window.matchMedia = (query) => {
+    const result = originalMatchMedia(query);
+    if (query === "(display-mode: standalone)") Object.defineProperty(result, "matches", { value: true });
+    return result;
+  };
 });
 const page = await context.newPage();
 const diagnostics = [];
@@ -110,6 +131,8 @@ if (!/Google 계정으로 로그인|Sign in with Google|Choose an account|계정
 
 console.log(JSON.stringify({
   mode: "redirect",
+  standalone: true,
+  localBuild: Boolean(localOrigin),
   popupCount: 0,
   handlerHost: handlerUrl.hostname,
   clientId,
@@ -118,4 +141,6 @@ console.log(JSON.stringify({
   oauthPageState: "account-selection",
   returnMarker: handlerUrl.searchParams.get("redirectUrl")?.includes("google_redirect=1") === true,
 }));
+} finally {
 await browser.close();
+}

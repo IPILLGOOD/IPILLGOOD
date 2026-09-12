@@ -105,6 +105,7 @@ test("core flows: accessible names, targets, keyboard, error and success states"
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/check-in$/);
   const form = page.getByRole("form", { name: "오늘의 안부 기록", exact: true });
+  await expect(form).toBeVisible();
   let answeredQuestions = 0;
   for (let step = 0; step < 20; step++) {
     const next = form.getByRole("button", { name: "다음 질문", exact: true });

@@ -1031,3 +1031,43 @@
   .connection-card__footer form,
   .connection-card__footer .button { width: 100%; }
 }
+.route-loading {
+  display: grid;
+  gap: var(--space-6);
+  padding-block: var(--space-6);
+}
+
+.route-loading__heading,
+.route-loading__card {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.route-loading__card {
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  min-height: 10rem;
+}
+
+.route-loading__line {
+  display: block;
+  width: 100%;
+  max-width: 36rem;
+  height: 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-sage-100);
+  animation: route-loading-pulse 1.6s ease-in-out infinite;
+}
+
+.route-loading__line--short { width: 30%; }
+.route-loading__line--title { width: 70%; height: 2rem; }
+
+@keyframes route-loading-pulse {
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-loading__line { animation: none; }
+}

@@ -26,6 +26,11 @@ function isProtectedRoute(pathname: string) {
 // OpenNext Cloudflare currently bundles the middleware convention for the Edge
 // runtime, while Next.js Proxy is emitted as an unsupported Node.js function.
 export function middleware(request: NextRequest) {
+  // Firebase owns the helper HTML/scripts and its iframe must be embeddable by
+  // this app. Our nonce and frame-ancestors 'none' would block redirect auth.
+  if (request.nextUrl.pathname.startsWith("/__/auth/")) {
+    return NextResponse.next();
+  }
   const nonce = btoa(crypto.randomUUID());
   const policy = contentSecurityPolicy({
     development: process.env.NODE_ENV === "development",
@@ -54,5 +59,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|.*\\..*).*)"],
+  matcher: ["/((?!api|__/auth/|_next/static|_next/image|.*\\..*).*)"],
 };

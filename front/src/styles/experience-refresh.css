@@ -201,7 +201,7 @@
 @media (max-width: 959px) {
   .workspace-context { display: none; }
   .experience-shell .mobile-header { background: #fff; border-bottom-color: #e5e8eb; }
-  .mobile-nav { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(4.9rem, 1.35fr) repeat(3, minmax(0, 1fr)); overflow: visible; border-radius: 5px; background: #fff; border: 1px solid #e5e8eb; box-shadow: none; }
+  .mobile-nav { grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(4.9rem, 1.35fr) minmax(0, 1fr); overflow: visible; border-radius: 5px; background: #fff; border: 1px solid #e5e8eb; box-shadow: none; }
   .mobile-nav .nav-link { border-radius: 3px; min-height: 48px; }
   .mobile-nav .nav-link--active { background: #f2f4f6; color: #191f28; }
   .mobile-quick-action { align-self: stretch; display: flex; min-width: 0; min-height: 48px; flex-direction: column; align-items: center; justify-content: center; gap: .18rem; border: 0; padding: 0; background: transparent; color: #22745e; cursor: pointer; }

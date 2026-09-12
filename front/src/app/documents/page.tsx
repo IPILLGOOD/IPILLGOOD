@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const diagnosis = (await searchParams).type === "diagnosis";
   const scope = await requireCareScope();
-  const snapshot = await getCareSnapshot(scope);
+  const snapshot = await getCareSnapshot(scope, { includeClinicianQuestions: false });
   const reviewDocuments = snapshot.documents.filter((document) => document.medicationDraftId && document.status === "needs_review");
   const draftsById = await getMedicationPlanDrafts(scope, reviewDocuments.map((document) => document.medicationDraftId!));
   const drafts = new Map(reviewDocuments.map((document) => {

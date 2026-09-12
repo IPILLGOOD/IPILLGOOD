@@ -5,6 +5,7 @@ import {
   FIREBASE_DEFAULT_AUTH_DOMAIN,
   firebaseAuthDomain,
   googleAuthMode,
+  googleSessionDestination,
   hasGoogleRedirectMarker,
   urlWithGoogleRedirectMarker,
   urlWithoutGoogleRedirectMarker,
@@ -79,4 +80,12 @@ test("응답 없는 인증 작업은 지정한 오류 코드로 종료한다", a
     withGoogleAuthTimeout(new Promise(() => undefined), 5, "auth/popup-timeout"),
     (error) => error?.code === "auth/popup-timeout",
   );
+});
+
+test("로그인 후 온보딩으로 바로 이동하고 임의의 URL은 허용하지 않는다", () => {
+  assert.equal(googleSessionDestination("/profile?onboarding=1"), "/profile?onboarding=1");
+  assert.equal(googleSessionDestination("/account/recovery"), "/account/recovery");
+  for (const value of [undefined, "/today", "//evil.example", "https://evil.example", "/api/auth/logout"]) {
+    assert.equal(googleSessionDestination(value), "/today");
+  }
 });

@@ -66,7 +66,7 @@ export default async function ProfilePage({
       </>
     );
   const scope = careScopeFor(user);
-  const snapshot = await getCareSnapshot(scope);
+  const snapshot = await getCareSnapshot(scope, { includeClinicianQuestions: false });
   const connection =
     user.provider === "google"
       ? await getCareConnection(user.id, { ownerDisplayName: user.name })
