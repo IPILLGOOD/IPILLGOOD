@@ -23,6 +23,7 @@ import { createPortal } from "react-dom";
 import type { SessionUser } from "@/lib/auth/session";
 import { PushStatusProvider } from "@/components/notifications/PushStatusProvider";
 import { PushKeyNotice } from "@/components/notifications/PushKeyNotice";
+import { PullToRefresh } from "@/components/pwa/PullToRefresh";
 import { CareSyncProvider } from "@/components/sync/CareSyncProvider";
 
 const navigation = [
@@ -37,7 +38,7 @@ const navigation = [
   { href: "/nutrition", label: "식사/영양", icon: Leaf, mobile: true },
   { href: "/check-in", label: "안부 확인", icon: ClipboardCheck, mobile: false },
   { href: "/documents", label: "문서", icon: FileText, mobile: false },
-  { href: "/profile", label: "프로필", icon: UserRound, mobile: false },
+  { href: "/profile", label: "프로필", icon: UserRound, mobile: true },
 ];
 
 function Brand() {
@@ -141,7 +142,7 @@ function MobileQuickAction() {
         <span>
           <Plus size={29} strokeWidth={2.4} aria-hidden="true" />
         </span>
-        <small>빠른 기록</small>
+        <small>빠른 이동</small>
       </button>
       {open
         ? createPortal(
@@ -162,8 +163,8 @@ function MobileQuickAction() {
                 <span className="mobile-quick-action__dialog-icon">
                   <Plus size={22} aria-hidden="true" />
                 </span>
-                <h2 id="quick-action-title">무엇을 기록할까요?</h2>
-                <p>복약과 몸 상태를 기록하거나 사진으로 약을 찾아보세요.</p>
+                <h2 id="quick-action-title">어디로 이동할까요?</h2>
+                <p>기록, 문서 등록, 사진 검색을 한곳에서 시작하세요.</p>
                 <div className="mobile-quick-action__links">
                   <Link className="button button--secondary" href="/dashboard" onClick={close}>복용 여부 기록</Link>
                   <Link className="button button--secondary" href="/check-in" onClick={close}>오늘 몸 상태 기록</Link>
@@ -280,13 +281,6 @@ export function AppShell({
             <header className="mobile-header">
               <Brand />
               <div className="mobile-account-actions">
-                <Link
-                  className="mobile-logout"
-                  href="/profile"
-                  aria-label="프로필 및 계정 관리"
-                >
-                  <UserRound size={19} aria-hidden="true" />
-                </Link>
                 <form action="/api/auth/logout" method="post">
                   <button
                     className="mobile-logout"
@@ -308,6 +302,7 @@ export function AppShell({
             </footer>
           </div>
         </div>
+        <PullToRefresh key={pathname} />
         <NavigationLinks mobile />
       </PushStatusProvider>
     </CareSyncProvider>

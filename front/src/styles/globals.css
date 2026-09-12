@@ -3,7 +3,7 @@
 }
 
 html {
-  background: var(--color-background);
+  background: var(--color-surface);
   -webkit-text-size-adjust: 100%;
 }
 

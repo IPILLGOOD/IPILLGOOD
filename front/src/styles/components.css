@@ -1071,3 +1071,36 @@
 @media (prefers-reduced-motion: reduce) {
   .route-loading__line { animation: none; }
 }
+
+.pull-to-refresh { display: none; }
+
+@media (max-width: 959px) {
+  .pull-to-refresh:not(.pull-to-refresh--idle) {
+    position: fixed;
+    z-index: 46;
+    top: calc(4.5rem + env(safe-area-inset-top) + var(--space-3));
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: calc(100% - var(--space-8));
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    color: var(--color-primary-800);
+    box-shadow: var(--shadow-sm);
+    font-size: 0.875rem;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .pull-to-refresh--ready svg { transform: rotate(180deg); }
+  .pull-to-refresh--refreshing svg { animation: pull-refresh-spin 1s linear infinite; }
+}
+
+@keyframes pull-refresh-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pull-to-refresh--refreshing svg { animation: none; }
+}

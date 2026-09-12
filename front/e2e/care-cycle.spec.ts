@@ -77,7 +77,7 @@ test("demo: check-in, document create/delete, reload, dashboard/report and logou
       (entry) => entry.name === "care_atlas_session",
     )!;
     recipientId = decodeJwt(cookie.value).sub;
-    await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
+    await page.getByRole("button", { name: "빠른 이동", exact: true }).click();
     await page.getByRole("dialog").getByRole("link", { name: "오늘 몸 상태 기록", exact: true }).click();
     await expect(page).toHaveURL(/\/check-in$/);
     const form = await openCheckInDetails(page, { symptoms: ["어지러움"] });

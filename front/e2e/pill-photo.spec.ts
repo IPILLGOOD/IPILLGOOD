@@ -54,7 +54,7 @@ test("pill photo: actual canvas preprocessing, consent, bounded upload, result, 
           candidates: [{ itemSeq: "209900001", grade: "possible", variants: [{ item: { productName: "테스트 전용 정제 A", manufacturer: "가상 제조사", front: { rawImprint: "TEST" }, back: { rawImprint: "10" }, imageUrl: null }, conflicts: [], reviewReasons: [] }] }] } } });
   });
   await page.route("**/api/pills/analyze", route => route.fulfill({ json: { ready: true } }));
-  await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
+  await page.getByRole("button", { name: "빠른 이동", exact: true }).click();
   await page.getByRole("dialog").getByRole("link", { name: "사진으로 약 검색", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("앞뒤 사진으로 비교 후보 찾기");
   await page.evaluate(() => {

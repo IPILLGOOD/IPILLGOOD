@@ -24,7 +24,7 @@ test("a delayed page response shows loading immediately and keeps navigation usa
   });
 
   try {
-    await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
+    await page.getByRole("button", { name: "빠른 이동", exact: true }).click();
     await page.getByRole("dialog").getByRole("link", { name: "복용 여부 기록", exact: true }).click();
     await requested;
     const loading = page.getByRole("status", { name: "화면 불러오는 중" });

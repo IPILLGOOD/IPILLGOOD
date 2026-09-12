@@ -15,7 +15,7 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { browserName: "chromium" } },
     // Service-worker-owned fetches bypass the mocked analysis status API.
-    { name: "webkit-pill-photo", testMatch: "**/pill-photo.spec.ts", use: { ...devices["iPhone 13"], browserName: "webkit", serviceWorkers: "block" } },
+    { name: "webkit-pill-photo", testMatch: ["**/pill-photo.spec.ts", "**/pwa-shell.spec.ts"], use: { ...devices["iPhone 13"], browserName: "webkit", serviceWorkers: "block" } },
   ],
   use: { baseURL, ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 }, trace: "retain-on-failure", screenshot: "only-on-failure" },
 });
