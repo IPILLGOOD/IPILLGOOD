@@ -11,9 +11,9 @@ npm run pill:verify --workspace @care-atlas/backend
 
 이 상태는 `metadata_only_without_private_photos_or_raw_model_outputs`다. 즉 기록의 구조와 코드 계약은 재현할 수 있지만, 사진에서 특징을 다시 추출하거나 과거 OpenAI 응답을 재생하는 것은 아니다.
 
-저장된 `features.json`이 있는 경우의 **오프라인 재생에는 OpenAI 키가 필요 없다.** 아래 `--live` 명령은 새로운 유료 추론이며 재생과 다르다. 불변 JSON의 `fullReplayRequirement` 문구는 당시 기록으로 보존하되, 현재 요구 조건은 `PILL_PHOTO_REPRODUCTION_REQUIREMENTS`와 [오프라인 실패 진단 문서](../../../docs/pill-photo-failure-audit.md)를 따른다. v5 사후 분석은 별도 고정 진단 경로이며 새로운 블라인드 성능으로 사용하지 않는다.
+저장된 `features.json`이 있는 경우의 **오프라인 재생에는 OpenAI 키가 필요 없다.** 아래 `--live` 명령은 새로운 유료 추론이며 재생과 다르다. 불변 JSON의 `fullReplayRequirement` 문구는 당시 기록으로 보존하되, 현재 요구 조건은 `PILL_PHOTO_REPRODUCTION_REQUIREMENTS`와 [오프라인 실패 진단 문서](../../../docs/pill-photo-evaluation.md)를 따른다. v5 사후 분석은 별도 고정 진단 경로이며 새로운 블라인드 성능으로 사용하지 않는다.
 
-전체 대조가 필요하면 팀의 비공개 전달 경로에서 받은 검수 완료 자료를 아래 위치에 그대로 둔다. 파일을 이름 변경하거나 압축 해제 과정에서 다시 저장하면 SHA-256이 달라져 검증이 실패한다.
+전체 대조가 필요하면 해당 평가에 사용한 검수 완료 자료를 아래 위치에 그대로 둔다. 파일을 이름 변경하거나 압축 해제 과정에서 다시 저장하면 SHA-256이 달라져 검증이 실패한다.
 
 ```text
 verification-artifacts/pill-photo-v4-intake/

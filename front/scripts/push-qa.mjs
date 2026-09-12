@@ -50,11 +50,11 @@ if (
 }
 await page.getByRole("button", { name: "PWA 설치 안내 닫기" }).click();
 await page.goto(`${baseUrl}/login`, { waitUntil: "networkidle" });
-await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+await page.getByRole("button", { name: "둘러보기", exact: true }).click();
 await page.waitForURL("**/today");
 await page.getByRole("heading", { name: /오늘 돌봄/ }).waitFor();
-await page.waitForTimeout(100);
-if (await page.getByRole("heading", { name: /복약 시간을 알려드려요/ }).count()) {
+await page.goto(`${baseUrl}/profile`, { waitUntil: "networkidle" });
+if (await page.locator(".medication-reminder-card").count()) {
   throw new Error("The push notification section must be hidden in a non-PWA desktop browser");
 }
 await page.evaluate(() => navigator.serviceWorker.ready);

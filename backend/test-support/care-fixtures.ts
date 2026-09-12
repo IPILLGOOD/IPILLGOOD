@@ -27,15 +27,3 @@ export async function seedCareAccount(firestore: FirestoreLike, recipientId: str
   await batch.commit();
   return snapshot;
 }
-
-/** Deterministic fake external boundary; cannot accidentally fall through to the network. */
-export function scriptedFetch(steps: Array<{ status: number; body?: string; headers?: Record<string, string> } | Error>) {
-  let calls = 0;
-  const fetcher: typeof fetch = async () => {
-    const step = steps[calls++];
-    if (!step) throw new Error("UNEXPECTED_EXTERNAL_CALL");
-    if (step instanceof Error) throw step;
-    return new Response(step.body ?? "", { status: step.status, headers: step.headers });
-  };
-  return { fetcher, calls: () => calls };
-}

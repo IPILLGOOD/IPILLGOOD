@@ -1,6 +1,6 @@
 # 배포용 알약 사진 비교
 
-`/medications/photo`에서 같은 알약의 앞뒤 사진을 선택한다. 모바일 하단의 **빠른 이동 → 사진으로 약 검색**, 또는 복용약 화면의 **알약 사진으로 비교 후보 찾기** 링크로 진입한다. 하단 메뉴에는 오늘 할 일·복용약·빠른 이동·식사/영양·프로필을 표시하며, 대시보드·안부 확인·문서는 빠른 이동에서 연다. 분석 결과에서 자동으로 복용약을 등록하지 않는다.
+`/medications/photo`에서 같은 알약의 앞뒤 사진을 선택한다. 모바일 하단의 **빠른 이동 → 사진으로 약 검색**, 또는 복용약 화면의 **알약 사진으로 비교 후보 찾기** 링크로 진입한다. 하단 메뉴에는 오늘 할 일·복용약·빠른 이동·식사/영양·프로필을 표시하며, 기록·문서 등록·사진 검색은 빠른 이동에서 연다. 분석 결과에서 자동으로 복용약을 등록하지 않는다.
 
 ## 처리 흐름
 
@@ -44,7 +44,7 @@ PILL_CATALOG_FILE=/absolute/path/catalog.json npm run cf:deploy --workspace @car
 
 `backend/src/pill-photo-web.test.ts`는 분할 검색의 기존 결과 동일성, 중간 실패·누락 청크 차단, 해시·시각·크기 검증, JPEG·EXIF·동의·중복 검사, Vision/OCR 호출과 후보 검색 연결을 검증한다. 외부 제공자 응답은 명시적인 합성 응답이다.
 
-`front/e2e/pill-photo.spec.ts`는 Chromium과 WebKit의 실제 Canvas가 만든 18장의 JPEG를 서버 업로드 파서로 검사하고, 모바일 업로드·방향 보정·동의·결과·재촬영·오류·초기화·320px 200% 글자 크기를 확인한다. 이 UI 테스트의 분석 API 응답은 모의 응답이며 실제 의약품 식별 정확도를 뜻하지 않는다. 실 데이터/실 모델 점검 결과는 별도 검증 기록으로 남긴다.
+`front/e2e/pill-photo.spec.ts`는 Chromium과 WebKit의 실제 Canvas가 만든 18장의 JPEG를 서버 업로드 파서로 검사하고, 모바일 업로드·방향 보정·동의·결과·재촬영·오류·초기화·320px 200% 글자 크기를 확인한다. 이 UI 테스트의 분석 API 응답은 모의 응답이며 실제 의약품 식별 정확도를 뜻하지 않는다. 고정 실사진·실모델의 성능 한계는 [평가 안내](pill-photo-evaluation.md)에 있다.
 
 Cloudflare [Static Assets 바인딩](https://developers.cloudflare.com/workers/static-assets/binding/)과 [Worker 제한](https://developers.cloudflare.com/workers/platform/limits/)을 기준으로 대용량 목록을 코드 번들에서 분리했다.
 

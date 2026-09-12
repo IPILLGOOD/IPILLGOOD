@@ -10,6 +10,4 @@ No third-party illustration, fonts, raster images, expressions, or external asse
 The app loads the SVG-only `lottie-web` player dynamically on `/404`, pauses when
 hidden or outside the viewport, and destroys it on unmount. Playback loops
 automatically without controls, with subframe interpolation for smooth motion.
-Reduced motion skips the player and JSON download. Artwork was checked at
-frames 0, 66, and 131 in the official diffusionstudio/lottie Skottie player,
-then in the application.
+Reduced motion skips the player and JSON download.

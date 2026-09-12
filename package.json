@@ -26,13 +26,22 @@
   },
   "overrides": {
     "firebase-tools": {
-      "@google-cloud/pubsub": { "@opentelemetry/core": "2.10.0" },
-      "gaxios": { "uuid": "11.1.1" },
-      "superstatic": { "re2": "1.26.1" }
+      "@google-cloud/pubsub": {
+        "@opentelemetry/core": "2.10.0"
+      },
+      "gaxios": {
+        "uuid": "11.1.1"
+      },
+      "superstatic": {
+        "re2": "1.26.1"
+      }
     }
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
-    "firebase-tools": "^15.28.1"
+    "firebase-tools": "^15.28.1",
+    "esbuild": "0.25.4",
+    "miniflare": "5.20260811.1-alpha",
+    "sharp": "0.35.4"
   }
 }

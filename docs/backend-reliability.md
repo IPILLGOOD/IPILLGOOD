@@ -1,22 +1,4 @@
-# 저장·알림 안정성 변경 및 검증
-
-## 범위
-
-작업 브랜치: `codex/backend-reliability-issues`. UI 컴포넌트, 스타일, 복약 시간 계산, 질문 내용과 사용자 입력 흐름은 변경하지 않는다.
-
-| 이슈 | 구현 범위 | 남은 조건 |
-| --- | --- | --- |
-| #69 | REST 단일 원자적 commit, 서버 merge field mask, create precondition, 충돌 재시도 트랜잭션; 구독 해제 덮어쓰기 방지 | 운영 배포 |
-| #70 | 읽기 실패를 빈 계정으로 취급하지 않음; 최신 read model을 읽는 원자적 변경; canonical 복구 도구 | 운영 데이터 복구는 별도 승인 후 실행 |
-| #51 | 안정적인 생성 키, 분산 lease, 결과 checkpoint, 결정적인 질문·분석·실행 ID, 시도 이력 | 외부 서비스 접수 직후 프로세스 종료의 불확실성은 아래 참조 |
-| #68 | `status=active`를 limit 전에 조회; 복합 인덱스 | 인덱스 READY 확인 후 배포 |
-| #80 | 원본+read model+복구 작업 동시 commit; canonical 재조회; backoff·격리·주기적 대조·수동 재시도 | 운영 cron·관측 확인 |
-| #66 | claim lease 만료 회수, 기기별 결과, 429/5xx/timeout 재시도, 최대 5회/30분 제한, Retry-After | DoseOccurrence 모델·지표 통합은 범위 밖. 전체 이슈는 닫지 않음 |
-| #77 | 조회 시 구독 POST 제거, 미구독 계정 일정 생성 금지, 동일 입력 no-op, lastSeen 6시간 제한 | 운영 쓰기량 관찰 |
-| #65 | 한 명령 실행기, 계정·clock·실패 fixture, Admin/REST 계약, production 브라우저·API smoke, CI artifact | 원격 PR CI 결과는 별도 확인 |
-| #54 | 생성 결과의 sourceDocumentIds 연결, 삭제된 근거의 늦은 게시 차단만 준비 | 삭제·보존·익명화 정책 미확정. 연쇄 삭제 미구현, 이슈 유지 |
-
-#54 확인 요청: 문서에서 파생된 AI 분석·질문·실행 기록은 삭제하고 사용자가 작성한 복약·증상·체크인 기록은 보존할지 결정해야 한다. 기존 답변이 참조하는 질문과 여러 문서에 걸친 분석, 기존 데이터의 연결 정보가 없는 경우도 정책에 포함해야 한다. 이 문서는 승인된 개인정보 보존 정책을 대신하지 않는다.
+# 저장·알림 안정성
 
 ## ADR: 원자적 저장과 복구 작업
 
@@ -36,7 +18,7 @@
 
 Cron은 pending 작업을 최대 25개 처리하고 활성 구독을 커서로 순환 대조한다. 기존 누락 일정과 작업이 없던 레거시 데이터도 점진적으로 복구한다. 실패는 60초 지수 backoff(최대 1시간), 5회 후 `quarantined`가 된다. 상태·시도 수·desired/applied revision·일반화된 오류 코드만 기록한다. 새 계획 변경 또는 운영자 재시도로 격리를 해제할 수 있다. 대조는 건강 데이터가 아닌 처리 요약만 응답한다.
 
-단일 계정의 변경이 500 writes를 넘으면 부분 저장 없이 실패한다. 대규모 계정은 별도 분할 모델이 필요하다. 삭제된 계정의 데이터는 이 복구 도구가 재생성하도록 승인된 범위가 아니다.
+단일 계정의 변경이 500 writes를 넘으면 부분 저장 없이 실패한다. 대규모 계정은 별도 분할 모델이 필요하다. 삭제된 계정의 데이터는 복구 도구로 재생성하지 않는다.
 
 복구 작업의 `queuedAt`은 자동 재시도 중 유지하며 `lastSucceededAt`, `lastFailureAt`, `lastQueueDelayMs`, `appliedRevision`을 다음 pending 상태에서도 보존한다. 운영 도구에서 최초 대기 시간과 이전 성공을 확인할 수 있다. Cron의 `processed`는 no-op을 포함한 처리 수이며 실제 수정 건수로 해석하지 않는다.
 
@@ -52,7 +34,7 @@ Node 24, Java 21, npm이 필요하다. 운영 `.env*`·`.dev.vars`가 없는 새
 
 ```sh
 npm ci
-npx playwright install --with-deps chromium
+npx playwright install --with-deps chromium webkit
 npm run verify -- --account-full-cycle
 ```
 
@@ -66,7 +48,7 @@ npm run verify -- --account-full-cycle
 
 ### 현재 화면 흐름과 검증 유지
 
-- 오늘 화면에서는 `/check-in`으로 이동해 기록한다. 선택 카드는 숨긴 input을 강제로 누르지 않고 표시된 label을 클릭한 뒤 checked 상태를 확인한다. 저장 완료 화면과 오늘 화면 복귀, 재진입 후 기록 보존을 검사한다.
+- 오늘 화면의 인라인 안부 또는 빠른 이동의 상세 기록에서 입력한다. 선택 카드는 숨긴 input을 강제로 누르지 않고 표시된 label을 클릭한 뒤 checked 상태를 확인한다. 저장 완료 화면과 오늘 화면 복귀, 재진입 후 기록 보존을 검사한다.
 - 복약 목록은 약 선택 탭을 바꿔 선택 상태·상세 패널·상세 링크가 일치하는지 검사한다.
 - 연결 코드는 8칸 입력 UI에서 실제 키 입력과 자동 포커스 이동을 거쳐 제출한다. 계정 풀사이클은 연결된 계정의 접근, 탈퇴 시 연결 해제, 복구·영구 삭제·재가입까지 검사한다.
 - 320px·200% 글자 크기 검증은 경로별 단계와 문서·요소의 scrollWidth를 기록한다. 요소 테두리 안에 있는 텍스트나 장식이 넘쳐도 원인을 찾을 수 있도록 한다.
@@ -76,26 +58,20 @@ npm run verify -- --account-full-cycle
 
 ### 회귀 테스트 추가
 
-- `backend/test-support/memory-firestore.ts`: `failReads`, `failCommits`, `beforeRead`, `beforeCommit`, `barrier`, `fixedClock`. 메모리 구현은 장애 주입용이며 DB 동등성의 근거로 쓰지 않는다.
-- `backend/test-support/care-fixtures.ts`: 합성 계정·동의 상태·처방·문서 및 `scriptedFetch` (timeout Error, 429, 5xx 등). 과거/미래 계획은 startDate/endDate를 덮어쓴다.
+- `backend/test-support/memory-firestore.ts`: `failReads`, `failCommits`, `beforeRead`, `beforeCommit`, `fixedClock`. 메모리 구현은 장애 주입용이며 DB 동등성의 근거로 쓰지 않는다.
+- `backend/test-support/care-fixtures.ts`: 합성 계정·동의 상태·처방·문서. 과거/미래 계획은 startDate/endDate를 덮어쓴다.
 - `backend/test-support/emulator.ts`: 고유 namespace·계정과 자동 정리. 두 adapter에 같은 계약을 실행한다.
-- 제품별 기대 동작은 원인 이슈의 기존 테스트 파일을 확장한다. #65에는 공통 환경과 격리 요건만 둔다.
-
-## 운영 적용 순서
-
-1. 별도 배포 승인을 받은 뒤 `backend/firestore.indexes.json`의 인덱스를 배포하고 READY를 확인한다. 에뮬레이터는 운영 인덱스 준비 여부를 검증하지 않는다.
-2. 현 데이터 백업·현재 오류율을 확인한 뒤 앱/Worker 코드를 배포한다. 이 브랜치 작업 중 운영 배포·운영 데이터 삭제는 하지 않는다.
-3. 인증된 `/api/push/dispatch` cron을 유지한다. pending 나이, quarantined 수, desired/applied revision 차이, dispatch 실패를 관찰한다.
-4. 필요하면 아래 도구를 dry-run 후 실행한다. `--allow-production`은 실제 운영 프로젝트를 지정할 때만 사용하며 운영자 승인이 선행되어야 한다. 출력에는 건강 데이터가 없다.
-
-```sh
-FIREBASE_PROJECT_ID=demo-example FIRESTORE_EMULATOR_HOST=127.0.0.1:8181 node --experimental-strip-types backend/scripts/repair-care.mjs read-model google-example
-# 실제 변경은 위 명령에 --apply 추가
-# reminders: 일정 즉시 재동기화 / retry-reminders: 실패 작업을 pending으로 재등록
-```
-
-롤백 시 이전 코드가 read model을 통째로 덮어쓸 수 있으므로 트래픽/cron을 먼저 중지한다. 새 작업·생성 checkpoint를 임의 삭제하지 말고 원자적 쓰기를 지원하는 버전으로 복구한다.
 
 ## REST 설계 근거
 
 Firestore 공식 [commit](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/commit), [Write/updateMask](https://firebase.google.com/docs/firestore/reference/rest/v1/Write), [batchGet](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/batchGet), [beginTransaction](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/beginTransaction) 계약을 사용한다. 트랜잭션 읽기는 bytes transaction을 JSON으로 전달하는 batchGet을 써서 에뮬레이터 GET query의 BYTE_STRING 오류도 피한다.
+
+## 수동 복구
+
+`backend/scripts/repair-care.mjs`는 기본적으로 dry-run이다. 실제 변경은 `--apply`, 운영 프로젝트는 `--allow-production`도 명시해야 한다. `read-model`은 원본에서 조회 모델을 복구하고, `reminders`는 일정 재동기화, `retry-reminders`는 실패 작업 재등록을 수행한다.
+
+```sh
+FIREBASE_PROJECT_ID=demo-example FIRESTORE_EMULATOR_HOST=127.0.0.1:8181 node --experimental-strip-types backend/scripts/repair-care.mjs read-model google-example
+```
+
+Firestore 복합 인덱스는 `backend/firestore.indexes.json`으로 관리한다. 에뮬레이터 검증은 실제 프로젝트의 인덱스 준비 상태를 확인하지 않는다.

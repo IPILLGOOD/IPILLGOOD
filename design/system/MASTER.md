@@ -1,238 +1,25 @@
-# Design System Master File
+# IPILLGOOD 디자인 시스템
 
-> **LOGIC:** 페이지별 확장이 필요하면 `design/pages/[page-name].md`를 추가하고 이 문서를 기준으로 검토합니다.
-> If that file exists, its rules **override** this Master file.
-> If not, strictly follow the rules below.
+고령자와 보호자가 약·기록·설정을 읽고 조작하기 쉬운 모바일 화면을 기준으로 한다. 소개 페이지와 로그인 없는 샘플 화면도 같은 기본 컴포넌트를 사용한다.
 
----
+## 스타일 구성
 
-**Project:** IPILLGOOD
-**Updated:** 2026-08-29
-**Category:** Medication & Pill Reminder
-**Design Dials:** Variance 6/10 (Editorial / Modern) | Motion 2/10 (Subtle) | Density 7/10 (Standard)
+기본 변수는 [`tokens.css`](../../front/src/styles/tokens.css), 전역·컴포넌트·페이지 규칙은 [`styles`](../../front/src/styles)에 있다. 루트 레이아웃은 기본 규칙, 랜딩·404, 최종 [`app-theme.css`](../../front/src/styles/app-theme.css) 순서로 불러온다. 최종 테마는 변수와 반응형 규칙을 덮어쓰므로 기본 토큰 값만 보고 실제 화면 값을 판단하지 않는다.
 
-> 사용자 요청과 접근성 검토를 반영해 자동 추천의 파란색·영문 폰트·뉴스레터 패턴을 초록색 돌봄 대시보드와 Noto Sans KR로 수동 조정함.
+## 화면 원칙
 
----
+- Noto Sans KR를 기본 글꼴로 사용한다. 제목·설명·동작의 위계를 명확히 하고 불필요한 영문 장식 라벨을 피한다.
+- 흰 작업 영역과 중립 회색 배경, 짙은 본문, 녹색 주요 동작을 사용한다. 카드·그림자·장식보다 간격과 구분선으로 내용을 나눈다.
+- 상태는 색과 문구·아이콘을 함께 사용한다. 약의 계획, 실제 복용, 미응답, 검색 후보와 판단 보류를 구분한다.
+- 컨트롤에는 의미 있는 이름과 보이는 포커스를 제공한다. 작은 화면과 200% 글자 크기에서도 줄바꿈과 터치 영역을 유지한다.
+- 짧은 상태 전환만 사용하고 `prefers-reduced-motion`에서는 움직임을 줄인다.
 
-## Global Rules
+## PWA 셸
 
-### Color Palette
+하단은 오늘 할 일·복용약·빠른 이동·식사/영양·프로필의 다섯 칸이다. 빠른 이동을 중앙에 배치하고 기록·문서 등록·사진 검색을 연결한다. 알림 설정은 프로필에 있다.
 
-| Role | Hex | CSS Variable |
-|------|-----|--------------|
-| Primary | `#176B4D` | `--color-primary` |
-| On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#91B79B` | `--color-secondary` |
-| Accent/CTA | `#176B4D` | `--color-accent` |
-| Background | `#F8FAF7` | `--color-background` |
-| Surface | `#FFFFFF` | `--color-surface` |
-| Foreground | `#29463B` | `--color-foreground` |
-| Muted | `#E8F0E8` | `--color-muted` |
-| Border | `#DDE6DE` | `--color-border` |
-| Destructive | `#DC2626` | `--color-destructive` |
-| Ring | `#176B4D` | `--color-ring` |
+헤더와 시스템 바 배경은 흰색이며 하단 메뉴도 안전 영역까지 배경을 채운다. 본문 아래 공간은 메뉴의 측정 높이를 한 번 반영한다. 고정 메뉴가 글자 확대나 기기 회전 시 내용을 가리지 않아야 한다. [PWA 동작](../../docs/pwa-navigation.md)
 
-**Color Notes:** Deep green + light sage. 상태는 색상만이 아니라 아이콘과 텍스트를 함께 사용하며 본문 대비 4.5:1 이상을 유지한다.
+## 재사용과 확인
 
-### Typography
-
-- **Heading Font:** Noto Sans KR
-- **Body Font:** Noto Sans KR
-- **Mood:** calm, wellness, health, relaxing, natural, organic
-- **Google Fonts:** [Noto Sans KR](https://fonts.google.com/noto/specimen/Noto+Sans+KR)
-
-**CSS Import:**
-```css
-font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
-```
-
-### Spacing Variables
-
-*Density: 7/10 — Standard*
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--space-xs` | `4px` / `0.25rem` | Tight gaps |
-| `--space-sm` | `8px` / `0.5rem` | Icon gaps, inline spacing |
-| `--space-md` | `16px` / `1rem` | Standard padding |
-| `--space-lg` | `24px` / `1.5rem` | Section padding |
-| `--space-xl` | `32px` / `2rem` | Large gaps |
-| `--space-2xl` | `48px` / `3rem` | Section margins |
-| `--space-3xl` | `64px` / `4rem` | Hero padding |
-
-### Shadow Depths
-
-| Level | Value | Usage |
-|-------|-------|-------|
-| `--shadow-sm` | `0 1px 2px rgba(0,0,0,0.05)` | Subtle lift |
-| `--shadow-md` | `0 4px 6px rgba(0,0,0,0.1)` | Cards, buttons |
-| `--shadow-lg` | `0 10px 15px rgba(0,0,0,0.1)` | Modals, dropdowns |
-| `--shadow-xl` | `0 20px 25px rgba(0,0,0,0.15)` | Hero images, featured cards |
-
----
-
-## Component Specs
-
-### Buttons
-
-```css
-/* Primary Button */
-.btn-primary {
-  background: #176B4D;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-/* Secondary Button */
-.btn-secondary {
-  background: transparent;
-  color: #176B4D;
-  border: 2px solid #176B4D;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-```
-
-### Sections and working surfaces
-
-```css
-.card {
-  border: 0;
-  border-top: 1px solid var(--color-border);
-  border-radius: 0;
-  background: transparent;
-  padding: 24px 0;
-  box-shadow: none;
-}
-
-.working-surface {
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: #FFFFFF;
-  padding: 24px;
-}
-```
-
-Use bounded white surfaces only for forms, upload areas, modals, and a single high-priority action. Present repeated information as divided lists, timelines, steps, tables, or inline statistics.
-
-### Inputs
-
-```css
-.input {
-  padding: 12px 16px;
-  border: 1px solid #E2E8F0;
-  border-radius: 8px;
-  font-size: 16px;
-  transition: border-color 200ms ease;
-}
-
-.input:focus {
-  border-color: #176B4D;
-  outline: none;
-  box-shadow: 0 0 0 3px #176B4D20;
-}
-```
-
-### Modals
-
-```css
-.modal-overlay {
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-.modal {
-  background: white;
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: var(--shadow-xl);
-  max-width: 500px;
-  width: 90%;
-}
-```
-
----
-
-## Style Guidelines
-
-**Style:** Editorial Care
-
-**Keywords:** Near-white canvas, editorial hierarchy, divided lists, subtle sage emphasis, calm clinical trust, accessible
-
-**Best For:** Caregiver-first health and wellness tools that need warmth without losing clinical clarity
-
-**Key Effects:** Large headings, asymmetric desktop grids, fine rules, minimal shadows, selective green surfaces, visible focus
-
-### Page Pattern
-
-**Pattern Name:** Caregiver Dashboard / Content First
-
-- **Primary task:** 오늘의 복약·몸 상태 확인을 1분 안에 완료
-- **CTA placement:** 대시보드 첫 카드와 모바일 하단 내비게이션의 안부 확인 메뉴
-- **Section order:** 오늘의 안부 → 현재 복용약 → 7일 기록 → 확인할 신호 → 의료진 질문
-
----
-
-## Motion
-
-**Scroll Reveal** (Subtle) — Trigger: scroll (viewport enter) | Duration: 300-400ms | Easing: `power1.out`
-
-```js
-gsap.from(el, { opacity: 0, y: 12, duration: 0.35, ease: 'power1.out', scrollTrigger: { trigger: el, start: 'top 90%', toggleActions: 'play none none reverse' } });
-```
-
-**Framework notes:** Requires the ScrollTrigger plugin registered once via gsap.registerPlugin(ScrollTrigger)
-
-- ✅ Keep the y offset small (8-16px) so it reads as a fade, not a slide
-- ❌ Don't reveal below-the-fold content needed for SEO/crawlers as invisible-by-default without a no-JS fallback
-- ⚡ toggleActions 'play none none reverse' avoids re-triggering on every scroll direction change
-
----
-
-## Anti-Patterns (Do NOT Use)
-
-- ❌ Complex shadows
-- ❌ 3D effects
-- ❌ Color-only indicators
-- ❌ Repeating the same rounded white card for every section
-- ❌ Large dark-green surfaces outside primary actions and the final landing CTA
-- ❌ Removing or rewriting safety copy to simplify a layout
-
-### Additional Forbidden Patterns
-
-- ❌ **Emojis as icons** — Use SVG icons (Heroicons, Lucide, Simple Icons)
-- ❌ **Missing cursor:pointer** — All clickable elements must have cursor:pointer
-- ❌ **Layout-shifting hovers** — Avoid scale transforms that shift layout
-- ❌ **Low contrast text** — Maintain 4.5:1 minimum contrast ratio
-- ❌ **Instant state changes** — Always use transitions (150-300ms)
-- ❌ **Invisible focus states** — Focus states must be visible for a11y
-
----
-
-## Pre-Delivery Checklist
-
-Before delivering any UI code, verify:
-
-- [ ] No emojis used as icons (use SVG instead)
-- [ ] All icons from consistent icon set (Heroicons/Lucide)
-- [ ] `cursor-pointer` on all clickable elements
-- [ ] Hover states with smooth transitions (150-300ms)
-- [ ] Light mode: text contrast 4.5:1 minimum
-- [ ] Focus states visible for keyboard navigation
-- [ ] `prefers-reduced-motion` respected
-- [ ] Responsive: 375px, 768px, 1024px, 1440px
-- [ ] No content hidden behind fixed navbars
-- [ ] No horizontal scroll on mobile
+`/preview`는 로그인 없이 샘플 상태를 확인하는 화면이고 `/preview-device`는 같은 화면을 기기 너비로 보여준다. 실제 계정 처리는 하지 않는다. 화면을 바꾸면 기본·빈 목록·로딩·오류·재시도 상태를 함께 확인한다. [샘플 구조](../../docs/preview-workspace.md), [접근성 검사 범위](../../docs/accessibility.md)

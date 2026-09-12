@@ -37,7 +37,6 @@
 
 결과 확인 뒤 규칙·프롬프트·모델·임계값을 변경하지 않았다. 이 holdout은 더 이상 최종 평가 세트가 아니며, 요약은 [holdout-result-2026-09-02.json](holdout-result-2026-09-02.json)에 고정한다. 다음 개선은 이 세 건을 진단 자료로만 사용하고 새로운 품목·촬영 조건으로 별도 validation/holdout 버전을 만들어야 한다.
 
-최종 검증은 백엔드 322개·프론트 89개, 총 411개 테스트와 타입 검사, ESLint, 프로덕션 빌드, `pill:regression` 6/6, `git diff --check`를 통과했다.
 
 ## 범위 제한
 

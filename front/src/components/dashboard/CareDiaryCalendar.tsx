@@ -3,7 +3,7 @@
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Circle, HeartPulse, Pill, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { DoseResponseEditor } from "@/components/dashboard/UnansweredDoseSummary";
+import { DoseResponseEditor } from "@/components/dashboard/DoseResponseEditor";
 
 type CalendarMedication = {
   id: string;
@@ -122,23 +122,7 @@ export function CareDiaryCalendar({
   const initial = new Date(`${initialDate}T00:00:00Z`);
   const [visibleMonth, setVisibleMonth] = useState({ year: initial.getUTCFullYear(), month: initial.getUTCMonth() });
   const [selectedDate, setSelectedDate] = useState(initialDate);
-  const [selectedDoseId, setSelectedDoseId] = useState<string | null>(null);
-  const [selectionRequest, setSelectionRequest] = useState(0);
   const [highlightedSymptomDates, setHighlightedSymptomDates] = useState<string[]>([]);
-
-  useEffect(() => {
-    const selectDose = (event: Event) => {
-      const detail = (event as CustomEvent<{ date?: string; doseId?: string }>).detail;
-      if (!detail?.date || !detail.doseId || !/^\d{4}-\d{2}-\d{2}$/.test(detail.date)) return;
-      const date = new Date(`${detail.date}T00:00:00Z`);
-      setVisibleMonth({ year: date.getUTCFullYear(), month: date.getUTCMonth() });
-      setSelectedDate(detail.date);
-      setSelectedDoseId(detail.doseId);
-      setSelectionRequest((value) => value + 1);
-    };
-    window.addEventListener("care-diary:select-dose", selectDose);
-    return () => window.removeEventListener("care-diary:select-dose", selectDose);
-  }, []);
 
   useEffect(() => {
     const highlight = (event: Event) => {
@@ -162,7 +146,6 @@ export function CareDiaryCalendar({
     const next = new Date(Date.UTC(visibleMonth.year, visibleMonth.month + offset, 1));
     setVisibleMonth({ year: next.getUTCFullYear(), month: next.getUTCMonth() });
     setSelectedDate(dateKey(next.getUTCFullYear(), next.getUTCMonth(), 1));
-    setSelectedDoseId(null);
   };
 
   const selectedMedications = medications.filter((medication) => scheduledOn(medication, selectedDate));
@@ -207,7 +190,7 @@ export function CareDiaryCalendar({
                   type="button"
                   key={key}
                   className={["care-calendar__day", missed ? "is-skipped" : complete ? "is-complete" : "", highlightedSymptomDates.includes(key) ? "has-highlighted-symptom" : "", key === selectedDate ? "is-selected" : "", key === initialDate ? "is-today" : ""].filter(Boolean).join(" ")}
-                  onClick={() => { setSelectedDate(key); setSelectedDoseId(null); }}
+                  onClick={() => setSelectedDate(key)}
                   aria-pressed={key === selectedDate}
                   aria-label={`${visibleMonth.month + 1}월 ${day}일${missed ? ", 미복용 기록 있음" : complete ? ", 복용 완료 기록 있음" : ""}`}
                 >
@@ -249,11 +232,10 @@ export function CareDiaryCalendar({
                 return medicationDoses.map((dose) => (
                   <DoseResponseEditor
                     className="care-diary__task-editor"
-                    key={`${selectedDate}-${medication.id}-${dose.scheduledAt}-${selectionRequest}`}
+                    key={`${selectedDate}-${medication.id}-${dose.scheduledAt}`}
                     dose={dose}
                     medication={medication}
                     revision={revision}
-                    initiallyOpen={dose.id === selectedDoseId}
                   />
                 ));
               }

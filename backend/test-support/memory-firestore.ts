@@ -158,13 +158,6 @@ export class MemoryFirestore implements FirestoreLike {
   }
 }
 
-export function barrier(participants: number) {
-  let entered = 0;
-  let release!: () => void;
-  const ready = new Promise<void>((resolve) => { release = resolve; });
-  return async () => { if (++entered >= participants) release(); await ready; };
-}
-
 export function fixedClock(iso = "2026-08-23T23:00:00.000Z") {
   let value = Date.parse(iso);
   return { now: () => new Date(value), advance: (ms: number) => { value += ms; } };

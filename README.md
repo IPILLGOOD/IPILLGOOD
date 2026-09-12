@@ -141,7 +141,7 @@ flowchart TB
 
 화면은 **Next.js · React · TypeScript**, 인증·데이터는 **Firebase Authentication · Cloud Firestore**, 앱 실행과 예약 작업은 **Cloudflare Workers**, 분석은 **OpenAI**와 **식약처·HIRA 공식 정보**를 사용합니다.
 
-- [개발·운영 안내](docs/development-guide.md) — 로컬 실행, 외부 연동 설정, 검증과 배포
+- [문서 색인](docs/README.md) · [개발·운영 안내](docs/development-guide.md) — 로컬 실행, 외부 연동 설정, 검증과 배포
 - [PWA 탐색과 로그인 복구](docs/pwa-navigation.md) · [사진 검색 상세 구조](docs/pill-photo-web.md)
 - [식사/영양 자료 탐색](docs/nutrition-exploration.md) · [탈퇴·복구 정책](docs/account-deletion.md)
 - [제품 기획안](md/IPILLGOOD_제품_기획안.md) · [문제 정의와 근거](md/IPILLGOOD_근거자료.md) · [사업성](md/value-and-viability.md)

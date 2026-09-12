@@ -13,7 +13,6 @@
     "cf:upload": "npm run pill:catalog:prepare && opennextjs-cloudflare build && opennextjs-cloudflare upload -- --keep-vars",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "push:keys": "node scripts/generate-vapid-keys.mjs",
-    "qa:functional": "node scripts/functional-qa.mjs",
     "qa:google-pwa": "node scripts/google-auth-pwa-qa.mjs",
     "qa:demo-isolation": "node --experimental-strip-types scripts/demo-isolation-qa.mjs",
     "qa:push": "node scripts/push-qa.mjs",
@@ -44,6 +43,7 @@
     "eslint": "9.39.2",
     "eslint-config-next": "16.3.4",
     "typescript": "6.0.2",
-    "wrangler": "^4.123.0"
+    "wrangler": "^4.123.0",
+    "sharp": "0.35.4"
   }
 }

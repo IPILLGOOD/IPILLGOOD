@@ -18,7 +18,7 @@
 
 ### 보안과 의료 안전 경계
 
-- 세션은 `HttpOnly`, `SameSite=Lax`, 프로덕션 `Secure` 쿠키에 7일 만료 JWT로 저장합니다.
+- 세션 JWT는 `HttpOnly`, `SameSite=Lax`, 프로덕션 `Secure` 쿠키에 저장합니다. 일반 Google 세션은 7일, 데모는 2시간, 연결 세션은 30일 만료입니다.
 - 앱 경로는 Cloudflare 호환 Edge Middleware가 인증 쿠키를 확인하고, 쓰기 진입점은 서버에서 세션을 다시 검증합니다.
 - Google 로그인은 Firebase 사용자 ID에서 `google-{uid}` 범위를 만들고 모든 저장소 호출에서 대상 ID 일치를 검사합니다. 데모 로그인은 서버가 만든 임시 UUID 범위와 만료 레코드를 함께 검증합니다.
 - Firestore 보안 규칙은 브라우저의 직접 읽기·쓰기를 차단합니다.
@@ -28,7 +28,9 @@
 - AI 출력은 JSON Schema와 Zod로 검증하고, 실제 입력에 없는 이벤트 참조는 제거합니다. 질문 문구와 선택지는 코드에 승인된 템플릿으로만 구성합니다.
 - 생성형 AI는 진단, 복용 중단·용량 변경·대체 약 추천, 증상과 약의 인과관계 판정을 수행하지 않습니다.
 - Push endpoint 허용 목록은 [`front/src/lib/push/endpoint.ts`](../front/src/lib/push/endpoint.ts)에서 관리합니다. Windows Edge의 WNS도 포함하며 HTTPS와 정확한 호스트 경계를 검사합니다. 알림 본문에는 약 이름이나 진단명 대신 일반적인 복약 확인 문구만 표시합니다.
-- 동일한 복약 회차는 결정적 delivery ID로 한 번만 처리하고, 30분보다 오래 지난 일정은 뒤늦게 발송하지 않습니다. 만료된 구독은 Push 서비스의 404·410 응답 시 비활성화합니다.
+- 동일한 복약 회차는 결정적 delivery ID와 작업 lease로 중복 처리를 제한하고, 30분보다 오래 지난 일정은 뒤늦게 발송하지 않습니다. 만료된 구독은 Push 서비스의 404·410 응답 시 비활성화합니다.
+
+공급자가 요청을 접수한 직후 서버가 중단되면 재시도 결과가 불명확할 수 있습니다. 기기 알림의 정확히 한 번 표시는 보장하지 않습니다. [알림 처리 계약](push-notifications.md)
 
 ## 모노레포 구성
 
@@ -56,7 +58,6 @@ care-atlas/
 ## 기술 구성
 
 - Node.js 24, Next.js 16.3.4 App Router, React 19.2.8, TypeScript 6.0.2
-- Firebase 프로젝트: `care-atlas-seoul-2026-v3`
 - Cloud Firestore: 서울 `asia-northeast3`
 - Firebase Admin SDK 또는 Cloudflare용 Firestore REST adapter
 - Google OAuth 2.0, `jose` 기반 서명 세션, Cloudflare 호환 Edge Middleware
@@ -112,7 +113,7 @@ npm run dev
 | `/account/recovery` | 탈퇴 계정의 보관 기간 내 복구 확인 |
 | `/report` | 출력 가능한 최근 7일 Care Report |
 
-Google 로그인은 `care-atlas-seoul-2026-v3` Firebase Authentication의 Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키를 `front/.env.local`에 설정합니다. 로컬 데모 로그인에는 `IPILLGOOD_DEMO_MODE=true`도 필요하며 환경 변수를 바꾼 뒤 개발 서버를 다시 시작해야 합니다. 데모 로그인도 고정 fallback 키를 사용하지 않으므로 `openssl rand -base64 32`처럼 생성한 충분히 강한 `SESSION_SECRET`이 필요합니다. 운영 데모는 `IPILLGOOD_PUBLIC_DEMO_MODE=isolated`와 `IPILLGOOD_DEMO_ALLOWED_HOSTS`의 정확한 호스트가 모두 일치해야 합니다.
+Google 로그인은 설정한 Firebase 프로젝트의 Authentication Google 공급자를 사용합니다. 로컬에서는 Firebase Authentication의 승인된 도메인에 `localhost`가 포함되어 있어야 하며, 서버 세션 서명용 비밀키를 `front/.env.local`에 설정합니다. 로컬 데모 로그인에는 `IPILLGOOD_DEMO_MODE=true`도 필요하며 환경 변수를 바꾼 뒤 개발 서버를 다시 시작해야 합니다. 데모 로그인도 고정 fallback 키를 사용하지 않으므로 `openssl rand -base64 32`처럼 생성한 충분히 강한 `SESSION_SECRET`이 필요합니다. 운영 데모는 `IPILLGOOD_PUBLIC_DEMO_MODE=isolated`와 `IPILLGOOD_DEMO_ALLOWED_HOSTS`의 정확한 호스트가 모두 일치해야 합니다.
 
 Google 공급자와 OAuth redirect URI는 `backend/firebase.json`의 `auth` 설정으로 관리합니다. 새 Firebase 환경에는 `firebase deploy --only auth`로 공급자를 먼저 배포하고, 실제 서비스 호스트가 **Authentication > 설정 > 승인된 도메인**에도 등록됐는지 확인해야 합니다. 이 단계가 빠지면 클라이언트에서 `auth/configuration-not-found` 또는 `auth/unauthorized-domain` 오류가 발생합니다.
 
@@ -154,6 +155,8 @@ HIRA_DISEASE_API_KEY=공공데이터포털_일반_인증키
 
 `OPENAI_API_KEY`가 있으면 공식 약 원문을 `store:false` 구조화 응답으로 쉬운 말로 바꿉니다. 공식 원문이 없는 항목은 모델이 내용을 만들어내지 않으며, OpenAI가 미설정이거나 실패해도 식약처 원문과 의약품안전나라 상세 링크는 계속 표시합니다.
 
+기능별 구현 문서는 [문서 색인](README.md)에서 찾을 수 있습니다.
+
 ### 전체 검증
 
 Node 24와 Java 21이 설치된 깨끗한 checkout에서 다음 명령을 사용합니다. PR·main CI도 같은 명령을 실행합니다.
@@ -164,7 +167,7 @@ npx playwright install --with-deps chromium webkit
 npm run verify -- --account-full-cycle
 ```
 
-실행기는 임시 `demo-*` Firebase 프로젝트와 비밀키를 생성하고 단위 검사 → 타입 검사 → 린트 → 프로덕션 빌드 → Emulator 계약 → 브라우저/API → 계정 생애주기를 검사합니다. 결과는 Git에서 제외한 `verification-artifacts/`, `playwright-report/`, `test-results/`에 남습니다. 외부 AI와 Google 계정 경계는 합성 응답으로 검증하므로 실제 서비스의 인식 정확도나 OAuth 성공률을 뜻하지 않습니다.
+실행기는 임시 `demo-*` Firebase 프로젝트와 비밀키를 생성하고 단위 검사 → 타입 검사 → 린트 → 프로덕션 빌드 → Emulator 계약 → 브라우저/API → 계정 생애주기를 검사합니다. 결과는 Git에서 제외한 `verification-artifacts/`, `playwright-report/`, `test-results/`에 남습니다. 외부 AI와 Google 계정 경계는 합성 응답으로 검증하므로 실제 서비스의 인식 정확도나 OAuth 성공률을 뜻하지 않습니다. CI는 이어서 기존 Next 빌드를 `cf:build -- --skipNextBuild`로 패키징하고 Workers 사진 처리와 Next·Workers 응답 헤더를 검사합니다.
 
 실제 OpenAI·식약처 키로 비식별 처방전/진단서 이미지, 공식 제품·성분 검색, Care Agent를 연쇄 검증하려면:
 
@@ -217,7 +220,7 @@ npm run cf:deploy --workspace @care-atlas/front
 
 `front/wrangler.jsonc`의 Cron은 매분 실행됩니다. 서버는 복약 계획의 시작일·종료일·횟수·복용 시점을 서울 시간으로 계산해 다음 알림만 조회하고, 실제 Push는 해당 회차부터 30분 동안만 유효합니다. 현재 시간 규칙은 아침 08:00, 점심 13:00, 저녁 19:00, 취침 전 21:00이며, 시간 표현이 없는 1~4회 일정은 횟수별 기본 시각을 사용합니다.
 
-처방전 분석으로 복약 계획이 등록되거나 해당 문서가 삭제되면 서버가 최신 복약 목록으로 알림 일정을 즉시 동기화합니다. 일시적인 Firestore 오류는 한 번 재시도하며, 사용자가 알림을 먼저 허용한 경우와 복약 계획을 먼저 등록한 경우 모두 같은 기기·복약 슬롯을 upsert해 중복 일정을 만들지 않습니다.
+처방전 분석 초안을 사용자가 확인·확정해 복약 계획이 등록되거나 해당 문서가 삭제되면 서버가 최신 복약 목록으로 알림 일정을 즉시 동기화합니다. 일시적인 Firestore 오류는 한 번 재시도하며, 사용자가 알림을 먼저 허용한 경우와 복약 계획을 먼저 등록한 경우 모두 같은 기기·복약 슬롯을 upsert해 중복 일정을 만들지 않습니다.
 
 운영 도착 검증은 로그인 후 `/profile`에서 다음 순서로 진행합니다.
 
@@ -237,9 +240,7 @@ Push 서비스의 HTTP 성공은 브라우저 서비스가 메시지를 접수�
 
 운영자가 등록된 특정 기기로 직접 테스트할 때는 `PUSH_OPERATOR_SECRET`을 헤더에 넣고 `/api/push/operator-test`에 Firebase UID와 해당 Push 기기 ID를 전달합니다. 응답의 `deliveryId`를 같은 엔드포인트의 GET 요청으로 조회하면 푸시 서비스 접수 상태와 기기 표시 receipt를 분리해 확인할 수 있습니다. 비밀값과 기기 ID는 클라이언트 코드나 로그에 남기지 않습니다.
 
-운영 주소: <https://ipillgood.wkddudgk4869.workers.dev>
-
-`front/scripts/visual-qa.mjs`는 320·768·1024·1440px 화면, 확대 텍스트, 수평 오버플로, 콘솔 오류, WCAG 2.1 AA axe 규칙과 주요 터치 타깃을 검사합니다. `functional-qa.mjs`는 인증된 데모 세션에서 안부 기록과 문서 분석의 핵심 흐름을 검증합니다.
+`front/scripts/visual-qa.mjs`는 320·768·1024·1440px 화면, 확대 텍스트, 수평 오버플로, 콘솔 오류, WCAG 2.1 AA axe 규칙과 주요 터치 타깃을 검사합니다. `npm run verify -- --account-full-cycle`은 안부 저장·복구, 문서 검토·확정·삭제, 계정 격리와 탈퇴·복구 흐름을 함께 검사합니다.
 
 Firestore 규칙 배포:
 
@@ -258,7 +259,7 @@ npm run firebase:deploy
 | 진단서 질병 정보 | 문서에서 추출한 진단명·KCD/ICD 코드 | HIRA 정확 일치를 우선 사용하고, 실패한 항목만 OpenAI 웹 검색으로 보강해 출처 URL과 함께 반환 | 공식·웹 결과가 없다는 상태를 명시하고 추측하지 않음 |
 | 공식 약 정보의 쉬운 설명 | 식약처 제품 원문·일치하는 공식 보강 정보 | 원문 범위 안에서 보호자용 설명 생성 | 공식 원문과 상세 링크 유지 |
 | 사진으로 약 검색 | 전처리한 알약 앞뒤 JPEG; 약 이름·정답 코드는 전송하지 않음 | Vision·앞면 OCR·뒷면 OCR → 구조화 특징 검증 → 공식 목록과 결정적으로 비교 | 부분 실패·사진 품질 부족·오래된 목록은 후보를 내보내지 않고 오류·재촬영 안내 |
-| 식사/영양 자료 탐색 | 사용자가 확인한 질환명·코드 | 웹 검색 → 출처 URL·한국어·본문/자막 접근 조건 검증 → 요약과 원문 링크 | 0건과 오류를 구분하고 허구의 자료로 채우지 않음 |
+| 식사/영양 자료 탐색 | 사용자가 확인한 질환명·코드 | 웹 검색 → 출처 URL·한국어·본문/자막 접근 또는 검색 미리보기 상태 구분 → 요약과 원문 링크 | 0건과 오류를 구분하고 허구의 자료로 채우지 않음 |
 
 ### Care Agent 실행 흐름
 
@@ -268,5 +269,3 @@ npm run firebase:deploy
 4. 모델은 사용자에게 보일 질문 문장을 직접 쓰지 않습니다. `generate-question-set.ts`가 검증된 finding을 증상 추적, 복약 어려움, 새 약 관찰, 일상 상태 템플릿에 연결합니다.
 5. 분석 결과, 질문 세트, 실행 메타데이터를 각각 `careAnalyses`, `questionSets`, `agentRuns`에 저장합니다. 프롬프트·출력 스키마 버전, 입력·출력 참조, 성공·미설정·실패 상태를 남깁니다.
 6. 제출된 답변은 `questionResponses`에 별도로 보존하고, 같은 batch에서 복약·증상 이벤트, 일일 체크인, bounded read model을 갱신합니다. 생성 결과가 원본 기록을 덮어쓰지 않습니다.
-
-#

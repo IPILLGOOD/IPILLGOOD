@@ -1,149 +1,58 @@
 # IPILLGOOD 기술 구조
 
-## 설계 목표
+서비스 전체와 사진 검색·연결 코드 흐름도는 [README](../README.md#서비스-아키텍처)에 있습니다. 이 문서는 인증 경계와 저장 구조를 설명합니다.
 
-1. 건강정보를 브라우저에서 Firestore로 직접 쓰지 않는다.
-2. 복약 계획과 사용자의 실제 복용 응답을 분리한다.
-3. 약 변경과 증상을 함께 보여주되 인과관계는 생성하지 않는다.
-4. AI 제공자를 바꿔도 데이터·안전 경계는 유지한다.
+## 요청과 인증
 
-## 요청 흐름
+Next.js Server Component, Server Action, Route Handler가 백엔드 저장소와 외부 API를 호출합니다. 브라우저에서 Firestore에 직접 접근하는 요청은 보안 규칙으로 차단합니다. 각 쓰기 진입점은 세션, 계정 상태, 돌봄 범위, 동의와 입력을 검사합니다.
 
-```text
-Browser
-  ├─ Server Component ── Firestore repository ── Firebase Admin ── Firestore
-  ├─ Form ── Server Action ── Zod validation ── repository ── Firestore
-  └─ Document Form ── /api/documents/analyze ── analyzer ─┬─ external AI API
-                                                          └─ OpenAI vision
+| 로그인 방식 | 접근 범위 | 세션·종료 조건 |
+|---|---|---|
+| Google | 서버가 검증한 Firebase UID의 돌봄 공간 | 일반 세션 7일, 탈퇴·세션 버전 변경 시 접근 차단 |
+| 연결 코드 | 코드 소유자의 돌봄 공간 | 연결 세션 30일, 새 기기 로그인 시 이전 연결 세션 교체; 30일 미사용·소유자 해제·탈퇴 시 연결 종료 |
+| 둘러보기 | 방문자마다 생성한 비식별 데모 공간 | 세션 2시간, 만료 후 정리 대상 |
 
-Diagnosis enrichment ── HIRA disease API ── exact match ── official code/name
-                                    └─ unavailable/no match ── OpenAI web search
+연결 코드는 처음 발급한 뒤 10분 안에 입력해야 하며, 연결 이후에는 같은 코드로 다시 로그인할 수 있습니다. 연결 사용자는 계정 소유자의 코드 발급·해제, 탈퇴, 건강정보 삭제 권한을 갖지 않습니다. 두 Google 계정의 데이터를 합치거나 여러 보호자의 역할을 관리하는 모델은 지원하지 않습니다.
 
-Document analysis ── Firestore metadata/result
-                  └─ uploaded source file is discarded after the request
-```
+인증 구현은 [세션](../front/src/lib/auth/session.ts), [돌봄 범위](../front/src/lib/auth/care-scope.ts), [연결 코드](../backend/src/care-connection.ts)를 참고하세요. 로그인 실패·시간 초과·화면 복귀 처리는 [PWA 안내](../docs/pwa-navigation.md)에 있습니다.
 
-Firestore 보안 규칙은 클라이언트 읽기·쓰기를 모두 거부합니다. 서버 액션은 공개 POST 진입점이므로 1차 MVP에서는 `IPILLGOOD_DEMO_MODE`로 쓰기를 제한합니다. 실제 서비스에서는 각 액션에서 인증·보호자 권한·돌봄 대상자 소유권을 다시 확인해야 합니다.
+## Firestore 데이터 모델
 
-## Firestore 구조
+| 저장 경로 | 역할 |
+|---|---|
+| `careRecipients/{recipientId}` | 대상자 프로필, 동의, 확인한 질환 |
+| `medicationPlans` 하위 컬렉션 | 사용자가 확정한 약·복용량·횟수·기간·문서 출처 |
+| `doseEvents`, `symptomEvents`, `dailyCheckIns` | 실제 복용 응답, 증상, 일일 기록과 응답자 구분 |
+| `clinicalDocuments`, `clinicianQuestions` | 문서 메타데이터·분석·검토 상태와 의료진 질문 |
+| `careAnalyses`, `questionSets`, `questionResponses`, `agentRuns` | AI 분석, 질문, 사용자 답변, 생성 버전·처리 상태 |
+| `processingLeases` | 진행 중인 외부 AI·Push 작업과 계정 삭제 사이의 조정 |
+| `careReadModels/{recipientId}` | 화면 조회용 프로필·복약·최근 이벤트·문서와 revision |
+| `pushSubscriptions`, `medicationReminderSchedules`, `pushDeliveries`, `medicationReminderSync` | 기기 구독, 다음 알림, 전달·표시 상태, 동기화 작업 |
+| `accountDeletions` | 탈퇴 요청, 복구 기한, 작업 상태, 세션 차단 버전 |
 
-```text
-careRecipients/{recipientId}
-  displayName
-  ageBand
-  heightCm / weightKg (선택)
-  allergies[]
-  conditions[]
-  mobilityNote
-  caregiverNote
-  consentConfirmed
-  lastConfirmedAt
+표의 하위 컬렉션은 `careRecipients/{recipientId}` 아래에 있습니다. 연결·데모 세션도 서버 저장소에서 유효성과 만료를 확인합니다. 정확한 필드와 인덱스는 [도메인 타입](../backend/src/types.ts)과 [Firestore 인덱스](../backend/firestore.indexes.json)를 기준으로 합니다.
 
-  medicationPlans/{medicationId}
-    productName / ingredientName
-    purposePlain / descriptionPlain
-    doseAmount / frequency / timing
-    startDate / endDate
-    status / isNew
-    sourceLabel
-    watchFor[]
+화면은 조회 모델 한 문서를 사용합니다. 최근 복약 이벤트 90개, 증상 45개, 문서 10개로 배열을 제한하며 원본 이벤트는 하위 컬렉션에 보존합니다. 원본 변경과 조회 모델 revision 갱신을 같은 트랜잭션에 넣습니다. 조회 모델 누락은 원본에서 재구성하고, 저장소 오류를 빈 계정으로 취급하지 않습니다. [저장·복구 계약](../docs/backend-reliability.md)
 
-  doseEvents/{eventId}
-    medicationPlanId
-    scheduledAt
-    response
-    answeredBy / answeredAt
+## 문서 등록과 확정
 
-  symptomEvents/{eventId}
-    symptomType / occurredAt / severity
-    dailyLifeImpact / reporterType / note
+`POST /api/documents/analyze`는 업로드를 분석해 검토할 초안을 저장합니다. 원본 이미지·PDF는 요청 처리 후 영구 저장하지 않습니다. `AI_ANALYSIS_ENDPOINT`가 설정되면 외부 분석기를, 그렇지 않으면 OpenAI를 사용합니다. 분석기가 없으면 실제 파일 분석은 503을 반환하며 데모 샘플만 별도 샘플 결과를 제공합니다.
 
-  dailyCheckIns/{yyyy-mm-dd}
-    completedAt / completedBy
-    medicationResponses[] / symptoms[] / note
+처방의 약·복용량·횟수·시각·기간은 사용자가 원본과 대조하고 수정한 뒤 `POST /api/documents/confirm`으로 확정합니다. 공식 품목 코드를 검증하며, 확정한 약과 문서 출처를 복약 계획에 연결합니다. 분석 완료만으로 복약 계획이 생성되지는 않습니다. 확정·문서 삭제는 알림 일정 동기화 작업도 함께 갱신합니다.
 
-  clinicalDocuments/{documentId}
-    fileName / documentType / uploadedAt
-    status / redacted / sourceLabel / size
-    analysis
-      summary
-      findings[]
-      carePoints[]
-      questionsForProfessional[]
-      diagnoses[]
-      diseaseInformation[] / diseaseLookup
-      disclaimer / source
+진단명·KCD/ICD 코드는 HIRA의 정확 일치를 우선 확인하고, 없거나 조회할 수 없는 항목만 출처가 있는 웹 검색으로 보강합니다. 사용자가 확인한 질환은 프로필과 영양 탐색에 연결됩니다. 분석 전체 시간 제한과 부분 실패는 [분석기](../backend/src/ai/medication-analyzer.ts)에서 관리하며, 재시도 실패로 이미 확보한 유효 결과를 지우지 않습니다.
 
-  clinicianQuestions/{questionId}
-    priority / question / reason
+## AI 기능과 정보 검색
 
-careReadModels/{recipientId}
-  recipient / medications[] / clinicianQuestions[]
-  doseEvents[] (최근 90개)
-  symptomEvents[] (최근 45개)
-  documents[] (최근 10개)
-  todayCheckIn / updatedAt
-```
+- Care Agent는 최소 프로필, 활성 약, 목표일 이전 최근 14일 복약·증상 기록을 분석합니다. 당일 답변은 생성 입력에서 제외합니다. 저장된 질문 세트를 재사용하며 질문 문장은 코드의 템플릿으로 최대 3개 구성합니다. 실패하면 결정적 규칙의 `safe_fallback`을 사용합니다.
+- 약 검색은 식약처 제품명·성분명 조회와 같은 `itemSeq`의 공식 정보를 결합합니다. 쉬운 설명 생성이 실패해도 원문과 공식 링크를 유지합니다. 검색으로 개인 복약 계획을 변경하지 않습니다.
+- 사진 검색은 브라우저 전처리, Vision·앞뒤 OCR, 결정적 공식 후보 비교를 사용합니다. 사진·검색 결과는 앱 저장소에 보관하지 않습니다. [사진 검색 구조](../docs/pill-photo-web.md)
+- 영양 검색은 확인한 질환명·코드만 외부에 전달하고 공개 질환별 결과를 캐시합니다. [검색 계약](../docs/nutrition-exploration.md)
 
-화면 렌더링은 정규화된 하위 컬렉션을 매번 전부 조회하지 않고 `careReadModels/{recipientId}` 한 문서를 읽습니다. 프로필·체크인·문서 저장은 원본 하위 문서와 read model을 함께 갱신합니다. read model의 이벤트 수를 제한해 Firestore 문서 크기가 계속 커지는 것을 막고, 보고서에 필요한 최근 기록만 유지합니다. read model이 없는 기존 데이터는 최초 한 번 하위 컬렉션에서 재구성됩니다.
+AI 출력은 스키마로 검증하고 입력에 없는 이벤트 참조는 제거합니다. 문서 속 명령문을 실행 지시로 취급하지 않습니다. 진단, 복용 중단·용량 변경·대체 약 추천, 증상과 약의 인과관계 판정은 수행하지 않습니다.
 
-## 데이터 원칙
+## 알림과 계정 생애주기
 
-- 새 처방이 기존 약을 자동으로 덮어쓰지 않음
-- 미응답과 미복용을 다른 값으로 저장
-- 자기보고와 보호자 관찰을 `answeredBy`, `reporterType`으로 구분
-- 생성 요약은 원본 이벤트를 바꾸지 않음
-- 문서 파일은 현재 서버 메모리에서 메타데이터만 확인하고 폐기
+Cloudflare 예약 작업이 복약 발송, 일정 대조, 만료 데모·연결 정리, 탈퇴 기한 처리를 실행합니다. 알림은 구독 활성화와 계정 상태를 확인하고, 서비스 워커가 표시 전·클릭 전에도 현재 연결을 검사합니다. 공급자 접수와 기기 표시 receipt를 구분하며 OS 표시까지 정확히 한 번을 보장하지 않습니다. [Push 계약](../docs/push-notifications.md)
 
-## 문서 분석 API 연결
-
-[medication-analyzer.ts](../backend/src/ai/medication-analyzer.ts)가 AI 제공자 경계입니다.
-
-`front/.env.local`에 다음 값을 설정하면 외부 분석 API를 호출합니다.
-
-```env
-AI_ANALYSIS_ENDPOINT=https://example.com/analyze
-AI_API_KEY=
-```
-
-외부 API 요청은 `documentType`, `fileName`, `contentType`, `contentBase64`를 JSON으로 전달합니다. 응답은 다음 구조를 사용합니다.
-
-```json
-{
-  "analysis": {
-    "summary": "보호자가 이해할 수 있는 전체 요약",
-    "findings": [{ "label": "약 이름", "value": "원본에서 확인된 값" }],
-    "carePoints": ["돌봄 중 살펴볼 점"],
-    "questionsForProfessional": ["의사·약사에게 물어볼 점"],
-    "disclaimer": "원본과 전문가 설명으로 확인해야 한다는 안내"
-  }
-}
-```
-
-외부 분석 API가 없으면 `OPENAI_API_KEY`로 OpenAI 이미지/PDF 분석을 사용합니다. 진단서 분석 응답에는 가능하면 다음 필드를 함께 반환합니다.
-
-```json
-{
-  "diagnoses": [{ "name": "본태성 고혈압", "code": "I10" }]
-}
-```
-
-진단명 또는 코드가 추출되면 `HIRA_DISEASE_API_KEY`로 건강보험심사평가원 질병정보서비스를 먼저 조회합니다. 정확한 코드·질병명 매칭이 없거나 API가 설정되지 않았거나 일시적으로 실패한 경우에만 OpenAI Responses API의 `web_search` 도구를 호출합니다. 웹 검색은 공공기관·대학병원·국제 보건기관 도메인으로 제한하고, 사용한 URL을 결과에 저장해 화면에서 클릭 가능한 출처로 표시합니다. OpenAI 요청은 `store: false`로 전송합니다.
-
-모든 분석 키가 없으면 비식별 데모 분석을 반환하므로 업로드부터 결과 확인까지의 화면 흐름은 그대로 체험할 수 있습니다.
-
-약물 검색은 `MFDS_MEDICATION_API_KEY`로 식약처 의약품 제품 허가정보의 제품명·성분명 조회를 병행하고 `itemSeq`를 공식 제품 식별자로 유지합니다. e약은요의 효능·사용법·주의사항·상호작용·이상반응·보관법은 같은 `itemSeq`에만 결합하고, 약물 유전 정보는 별도 `MFDS_PARMGEN_API_KEY`가 있으면 그 키를 사용해 제품 성분과 일치할 때만 보강합니다. 공식 검색은 개인별 `MedicationPlan`과 분리되어 검색만으로 복용량·횟수·시간을 만들거나 변경하지 않습니다. 키 미설정, API 장애, 공식 무결과를 구분하며 고정 예시나 OpenAI 웹 검색으로 제품 식별을 대체하지 않습니다.
-
-## AI 안전 고도화 계획
-
-후속 구현 순서:
-
-1. 이미지 내 이름·주민번호·주소 자동 가리기
-2. OCR 후보와 신뢰도 추출
-3. 보호자 원본 대조·확정
-4. 식약처 품목·성분 ID 매칭
-5. HIRA DUR 결정적 안전 확인
-6. 근거가 연결된 쉬운 말 변환
-7. 금지 지시와 과도한 단정 검사
-
-AI 키 유무와 관계없이 복용 중단·용량 변경·대체 약 추천은 허용하지 않습니다.
+탈퇴는 즉시 접근을 차단하고 한국 달력 기준 3개월 동안 복구용으로 보관합니다. 같은 계정의 새 인증과 명시적 복구를 요구하며 기한 후에는 영구 삭제합니다. 건강정보 삭제는 별도의 즉시 초기화 흐름입니다. [삭제 범위·실패 처리](../docs/account-deletion.md)

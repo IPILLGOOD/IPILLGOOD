@@ -50,7 +50,7 @@ function sessionIdFromCookie(cookie) {
 async function login(context) {
   const page = await context.newPage();
   await page.goto(`${baseUrl}/login`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: /데모로 둘러보기/ }).click();
+  await page.getByRole("button", { name: "둘러보기", exact: true }).click();
   await page.waitForURL("**/today");
   const cookie = (await context.cookies()).find(
     (candidate) => candidate.name === "care_atlas_session",
