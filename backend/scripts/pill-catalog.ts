@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { collectPillCatalogSnapshot, MAX_PILL_SNAPSHOT_BYTES, snapshotSearchCatalog, validatePillCatalogSnapshot, type PillCatalogSnapshot } from "../src/pill-catalog-snapshot.ts";
+import { PILL_CATALOG_MAX_AGE_HOURS } from "../src/pill-catalog-freshness.ts";
 import { PILL_OBSERVATION_SCHEMA_VERSION, migrateObservedPillSideV1, searchPillCandidates, type PillObservation, type PillSearchResult } from "../src/pill-identification.ts";
 import { serializePillProfile } from "./profile-pill-catalog.ts";
 import { classifyPillForm, summarizePillFormPolicy } from "../src/pill-form-policy.ts";
@@ -10,7 +11,7 @@ import { classifyPillForm, summarizePillFormPolicy } from "../src/pill-form-poli
 const OUTPUT_DIRECTORY = fileURLToPath(new URL("../../verification-artifacts/pill-catalog/", import.meta.url));
 const HELP = `Local pill catalog tooling (run from the repository root):
   collect --live [--max-requests 600]
-  search --catalog <catalog.json> --observation <observation.json> --max-age-hours <1..168> [--limit 20]
+  search --catalog <catalog.json> --observation <observation.json> --max-age-hours <1..${PILL_CATALOG_MAX_AGE_HOURS}> [--limit 20]
 
 Collect: node --env-file=front/.env.local --experimental-strip-types backend/scripts/pill-catalog.ts collect --live
 Search:  node --experimental-strip-types backend/scripts/pill-catalog.ts search --catalog <path> --observation <path> --max-age-hours 24

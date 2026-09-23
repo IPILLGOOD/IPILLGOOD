@@ -2,10 +2,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { OfficialPillItem } from "./official-pill-catalog.ts";
+import { PILL_CATALOG_MAX_AGE_HOURS } from "./pill-catalog-freshness.ts";
 export { searchPillCandidateChunks } from "./pill-identification.ts";
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 export const PILL_WEB_CATALOG_PATH = "/pill-catalog/manifest.json";
-export const PILL_WEB_CATALOG_MAX_AGE_MS = 168 * 3_600_000;
+export const PILL_WEB_CATALOG_MAX_AGE_MS = PILL_CATALOG_MAX_AGE_HOURS * 3_600_000;
 export const pillWebCatalogManifestSchema = z.object({
   schemaVersion: z.literal("pill-web-catalog.v1"),
   version: z.string().regex(/^mfds-pill-v1-[a-f0-9]{64}$/),

@@ -30,13 +30,13 @@ npm run cf:deploy --workspace @care-atlas/front
 - `front/public/pill-catalog/`의 생성물을 기존 Workers Static Assets와 함께 배포한다. 전체 목록을 Worker JavaScript 번들에 넣지 않는다.
 - API 접근 실패, 불완전 수집, 오래된 자료를 발견하면 배포 전에 실패한다. 기존 배포는 유지된다.
 
-이미 검증한 최신 스냅샷이 있으면 절대경로를 `PILL_CATALOG_FILE`로 넘길 수 있다. 이 경우에도 무결성과 168시간 이내의 신선도를 검사한다. `front/.env.local`은 로컬 배포 시 읽을 수 있지만 검증용 작업 트리에는 두지 않는다.
+이미 검증한 최신 스냅샷이 있으면 절대경로를 `PILL_CATALOG_FILE`로 넘길 수 있다. 이 경우에도 무결성과 30일 이내의 신선도를 검사한다. `front/.env.local`은 로컬 배포 시 읽을 수 있지만 검증용 작업 트리에는 두지 않는다.
 
 ```sh
 PILL_CATALOG_FILE=/absolute/path/catalog.json npm run cf:deploy --workspace @care-atlas/front
 ```
 
-운영에서는 **7일 이내에 목록을 다시 준비해 배포해야 한다.** 자동 갱신 작업은 아직 연결되어 있지 않다. 168시간이 지나거나 manifest/청크가 유실·변조되면 분석을 중지하고 갱신 안내를 표시한다. 갱신 실패를 최신 자료로 위장하거나 시험 fixture로 대체하지 않는다. 생성물은 Git에서 제외한다. 공개된 공식 목록만 Static Assets에 두며 사용자 사진은 넣지 않는다.
+운영에서는 **30일 이내에 목록을 다시 준비해 배포해야 한다.** 자동 갱신 작업은 아직 연결되어 있지 않다. 30일이 지나거나 manifest/청크가 유실·변조되면 분석을 중지하고 갱신 안내를 표시한다. 갱신 실패를 최신 자료로 위장하거나 시험 fixture로 대체하지 않는다. 생성물은 Git에서 제외한다. 공개된 공식 목록만 Static Assets에 두며 사용자 사진은 넣지 않는다.
 
 `cf:build`와 일반 테스트는 실 API 키 없이 실행된다. 이 경우 화면은 공식 목록 준비 중 상태이며 유료 분석 요청을 보내지 않는다. 배포 검증은 현재 API 활용신청과 실제 최신 목록 확보까지 확인해야 완료로 볼 수 있다.
 

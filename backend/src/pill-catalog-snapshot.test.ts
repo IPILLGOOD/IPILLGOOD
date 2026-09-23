@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { collectPillCatalogSnapshot, snapshotSearchCatalog, validatePillCatalogSnapshot, type PillCatalogSnapshot } from "./pill-catalog-snapshot.ts";
+import { PILL_CATALOG_MAX_AGE_HOURS } from "./pill-catalog-freshness.ts";
 import { parseOfficialPillPage, type OfficialPillPageRequest, type OfficialPillPageResult } from "./official-pill-catalog.ts";
 import { searchPillCandidates } from "./pill-identification.ts";
 import { pillEnvelope, pillObservation, pillRecord } from "../test-support/pill-fixtures.ts";
@@ -151,8 +152,10 @@ test("로컬 파일의 버전·행·검증 메타데이터 변조나 미완성 �
 test("최신성 정책을 명시하고 만료·미래 시각의 카탈로그로는 검색하지 않는다", async () => {
   const snapshot = await fixtureSnapshot();
   assert.equal(snapshotSearchCatalog(snapshot, { now: new Date(Date.parse(NOW) + 3_600_000), maxAgeHours: 1 }).ok, true);
+  assert.equal(snapshotSearchCatalog(snapshot, { now: new Date(Date.parse(NOW) + PILL_CATALOG_MAX_AGE_HOURS * 3_600_000), maxAgeHours: PILL_CATALOG_MAX_AGE_HOURS }).ok, true);
+  assert.deepEqual(snapshotSearchCatalog(snapshot, { now: new Date(Date.parse(NOW) + PILL_CATALOG_MAX_AGE_HOURS * 3_600_000 + 1), maxAgeHours: PILL_CATALOG_MAX_AGE_HOURS }), { ok: false, reason: "snapshot_expired_or_future" });
   for (const now of [new Date(Date.parse(NOW) - 1), new Date(Date.parse(NOW) + 3_600_001)]) {
     assert.deepEqual(snapshotSearchCatalog(snapshot, { now, maxAgeHours: 1 }), { ok: false, reason: "snapshot_expired_or_future" });
   }
-  for (const maxAgeHours of [0, 0.5, -1, Infinity, NaN, 169]) assert.equal(snapshotSearchCatalog(snapshot, { now: clock(), maxAgeHours }).ok, false);
+  for (const maxAgeHours of [0, 0.5, -1, Infinity, NaN, PILL_CATALOG_MAX_AGE_HOURS + 1]) assert.equal(snapshotSearchCatalog(snapshot, { now: clock(), maxAgeHours }).ok, false);
 });

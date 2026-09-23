@@ -6,6 +6,7 @@ import { parseOfficialPillPage } from "./official-pill-catalog.ts";
 import { pillEnvelope, pillObservation, pillRecord } from "../test-support/pill-fixtures.ts";
 import { searchPillCandidates, searchPillCandidateChunks } from "./pill-identification.ts";
 import { boundedPillResponse, readPillWebChunks, readPillWebManifest } from "./pill-catalog-web.ts";
+import { PILL_CATALOG_MAX_AGE_HOURS } from "./pill-catalog-freshness.ts";
 import { parsePillWebUpload, validatePillWebJpeg, analyzePillWebPhotos, PILL_WEB_IMAGE_NAMES, PILL_WEB_PREPROCESSING_VERSION } from "./pill-photo-web.ts";
 import { PILL_PHOTO_OCR_SIDE_SCHEMA_VERSION } from "./pill-photo-ocr.ts";
 const now = Date.parse("2026-09-12T00:00:00Z");
@@ -46,7 +47,8 @@ test("catalog assets require a fresh manifest, complete counts and exact immutab
   const received = []; for await (const chunk of readPillWebChunks(manifest, source.read)) received.push(...chunk);
   assert.deepEqual(received, catalog.items);
   await assert.rejects(() => readPillWebManifest(source.read, now - 1));
-  await assert.rejects(() => readPillWebManifest(source.read, now + 168 * 3_600_000 + 1));
+  await readPillWebManifest(source.read, now + PILL_CATALOG_MAX_AGE_HOURS * 3_600_000);
+  await assert.rejects(() => readPillWebManifest(source.read, now + PILL_CATALOG_MAX_AGE_HOURS * 3_600_000 + 1));
   source.manifest.totalCount++;
   await assert.rejects(() => readPillWebManifest(source.read, now));
   await assert.rejects(async () => { for await (const _ of readPillWebChunks(manifest, async () => new Response(source.bytes.toString().replace("209900001", "209900009")))) void _; });

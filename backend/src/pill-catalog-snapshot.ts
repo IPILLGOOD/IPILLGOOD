@@ -3,6 +3,7 @@ import { z } from "zod";
 import { fetchOfficialPillPage, PILL_API_ENDPOINT, PILL_SOURCE_URL, type OfficialPillItem, type OfficialPillPageRequest, type OfficialPillPageResult } from "./official-pill-catalog.ts";
 import { type PillCatalog } from "./pill-identification.ts";
 import { stableJson } from "./stable-json.ts";
+import { PILL_CATALOG_MAX_AGE_HOURS } from "./pill-catalog-freshness.ts";
 
 // Local/offline tooling only. Do not load the full snapshot in a Worker request.
 export const PILL_NORMALIZATION_VERSION = "mfds-pill-2026-08-31-v1";
@@ -164,7 +165,7 @@ export function validatePillCatalogSnapshot(value: unknown):
 export function snapshotSearchCatalog(snapshot: PillCatalogSnapshot, options: { now: Date; maxAgeHours: number }):
   | { ok: true; catalog: PillCatalog }
   | { ok: false; reason: string } {
-  if (!Number.isFinite(options.now.getTime()) || !Number.isInteger(options.maxAgeHours) || options.maxAgeHours < 1 || options.maxAgeHours > 168) return { ok: false, reason: "invalid_freshness_policy" };
+  if (!Number.isFinite(options.now.getTime()) || !Number.isInteger(options.maxAgeHours) || options.maxAgeHours < 1 || options.maxAgeHours > PILL_CATALOG_MAX_AGE_HOURS) return { ok: false, reason: "invalid_freshness_policy" };
   const checked = validatePillCatalogSnapshot(snapshot);
   if (!checked.ok) return checked;
   const age = options.now.getTime() - Date.parse(checked.snapshot.verifiedAt);
