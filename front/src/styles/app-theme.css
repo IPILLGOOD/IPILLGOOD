@@ -1872,12 +1872,6 @@ h2 {
   box-shadow: none;
 }
 
-.login-demo-entry {
-  border-width: 1px 0;
-  border-radius: 0;
-  background: transparent;
-}
-
 /* Referenced form controls: OTP cells and a substantial checkbox -------- */
 
 input[type="checkbox"] {
@@ -2871,34 +2865,12 @@ strong { font-weight: 600; }
 .landing-hero { background: #f9fafb; }
 .landing-hero__content h1 { color: #191f28; letter-spacing: -.06em; }
 .landing-hero__visual { padding: 1.4rem; border: 0; border-radius: 6px; background: #f2f4f6; }
-.landing-preview, .landing-button, .landing-feature, .landing-steps li, .login-panel, .login-access-card, .login-method-tab, .login-demo-entry { border-radius: 5px; box-shadow: none; }
+.landing-preview, .landing-button, .landing-feature, .landing-steps li, .login-panel, .login-access-card, .login-method-tab { border-radius: 5px; box-shadow: none; }
 .landing-feature, .landing-steps li { border: 0; background: #f9fafb; }
 .landing-button--primary { background: #22745e; }
 .login-page__brand-column { background: #f9fafb; }
 .login-method-tabs { background: #f2f4f6; padding: .4rem; }
 .login-method-tab--active { background: #fff; box-shadow: none; }
-.login-demo-entry { background: #f9fafb; border: 0; }
-
-.preview-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1rem 2rem; background: #fff; border-bottom: 1px solid #e5e8eb; }
-.preview-toolbar > div { display: grid; gap: .25rem; margin-right: auto; }
-.preview-toolbar > div span { color: var(--color-text-secondary); font-size: .85rem; }
-.preview-toolbar label { display: flex; align-items: center; gap: .6rem; font-size: .85rem; }
-.preview-toolbar select { min-height: 44px; padding: .5rem; border: 1px solid #d1d6db; border-radius: 4px; background: #fff; }
-.preview-nav-index { font-size: .75rem; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
-.preview-mobile-menu { display: none; }
-.preview-section { margin-top: 1.5rem; }
-.preview-shell .field { display: grid; gap: .65rem; margin-block: 1rem; }
-.preview-shell .upload-dropzone { display: grid; justify-items: center; gap: 1rem; }
-.preview-document-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: .75rem; padding: 1.2rem 0; border-bottom: 1px solid #e5e8eb; }
-.preview-document-row summary { cursor: pointer; overflow-wrap: anywhere; padding-block: .5rem; }
-.preview-consent { display: flex; gap: .75rem; margin-block: 1.5rem; }
-.preview-code { font-size: 2rem; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
-.preview-report-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 1.2rem 0; border-bottom: 1px solid #e5e8eb; }
-.preview-skeleton { display: grid; gap: 1rem; }
-.preview-skeleton > span { display: block; height: 5rem; background: #e5e8eb; border-radius: 4px; }
-.preview-dialog-backdrop { position: fixed; z-index: 200; inset: 0; display: grid; place-items: center; background: #191f2866; padding: 1rem; }
-.preview-dialog { width: min(100%, 30rem); background: #fff; border-radius: 6px; padding: 2rem; }
-.preview-dialog .button { margin: .5rem .5rem 0 0; }
 @media (prefers-reduced-motion: no-preference) {
   .experience-content :is(.nutrition-resource, .document-item, .today-task):not(.care-diary *) { animation: ui-list-enter 200ms ease-out; }
   @keyframes ui-list-enter { from { opacity: .6; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -2984,9 +2956,6 @@ strong { font-weight: 600; }
   .mobile-quick-action__dialog h2 { margin: 0; font-size: 1.25rem; letter-spacing: -.03em; }
   .mobile-quick-action__dialog p { margin: .65rem 0 1.4rem; color: var(--color-text-secondary); line-height: 1.65; }
   .mobile-quick-action__dialog .button { width: 100%; }
-  .preview-mobile-menu { display: flex; overflow-x: auto; gap: 1.2rem; padding: .5rem 1.25rem; background: #fff; }
-  .preview-mobile-menu a { display: flex; align-items: center; min-height: 44px; white-space: nowrap; text-decoration: none; color: var(--color-text-secondary); }
-  .preview-mobile-menu a[aria-current] { color: #191f28; border-bottom: 2px solid #22745e; }
 }
 @media (max-width: 959px) {
   .experience-content .experience-header {
@@ -3071,26 +3040,15 @@ strong { font-weight: 600; }
   .account-settings-row .button { width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   .today-dose-progress { gap: .35rem; }
   .today-dose-progress > span { min-width: .7rem; height: .65rem; }
-  .preview-toolbar { padding: 1rem; gap: .65rem; }
-  .preview-toolbar > div { width: 100%; }
-  .preview-shell .section-heading { flex-wrap: wrap; }
 }
 @media print {
-  .preview-toolbar, .preview-mobile-menu, .workspace-context, .sidebar-guide, .preview-shell .button, .preview-shell .app-footer { display: none; }
+  .workspace-context, .sidebar-guide { display: none; }
   .experience-content .card:not(.care-diary *) { break-inside: avoid; }
 }
 .experience-content .unanswered-dose:not(.care-diary *) { border: 0; border-bottom: 1px solid #e5e8eb; border-radius: 0; background: transparent; }
 .experience-content .unanswered-dose__toggle:not(.care-diary *) { background: transparent; }
 .experience-content .unanswered-doses__icon:not(.care-diary *) { border-radius: 3px; background: transparent; color: #22745e; }
 .experience-content .unanswered-dose__status:not(.care-diary *) { border-radius: 3px; }
-.preview-dialog { border: 0; margin: auto; }
-.preview-dialog::backdrop { background: #191f2866; }
-.preview-device { min-height: 100vh; background: #e5e8eb; padding: 1rem; }
-.preview-device > header { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding: 1rem; }
-.preview-device label { display: flex; gap: .75rem; align-items: center; }
-.preview-device select { min-height: 44px; padding: .5rem; }
-.preview-device__stage { overflow: auto; padding-block: 1rem; }
-.preview-device iframe { display: block; margin-inline: auto; height: 844px; border: 0; background: #fff; max-width: none; }
 /* Search registration inherits the current UI; imported calendar controls keep their own style. */
 .experience-content .official-drug-search__controls { display: flex; gap: .75rem; }
 .experience-content .official-drug-search__controls input { min-width: 0; flex: 1; min-height: 44px; border: 1px solid #d1d6db; border-radius: 5px; padding: .8rem; background: #f9fafb; }

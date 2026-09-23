@@ -263,6 +263,7 @@
 @keyframes launch-capsule-float { 0%, 100% { transform: translateY(0) rotate(-24deg) rotateY(-18deg); } 50% { transform: translateY(-14px) rotate(-18deg) rotateY(6deg); } }
 .launch-button--light { background: white; color: var(--launch-ink); }
 .launch-button--dark-ghost { border-color: rgb(255 255 255 / 25%); color: white; }
+.launch-cta .demo-login-error { color: #ffd1c9; }
 .launch-footer { background: #071a13; color: rgb(255 255 255 / 58%); padding: 3rem 0; }
 .launch-footer__inner { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 2rem; }
 .launch-footer .launch-brand { color: white; }

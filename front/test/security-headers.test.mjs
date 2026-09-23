@@ -75,11 +75,6 @@ test("공통 헤더와 CSP report-only/enforce 전환을 회귀 검증한다", (
   assert.equal(cspResponseHeaderName(undefined), "Content-Security-Policy");
 });
 
-test("기기별 미리보기는 공개 샘플 경로만 같은 출처 프레임을 허용한다", () => {
-  for (const samplePreviewPath of ["/preview", "/preview/documents"]) {
-    assert.match(contentSecurityPolicy({ development: false, nonce: "test", samplePreviewPath }), /frame-ancestors 'self'/);
-  }
-  for (const samplePreviewPath of ["/profile", "/documents", "/preview-device", "/preview-other", "/api/auth/demo"]) {
-    assert.match(contentSecurityPolicy({ development: false, nonce: "test", samplePreviewPath }), /frame-ancestors 'none'/);
-  }
+test("모든 화면에서 프레임 삽입을 차단한다", () => {
+  assert.match(contentSecurityPolicy({ development: false, nonce: "test" }), /frame-ancestors 'none'/);
 });

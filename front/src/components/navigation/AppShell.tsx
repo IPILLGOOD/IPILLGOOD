@@ -219,7 +219,6 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const isPublicPage =
-    pathname.startsWith("/preview") ||
     pathname === "/" ||
     pathname === "/login" ||
     pathname === "/account/recovery" ||

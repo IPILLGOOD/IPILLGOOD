@@ -1,10 +1,8 @@
 "use client";
 
 import { Check, Clock3, X } from "lucide-react";
-import { useActionState, useContext, useEffect } from "react";
+import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-
-import { PreviewDoseAction } from "@/components/preview/PreviewActions";
 
 import { saveDoseResponseAction } from "@/app/actions";
 
@@ -25,11 +23,10 @@ function timeLabel(value: string) {
 
 export function DoseResponseEditor({ dose, medication, revision, className = "" }: { dose: Dose; medication?: Medication; revision: number; className?: string }) {
   const router = useRouter();
-  const previewAction = useContext(PreviewDoseAction);
-  const [state, action, pending] = useActionState(previewAction ?? saveDoseResponseAction, { status: "idle" as const, message: "" });
+  const [state, action, pending] = useActionState(saveDoseResponseAction, { status: "idle" as const, message: "" });
   useEffect(() => {
-    if (state.status === "success" && !previewAction) router.refresh();
-  }, [router, state.status, previewAction]);
+    if (state.status === "success") router.refresh();
+  }, [router, state.status]);
   const time = timeLabel(dose.scheduledAt);
 
   return (

@@ -412,12 +412,9 @@ export function LandingPage() {
                 >
                   IPILLGOOD 시작하기 <ArrowRight size={18} />
                 </Link>
-                <Link
-                  className="launch-button launch-button--dark-ghost"
-                  href="/preview"
-                >
-                  샘플 화면 둘러보기
-                </Link>
+                <DemoLoginButton className="launch-button launch-button--dark-ghost">
+                  데모 화면 보기
+                </DemoLoginButton>
               </div>
               <div className="launch-pill-scene" aria-hidden="true">
                 <span className="launch-pill-scene__orbit" />

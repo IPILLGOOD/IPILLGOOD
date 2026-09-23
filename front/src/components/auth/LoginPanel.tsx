@@ -6,7 +6,6 @@ import {
   Check,
   HeartPulse,
   Link2,
-  PlayCircle,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -174,25 +173,10 @@ export function LoginPanel({
             <span>서비스를 먼저 둘러보고 싶다면</span>
           </div>
 
-          <div className="login-demo-entry">
-            <span className="login-demo-entry__icon">
-              <PlayCircle size={20} aria-hidden="true" />
-            </span>
-            <span>
-              <strong>체험 모드</strong>
-              <small>가입 없이 비식별 샘플로 둘러봐요.</small>
-            </span>
-            <DemoLoginButton className="login-demo-button">
-              둘러보기 <ArrowRight size={16} aria-hidden="true" />
-            </DemoLoginButton>
-          </div>
-
-          <p>
-            <Link className="login-demo-button" href="/preview">
-              샘플 데이터로 모든 화면 미리보기{" "}
-              <ArrowRight size={16} aria-hidden="true" />
-            </Link>
-          </p>
+          <DemoLoginButton className="login-demo-button">
+            샘플 데이터로 모든 화면 미리보기{" "}
+            <ArrowRight size={16} aria-hidden="true" />
+          </DemoLoginButton>
 
           <p className="login-panel__notice">
             로그인하면 서비스 이용 목적의 최소 계정 정보 처리에 동의하게 됩니다.

@@ -7,7 +7,7 @@ test("a delayed page response shows loading immediately and keeps navigation usa
   await page.addInitScript(() => localStorage.setItem("ipillgood:pwa-install-prompt:hidden", "true"));
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/login");
-  await page.getByRole("button", { name: "둘러보기", exact: true }).click();
+  await page.getByRole("button", { name: "샘플 데이터로 모든 화면 미리보기", exact: true }).click();
   await expect(page).toHaveURL(/\/today$/);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
