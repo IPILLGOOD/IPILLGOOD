@@ -25,7 +25,7 @@ test.beforeEach(async ({ page, context, browserName }) => {
       secure: false, httpOnly: true, sameSite: "Lax" }]);
     await page.goto("/today");
   } else {
-    await page.getByRole("button", { name: "둘러보기", exact: true }).click();
+    await page.getByRole("button", { name: "샘플 데이터로 모든 화면 미리보기", exact: true }).click();
   }
   await expect(page).toHaveURL(/\/today$/);
 });

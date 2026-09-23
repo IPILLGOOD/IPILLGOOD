@@ -1,6 +1,8 @@
 import { test, expect, type Locator } from "@playwright/test";
 import { dismissInstallPromptWhenShown } from "../test-support/browser-controls";
 
+test.use({ extraHTTPHeaders: { "x-forwarded-for": "192.0.2.150" } });
+
 async function settled(rail: Locator) {
   await rail.evaluate(element => new Promise<void>((resolve, reject) => {
     let previous = element.scrollLeft, stable = 0, frames = 0;
@@ -17,12 +19,14 @@ async function settled(rail: Locator) {
 
 test("medication tabs retain explicit selection through scrolling and follow completed swipes", async ({ page }) => {
   await dismissInstallPromptWhenShown(page);
-  // The public preview uses the real cabinet component with non-sensitive fixtures.
+  await page.goto("/login");
+  await page.getByRole("button", { name: "샘플 데이터로 모든 화면 미리보기", exact: true }).click();
+  await expect(page).toHaveURL(/\/today$/);
   for (const reducedMotion of ["reduce", "no-preference"] as const) {
     await page.emulateMedia({ reducedMotion });
     for (const width of [320, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 844 });
-      await page.goto("/preview/medications");
+      await page.goto("/medications");
       const rail = page.getByRole("tablist", { name: "복용약 선택" });
       const tabs = rail.getByRole("tab");
       const last = tabs.last();

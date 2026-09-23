@@ -15,6 +15,15 @@ test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
 
+test("login: the sole sample button starts a demo session", async ({ page }) => {
+  await page.goto("/login");
+  const demo = page.getByRole("button", { name: "샘플 데이터로 모든 화면 미리보기", exact: true });
+  await expect(demo).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "둘러보기", exact: true })).toHaveCount(0);
+  await demo.click();
+  await expect(page).toHaveURL(/\/today$/);
+});
+
 test("mobile: landing, all care pages, medication details, quick actions and narrow reflow", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -36,7 +45,7 @@ test("mobile: landing, all care pages, medication details, quick actions and nar
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/login");
-  await page.getByRole("button", { name: "둘러보기", exact: true }).click();
+  await page.getByRole("button", { name: "샘플 데이터로 모든 화면 미리보기", exact: true }).click();
   await expect(page).toHaveURL(/\/today$/);
   for (const path of ["/today", "/dashboard", "/medications", "/nutrition", "/check-in", "/documents", "/profile", "/report"]) {
     await test.step(path, async () => {
@@ -85,7 +94,7 @@ test("mobile: landing, all care pages, medication details, quick actions and nar
 
 test("mobile: calendar records and corrections persist; removing a medication updates Today", async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("button", { name: "둘러보기", exact: true }).click();
+  await page.getByRole("button", { name: "샘플 데이터로 모든 화면 미리보기", exact: true }).click();
   await expect(page).toHaveURL(/\/today$/);
   await page.goto("/dashboard");
   const dose = page.locator(".dose-quick-check").first();
@@ -120,7 +129,7 @@ test("mobile: calendar records and corrections persist; removing a medication up
 
 test("mobile: nutrition handles configuration, success, refresh failure and retry without losing results", async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("button", { name: "둘러보기", exact: true }).click();
+  await page.getByRole("button", { name: "샘플 데이터로 모든 화면 미리보기", exact: true }).click();
   await expect(page).toHaveURL(/\/today$/);
   await page.goto("/nutrition");
   await page.getByRole("button", { name: "관련 자료 찾기", exact: true }).click();

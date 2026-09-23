@@ -1022,9 +1022,7 @@
 }
 
 .login-method-copy strong,
-.login-method-copy small,
-.login-demo-entry strong,
-.login-demo-entry small {
+.login-method-copy small {
   display: block;
 }
 
@@ -1069,50 +1067,6 @@
 .connection-login-form .login-demo-button {
   width: auto;
   white-space: nowrap;
-}
-
-.login-demo-entry {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.8rem 0.9rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: rgb(255 255 255 / 55%);
-}
-
-.login-demo-entry__icon {
-  display: grid;
-  width: 2.35rem;
-  height: 2.35rem;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--color-primary-50);
-  color: var(--color-primary-700);
-}
-
-.login-demo-entry strong {
-  color: var(--color-primary-900);
-  font-size: 0.86rem;
-}
-.login-demo-entry small {
-  margin-top: 0.15rem;
-  color: var(--color-text-muted);
-  font-size: 0.7rem;
-}
-.login-demo-entry form {
-  margin: 0;
-}
-.login-demo-entry button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  border: 0;
-  background: transparent;
-  color: var(--color-primary-700);
-  font-size: 0.78rem;
-  font-weight: 800;
 }
 
 .login-choice {

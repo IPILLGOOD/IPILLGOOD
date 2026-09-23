@@ -90,7 +90,7 @@ test("profile: three-month policy, responsive dialog, keyboard cancellation, dem
     await page.getByRole("button", { name: "로그아웃", exact: true }).click();
     await expect(page).toHaveURL(/\/$/);
     await page.goto("/login");
-    await page.getByRole("button", { name: /둘러보기/ }).click();
+    await page.getByRole("button", { name: "샘플 데이터로 모든 화면 미리보기" }).click();
     await expect(page).toHaveURL(/\/today$/);
     await page.goto("/profile");
     await expect(page.getByRole("button", { name: "회원 탈퇴", exact: true })).toBeDisabled();
