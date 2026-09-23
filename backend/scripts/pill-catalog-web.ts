@@ -5,12 +5,13 @@ import { resolve, join } from "node:path";
 import { readBoundedJson } from "./pill-catalog.ts";
 import { MAX_PILL_SNAPSHOT_BYTES, snapshotSearchCatalog, validatePillCatalogSnapshot } from "../src/pill-catalog-snapshot.ts";
 import { pillWebCatalogManifestSchema } from "../src/pill-catalog-web.ts";
+import { PILL_CATALOG_MAX_AGE_HOURS } from "../src/pill-catalog-freshness.ts";
 
 const args = process.argv.slice(2);
 if (args.length !== 1) throw new Error("Usage: node --experimental-strip-types backend/scripts/pill-catalog-web.ts <fresh-catalog.json>");
 const checked = validatePillCatalogSnapshot(await readBoundedJson(resolve(args[0]!), MAX_PILL_SNAPSHOT_BYTES));
 if (!checked.ok) throw new Error(checked.reason);
-const fresh = snapshotSearchCatalog(checked.snapshot, { now: new Date(), maxAgeHours: 168 });
+const fresh = snapshotSearchCatalog(checked.snapshot, { now: new Date(), maxAgeHours: PILL_CATALOG_MAX_AGE_HOURS });
 if (!fresh.ok) throw new Error(fresh.reason);
 const publicRoot = resolve("front/public");
 await mkdir(publicRoot, { recursive: true });

@@ -1,0 +1,1 @@
+export const PILL_CATALOG_MAX_AGE_HOURS = 30 * 24;

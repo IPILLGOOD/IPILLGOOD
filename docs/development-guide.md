@@ -183,7 +183,7 @@ npm run cf:preview --workspace @care-atlas/front
 npm run cf:deploy --workspace @care-atlas/front
 ```
 
-사진 검색을 포함한 배포는 `MFDS_PILL_API_KEY`로 식약처 전체 목록을 두 번 수집하고 무결성을 확인합니다. 이미 검증한 스냅샷은 `PILL_CATALOG_FILE=/absolute/path/catalog.json`으로 재사용할 수 있습니다. **168시간 이내 자료만 허용하며, 자동 갱신은 아직 없어 7일 이내에 목록을 갱신해 재배포해야 합니다.** 목록·키 오류 시 배포를 중단합니다. [사진 검색과 카탈로그 배포 안내](pill-photo-web.md)에 자세한 조건이 있습니다.
+사진 검색을 포함한 배포는 `MFDS_PILL_API_KEY`로 식약처 전체 목록을 두 번 수집하고 무결성을 확인합니다. 이미 검증한 스냅샷은 `PILL_CATALOG_FILE=/absolute/path/catalog.json`으로 재사용할 수 있습니다. **30일 이내 자료만 허용하며, 자동 갱신은 아직 없어 30일 이내에 목록을 갱신해 재배포해야 합니다.** 목록·키 오류 시 배포를 중단합니다. [사진 검색과 카탈로그 배포 안내](pill-photo-web.md)에 자세한 조건이 있습니다.
 
 ### PWA 복약 알림 설정과 검증
 
