@@ -1,4 +1,4 @@
-import { Pill, Plus } from "lucide-react";
+import { ArrowRight, Camera, Pill, Plus } from "lucide-react";
 import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
@@ -59,7 +59,13 @@ export default async function MedicationsPage({
         }
       />
 
-      <Link className="button button--secondary" href="/medications/photo">알약 사진으로 비교 후보 찾기</Link>
+      <div className="medication-photo-action">
+        <Link className="button button--secondary medication-photo-action__link" href="/medications/photo">
+          <Camera size={19} aria-hidden="true" />
+          알약 사진으로 비교 후보 찾기
+          <ArrowRight size={17} aria-hidden="true" />
+        </Link>
+      </div>
 
       {adding ? (
         <MedicationSearchAdd

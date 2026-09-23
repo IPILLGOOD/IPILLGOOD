@@ -3050,11 +3050,18 @@ strong { font-weight: 600; }
 .experience-content .unanswered-doses__icon:not(.care-diary *) { border-radius: 3px; background: transparent; color: #22745e; }
 .experience-content .unanswered-dose__status:not(.care-diary *) { border-radius: 3px; }
 /* Search registration inherits the current UI; imported calendar controls keep their own style. */
+.experience-content .medication-photo-action { display: flex; margin-bottom: var(--space-5); }
+.experience-content .medication-photo-action__link.button { min-height: 3.5rem; border: 1px solid #a7c7b5; background: #eef6f1; color: #185b48; padding-inline: var(--space-5); font-size: 1rem; font-weight: 700; }
+.experience-content .medication-photo-action__link.button:hover { border-color: #22745e; background: #e0efe6; }
+.experience-content .medication-photo-action__link.button:focus-visible { outline: 2px solid #185b48; outline-offset: 2px; }
 .experience-content .official-drug-search__controls { display: flex; gap: .75rem; }
 .experience-content .official-drug-search__controls input { min-width: 0; flex: 1; min-height: 44px; border: 1px solid #d1d6db; border-radius: 5px; padding: .8rem; background: #f9fafb; }
 .experience-content .medication-search-add__item { border: 0; border-bottom: 1px solid #e5e8eb; border-radius: 0; padding: 1.5rem 0; }
 .experience-content .medication-search-add__fields input { min-height: 44px; }
-@media (max-width: 560px) { .experience-content .official-drug-search__controls { flex-wrap: wrap; } }
+@media (max-width: 560px) {
+  .experience-content .medication-photo-action__link { width: 100%; }
+  .experience-content .official-drug-search__controls { flex-wrap: wrap; }
+}
 
 /* User-approved UI patterns. Scope is intentionally limited to Today schedule,
    nutrition resources, and the guided check-in flow. */
