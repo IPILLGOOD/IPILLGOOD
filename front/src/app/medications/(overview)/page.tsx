@@ -1,4 +1,4 @@
-import { ArrowRight, Camera, Pill, Plus } from "lucide-react";
+import { ArrowRight, Camera, Pill, Plus, X } from "lucide-react";
 import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
@@ -53,8 +53,9 @@ export default async function MedicationsPage({
         title="약 설명을 쉬운 말로 확인하세요"
         description="따로 등록 할 수도 있어요."
         action={
-          <Link className="button button--primary" href="/medications?add=1">
-            <Plus size={17} aria-hidden="true" /> 약 검색해서 추가
+          <Link className="button button--primary" href={adding ? "/medications" : "/medications?add=1"}>
+            {adding ? <X size={17} aria-hidden="true" /> : <Plus size={17} aria-hidden="true" />}
+            {adding ? "검색 닫기" : "약 검색해서 추가"}
           </Link>
         }
       />
